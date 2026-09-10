@@ -1,0 +1,6 @@
+{
+  "name": "QR Label Kalibrasi",
+  "description": "Generator QR code untuk label kalibrasi alat medis PT Sarana Multi Kalibrasi",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

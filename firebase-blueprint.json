@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "Label": {
+      "title": "Label",
+      "description": "Represents a calibration label record.",
+      "type": "object",
+      "properties": {
+        "noLabel": {
+          "type": "string",
+          "pattern": "^[0-9]{3}\\.[0-9]{4}$",
+          "description": "Unique label number (e.g., 100.0001)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Menunggu Sertifikat", "Sertifikat Tertaut"],
+          "description": "Current status of the label"
+        },
+        "pdfUrl": {
+          "type": ["string", "null"],
+          "description": "Download URL of the PDF certificate (if linked)"
+        },
+        "hasPdf": {
+          "type": "boolean",
+          "description": "Flag indicating if certificate PDF is uploaded"
+        },
+        "pdfName": {
+          "type": ["string", "null"],
+          "description": "Filename of the certificate PDF"
+        },
+        "pdfSize": {
+          "type": ["number", "null"],
+          "description": "Size in bytes of the certificate PDF"
+        },
+        "pdfChunksCount": {
+          "type": ["number", "null"],
+          "description": "Total number of chunks stored in the subcollection"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["noLabel", "status", "createdAt", "updatedAt"]
+    },
+    "Chunk": {
+      "title": "Chunk",
+      "description": "Represents a segment of a base64-encoded PDF document.",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "number",
+          "description": "Chunk sequence index starting at 0"
+        },
+        "data": {
+          "type": "string",
+          "description": "Partial base64 content"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["index", "data"]
+    }
+  },
+  "firestore": {
+    "labels/{noLabel}": {
+      "schema": {
+        "$ref": "#/entities/Label"
+      },
+      "description": "Stores calibration labels using the noLabel as document ID."
+    },
+    "labels/{noLabel}/chunks/{chunkIndex}": {
+      "schema": {
+        "$ref": "#/entities/Chunk"
+      },
+      "description": "Stores chunked PDF file contents for the label."
+    }
+  }
+}
