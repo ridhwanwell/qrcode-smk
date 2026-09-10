@@ -221,12 +221,21 @@ export default function PublicScanPage() {
   };
 
   // Determine if certificate source is Google Drive
-  const isDrive = labelData?.pdfSource === 'drive' || !!labelData?.pdfDriveUrl || (typeof labelData?.pdfUrl === 'string' && labelData.pdfUrl.includes('drive.google.com'));
+  const isDrive = labelData?.pdfSource === 'drive' || !!labelData?.pdfDriveUrl || !!labelData?.pdfOriginalUrl || (typeof labelData?.pdfUrl === 'string' && labelData.pdfUrl.includes('drive.google.com'));
   const driveViewUrl = labelData?.pdfDriveUrl || labelData?.pdfOriginalUrl || (isDrive && labelData?.pdfUrl ? labelData.pdfUrl : null);
-  const driveEmbedUrl = isDrive && (labelData?.pdfUrl || labelData?.pdfDriveUrl) ? getGoogleDriveEmbedUrl(labelData.pdfUrl || labelData.pdfDriveUrl) : null;
+  const rawDriveTarget = labelData?.pdfOriginalUrl || labelData?.pdfDriveUrl || labelData?.pdfUrl || '';
+  const driveEmbedUrl = isDrive && rawDriveTarget ? getGoogleDriveEmbedUrl(rawDriveTarget) : null;
 
   const activePdfUrl = driveEmbedUrl || pdfBlobUrl || labelData?.pdfUrl;
-  const isReady = labelData && (labelData.status === 'Sertifikat Tertaut' || labelData.hasPdf || !!labelData.pdfUrl || isDrive);
+  const isReady = labelData && (
+    labelData.status === 'Sertifikat Tertaut' || 
+    labelData.hasPdf || 
+    !!labelData.pdfUrl || 
+    !!labelData.pdfDriveUrl || 
+    !!labelData.pdfOriginalUrl || 
+    isDrive ||
+    !!pdfBlobUrl
+  );
   const displayLabel = resolvedLabelId || cleanNoLabel;
   const folderPrefix = displayLabel.split('.')[0] || '002';
 
@@ -604,123 +613,39 @@ export default function PublicScanPage() {
           </motion.div>
         ) : (
           /* =========================================================================
-             PHASE 1: Pending Calibration State (Initial 1-2 weeks before Drive linked)
+             Status: Sertifikat Belum Tersedia / Belum Ditautkan
              ========================================================================= */
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-6 md:p-10 rounded-2xl shadow-sm border border-slate-200 max-w-2xl mx-auto my-auto w-full"
+            className="bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-slate-200 max-w-xl mx-auto my-auto w-full text-center"
           >
-            {/* Status Header Badge */}
-            <div className="flex items-center justify-between pb-6 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-500 border border-amber-200 shrink-0 shadow-inner">
-                  <Clock className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg md:text-xl font-bold text-slate-900">Proses Kalibrasi & Penerbitan</h2>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                      Menunggu Sertifikat (1-2 Minggu)
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    No. Label: <span className="font-mono font-bold text-slate-800">{displayLabel}</span> • PT Sarana Multi Kalibrasi
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="hidden sm:inline-flex items-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors shrink-0"
-              >
-                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600 mr-1" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
-                {copiedLink ? 'Tersalin' : 'Salin Link'}
-              </button>
+            <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200 shadow-inner">
+              <Clock className="w-8 h-8 animate-pulse" />
             </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Sertifikat Belum Tersedia</h2>
+            <p className="text-slate-600 text-sm leading-relaxed mb-4">
+              Sertifikat digital untuk nomor label <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md">{displayLabel}</span> belum diunggah atau ditautkan oleh tim laboratorium.
+            </p>
 
-            {/* Calibration Status Timeline */}
-            <div className="my-6 p-4 md:p-5 bg-slate-50 rounded-2xl border border-slate-100">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
-                Tahapan Verifikasi Kalibrasi:
-              </h3>
-              <div className="space-y-3.5 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
-                    ✓
-                  </div>
-                  <div>
-                    <p className="font-bold text-slate-900">Pemasangan Label Fisik & Perekaman QR Code</p>
-                    <p className="text-slate-500 text-[11px]">Nomor label {displayLabel} resmi terdaftar di database laboratorium PT SMK.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
-                    ✓
-                  </div>
-                  <div>
-                    <p className="font-bold text-slate-900">Pelaksanaan Kalibrasi Alat di Lapangan / Lab</p>
-                    <p className="text-slate-500 text-[11px]">Pengukuran dan pengujian teknis alat telah dilaksanakan oleh teknisi.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5 animate-pulse">
-                    ⏳
-                  </div>
-                  <div>
-                    <p className="font-bold text-amber-900">Penyusunan & Pengesahan Dokumen Sertifikat (Sedang Berjalan)</p>
-                    <p className="text-amber-800 text-[11px]">
-                      Perhitungan ketidakpastian dan pembuatan lembar sertifikat resmi laboratorium (estimasi 1–2 minggu setelah kalibrasi).
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
-                    4
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-600">Penautan Dokumen Google Drive & Publikasi Digital</p>
-                    <p className="text-slate-400 text-[11px]">
-                      Begitu link Google Drive sertifikat ditautkan oleh admin, QR Code ini otomatis menampilkan dokumen lengkap secara langsung.
-                    </p>
-                  </div>
-                </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 grid grid-cols-2 gap-3 text-left">
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Pada Tanggal</span>
+                <span className="text-xs font-bold text-slate-800">
+                  {labelData?.calibratedAt ? labelData.calibratedAt : <span className="text-slate-400 font-normal italic">Ditulis manual pada stiker</span>}
+                </span>
+              </div>
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Berlaku Hingga</span>
+                <span className="text-xs font-bold text-slate-800">
+                  {labelData?.validUntil ? labelData.validUntil : <span className="text-slate-400 font-normal italic">Ditulis manual pada stiker</span>}
+                </span>
               </div>
             </div>
 
-            {/* Explanatory Banner */}
-            <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-xl mb-6 text-left">
-              <div className="flex items-start gap-2.5">
-                <FileText className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-                <p className="text-xs text-blue-900 leading-relaxed">
-                  <strong>Pemberitahuan untuk Klien / Rumah Sakit:</strong> Stiker QR Code yang terpasang pada alat Anda telah aktif. Sertifikat kalibrasi digital akan dapat langsung diakses melalui QR Code ini setelah tim laboratorium menyelesaikan penyusunan dokumen.
-                </p>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsCameraOpen(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-xl transition-colors"
-              >
-                <Camera className="w-3.5 h-3.5 mr-1.5" />
-                Pindai Label Lain
-              </button>
-
-              <Link
-                to={`/admin/labels?folder=${folderPrefix}&search=${displayLabel}`}
-                className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow transition-colors"
-              >
-                <FolderOpen className="w-4 h-4 mr-2 text-amber-400" />
-                Tautkan Link Google Drive (Khusus Admin)
-              </Link>
-            </div>
+            <p className="text-xs text-slate-400">
+              Silakan hubungi PT Sarana Multi Kalibrasi untuk informasi lebih lanjut.
+            </p>
           </motion.div>
         )}
       </main>

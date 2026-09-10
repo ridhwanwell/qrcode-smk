@@ -58,7 +58,8 @@ function base64ToBlob(base64: string, mimeType = 'application/pdf'): Blob {
 export async function uploadPdfToFirestore(
   labelId: string, 
   file: File, 
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  dates?: { calibratedAt?: string; validUntil?: string }
 ): Promise<void> {
   if (onProgress) onProgress(10);
   
@@ -103,7 +104,7 @@ export async function uploadPdfToFirestore(
 
   // 5. Update parent label document
   const labelDocRef = doc(db, 'labels', labelId);
-  await setDoc(labelDocRef, {
+  const updatePayload: any = {
     noLabel: labelId,
     status: 'Sertifikat Tertaut',
     hasPdf: true,
@@ -112,7 +113,12 @@ export async function uploadPdfToFirestore(
     pdfChunksCount: totalChunks,
     pdfUrl: null, // No external url needed
     updatedAt: serverTimestamp()
-  }, { merge: true });
+  };
+
+  if (dates?.calibratedAt) updatePayload.calibratedAt = dates.calibratedAt;
+  if (dates?.validUntil) updatePayload.validUntil = dates.validUntil;
+
+  await setDoc(labelDocRef, updatePayload, { merge: true });
 
   if (onProgress) onProgress(100);
 }
@@ -207,7 +213,8 @@ export function getGoogleDriveViewUrl(urlOrId: string): string {
 export async function linkGoogleDriveToLabel(
   labelId: string, 
   driveUrl: string, 
-  customDocName?: string
+  customDocName?: string,
+  dates?: { calibratedAt?: string; validUntil?: string }
 ): Promise<void> {
   // Delete any existing chunks if previously stored as file chunks
   await deleteExistingChunks(labelId);
@@ -217,7 +224,7 @@ export async function linkGoogleDriveToLabel(
   const viewUrl = fileId ? getGoogleDriveViewUrl(fileId) : driveUrl.trim();
 
   const labelDocRef = doc(db, 'labels', labelId);
-  await setDoc(labelDocRef, {
+  const updatePayload: any = {
     noLabel: labelId,
     status: 'Sertifikat Tertaut',
     hasPdf: false,
@@ -228,6 +235,27 @@ export async function linkGoogleDriveToLabel(
     pdfName: customDocName?.trim() || `Sertifikat Kalibrasi ${labelId}`,
     pdfSize: null,
     pdfChunksCount: 0,
+    updatedAt: serverTimestamp()
+  };
+
+  if (dates?.calibratedAt) updatePayload.calibratedAt = dates.calibratedAt;
+  if (dates?.validUntil) updatePayload.validUntil = dates.validUntil;
+
+  await setDoc(labelDocRef, updatePayload, { merge: true });
+}
+
+/**
+ * Update calibration and expiration dates for a label
+ */
+export async function updateLabelDates(
+  labelId: string,
+  calibratedAt: string,
+  validUntil: string
+): Promise<void> {
+  const labelDocRef = doc(db, 'labels', labelId);
+  await setDoc(labelDocRef, {
+    calibratedAt,
+    validUntil,
     updatedAt: serverTimestamp()
   }, { merge: true });
 }

@@ -25,6 +25,10 @@ export default function AdminGenerate() {
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
 
+  // Calibration dates state (Opsional, ditulis manual oleh teknisi di stiker fisik)
+  const [calibratedAt, setCalibratedAt] = useState('');
+  const [validUntil, setValidUntil] = useState('');
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
@@ -177,6 +181,8 @@ export default function AdminGenerate() {
               pdfDriveUrl: viewUrl,
               pdfOriginalUrl: trimmedUrl,
               pdfName: singleDocName.trim() || `Sertifikat Kalibrasi ${labelStr}`,
+              calibratedAt: calibratedAt || '',
+              validUntil: validUntil || '',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             }, { merge: true });
@@ -184,6 +190,8 @@ export default function AdminGenerate() {
             batch.set(docRef, {
               noLabel: labelStr,
               status: 'Menunggu Sertifikat',
+              calibratedAt: calibratedAt || '',
+              validUntil: validUntil || '',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             }, { merge: true });
@@ -524,6 +532,38 @@ export default function AdminGenerate() {
                   </div>
                 </div>
               )}
+
+              {/* Calibration & Expiration Dates */}
+              <div className="pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-slate-700">Tanggal Kalibrasi & Masa Berlaku</span>
+                  <span className="text-[11px] text-slate-400 italic">(Opsional - Ditulis manual oleh teknisi di stiker fisik)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Pada Tanggal (Kalibrasi)
+                    </label>
+                    <input
+                      type="date"
+                      value={calibratedAt}
+                      onChange={(e) => setCalibratedAt(e.target.value)}
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-slate-50 text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Berlaku Hingga
+                    </label>
+                    <input
+                      type="date"
+                      value={validUntil}
+                      onChange={(e) => setValidUntil(e.target.value)}
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-slate-50 text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
 
               {error && (
                 <p className="text-sm text-rose-600 flex items-center">

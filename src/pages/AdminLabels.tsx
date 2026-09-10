@@ -9,6 +9,7 @@ import {
   deleteLabelCompletely,
   deleteBatchLabels,
   linkGoogleDriveToLabel,
+  updateLabelDates,
   extractGoogleDriveFileId
 } from '../lib/pdfStorage';
 import { 
@@ -89,6 +90,8 @@ export default function AdminLabels() {
   const [modalTab, setModalTab] = useState<'drive' | 'upload'>('drive');
   const [driveUrlInput, setDriveUrlInput] = useState('');
   const [docNameInput, setDocNameInput] = useState('');
+  const [calibratedAtInput, setCalibratedAtInput] = useState('');
+  const [validUntilInput, setValidUntilInput] = useState('');
   const [savingDrive, setSavingDrive] = useState(false);
   const [modalError, setModalError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -193,6 +196,11 @@ export default function AdminLabels() {
     setActiveModalLabel(label);
     setModalError('');
     setSelectedFile(null);
+    
+    // Set dates (preserves existing or leaves blank for manual entry by technician)
+    setCalibratedAtInput(label.calibratedAt || '');
+    setValidUntilInput(label.validUntil || '');
+
     if (label.pdfSource === 'drive' || label.pdfDriveUrl) {
       setModalTab('drive');
       setDriveUrlInput(label.pdfOriginalUrl || label.pdfDriveUrl || '');
@@ -210,6 +218,8 @@ export default function AdminLabels() {
     setModalError('');
     setDriveUrlInput('');
     setDocNameInput('');
+    setCalibratedAtInput('');
+    setValidUntilInput('');
     setSelectedFile(null);
   };
 
@@ -235,7 +245,8 @@ export default function AdminLabels() {
       await linkGoogleDriveToLabel(
         activeModalLabel.id, 
         trimmedUrl, 
-        docNameInput.trim() || undefined
+        docNameInput.trim() || undefined,
+        { calibratedAt: calibratedAtInput, validUntil: validUntilInput }
       );
       setSavingDrive(false);
       closeLinkModal();
@@ -265,9 +276,14 @@ export default function AdminLabels() {
     setModalError('');
 
     try {
-      await uploadPdfToFirestore(labelId, selectedFile, (percent) => {
-        setUploadProgress(percent);
-      });
+      await uploadPdfToFirestore(
+        labelId, 
+        selectedFile, 
+        (percent) => {
+          setUploadProgress(percent);
+        },
+        { calibratedAt: calibratedAtInput, validUntil: validUntilInput }
+      );
       
       setUploadingId(null);
       setUploadProgress(0);
@@ -276,6 +292,21 @@ export default function AdminLabels() {
       console.error("Upload error:", err);
       setModalError(`Gagal mengunggah PDF: ${err?.message || 'Terjadi kesalahan sistem'}`);
       setUploadingId(null);
+    }
+  };
+
+  const handleSaveDatesOnly = async () => {
+    if (!activeModalLabel) return;
+    setSavingDrive(true);
+    setModalError('');
+    try {
+      await updateLabelDates(activeModalLabel.id, calibratedAtInput, validUntilInput);
+      setSavingDrive(false);
+      closeLinkModal();
+    } catch (err: any) {
+      console.error("Error updating dates:", err);
+      setModalError('Gagal memperbarui tanggal: ' + (err.message || ''));
+      setSavingDrive(false);
     }
   };
 
@@ -681,14 +712,15 @@ export default function AdminLabels() {
                     <th className="px-6 py-4">Nomor Label</th>
                     <th className="px-6 py-4">Status Sertifikat</th>
                     <th className="px-6 py-4">Tipe & Dokumen</th>
-                    <th className="px-6 py-4">Tanggal Generate</th>
+                    <th className="px-6 py-4">Pada Tanggal</th>
+                    <th className="px-6 py-4">Berlaku Hingga</th>
                     <th className="px-6 py-4 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredFolderItems.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
                         {folderSearch ? `Tidak ada label yang cocok dengan "${folderSearch}" di folder ini.` : 'Folder ini kosong.'}
                       </td>
                     </tr>
@@ -780,8 +812,12 @@ export default function AdminLabels() {
                             )}
                           </td>
 
-                          <td className="px-6 py-4 text-slate-500 text-xs">
-                            {label.createdAt ? format(label.createdAt.toDate(), 'dd MMM yyyy, HH:mm', { locale: id }) : '-'}
+                          <td className="px-6 py-4 text-slate-700 text-xs font-mono font-medium">
+                            {label.calibratedAt || '-'}
+                          </td>
+
+                          <td className="px-6 py-4 text-slate-700 text-xs font-mono font-medium">
+                            {label.validUntil || '-'}
                           </td>
 
                           <td className="px-6 py-4 text-right">
@@ -945,6 +981,28 @@ export default function AdminLabels() {
                     />
                   </div>
 
+                  {/* Calibration & Expiration Dates */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Pada Tanggal (Kalibrasi)</label>
+                      <input 
+                        type="date"
+                        value={calibratedAtInput}
+                        onChange={(e) => setCalibratedAtInput(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Berlaku Hingga</label>
+                      <input 
+                        type="date"
+                        value={validUntilInput}
+                        onChange={(e) => setValidUntilInput(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
                   {/* Tutorial Tip */}
                   <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-900 space-y-1.5">
                     <div className="font-bold flex items-center text-blue-800">
@@ -958,32 +1016,44 @@ export default function AdminLabels() {
                     </ol>
                   </div>
 
-                  <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                  <div className="pt-2 flex items-center justify-between border-t border-slate-100 gap-2">
                     <button
                       type="button"
-                      onClick={closeLinkModal}
+                      onClick={handleSaveDatesOnly}
                       disabled={savingDrive}
-                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                      className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
+                      title="Update tanggal kalibrasi tanpa mengubah link sertifikat"
                     >
-                      Batal
+                      Simpan Tanggal Saja
                     </button>
-                    <button
-                      type="submit"
-                      disabled={savingDrive || !driveUrlInput.trim()}
-                      className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
-                    >
-                      {savingDrive ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Menyimpan Link...
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          Simpan Link Google Drive
-                        </>
-                      )}
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={closeLinkModal}
+                        disabled={savingDrive}
+                        className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingDrive || !driveUrlInput.trim()}
+                        className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
+                      >
+                        {savingDrive ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Menyimpan Link...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            Simpan Link Google Drive
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </form>
               ) : (
@@ -1017,6 +1087,28 @@ export default function AdminLabels() {
                         <p className="text-[11px] text-slate-400 mt-1">Maksimal 20MB (.pdf)</p>
                       </div>
                     )}
+                  </div>
+
+                  {/* Calibration & Expiration Dates */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Pada Tanggal (Kalibrasi)</label>
+                      <input 
+                        type="date"
+                        value={calibratedAtInput}
+                        onChange={(e) => setCalibratedAtInput(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Berlaku Hingga</label>
+                      <input 
+                        type="date"
+                        value={validUntilInput}
+                        onChange={(e) => setValidUntilInput(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
                   </div>
 
                   {uploadingId && (
