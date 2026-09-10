@@ -72,18 +72,22 @@ export default function AdminLayout() {
             <Verified className={cn("w-5 h-5 mr-3 transition-colors", "group-hover:text-amber-400")} />
             Desain Template
           </NavLink>
-
-          <button
-            onClick={() => setIsLogoModalOpen(true)}
-            className="w-full flex items-center px-4 py-3 rounded-lg text-sm font-medium text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-all duration-200 mt-4 cursor-pointer"
-          >
-            <ImageIcon className="w-5 h-5 mr-3 text-amber-400 shrink-0" />
-            <span>Pengaturan Logo Website</span>
-          </button>
         </nav>
 
         {/* User Info & Logout */}
-        <div className="p-4 border-t border-slate-800 space-y-3">
+        <div className="p-4 border-t border-slate-800 space-y-2.5">
+          {/* Small compact logo settings button directly above admin username */}
+          <button
+            onClick={() => setIsLogoModalOpen(true)}
+            className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-amber-300 bg-slate-800/40 hover:bg-amber-500/10 border border-slate-800 hover:border-amber-500/20 transition-all cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <ImageIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Pengaturan Logo</span>
+            </span>
+            <span className="text-[10px] text-slate-500 font-mono">Ubah</span>
+          </button>
+
           <div className="flex items-center px-2 py-1.5 bg-slate-800/60 rounded-lg">
             <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold text-xs mr-2.5 shrink-0">
               {user?.avatarLetter || 'A'}
@@ -117,13 +121,6 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsLogoModalOpen(true)}
-              className="px-3.5 py-1.5 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-900 border border-slate-200 hover:border-amber-300 font-semibold text-xs rounded-xl transition-all flex items-center gap-2 shadow-sm"
-            >
-              <ImageIcon className="w-4 h-4 text-amber-600" />
-              <span>Ganti Logo Website</span>
-            </button>
             <div className="text-right">
               <p className="text-sm font-bold text-slate-800">{user?.displayName || 'Administrator'}</p>
               <span className="inline-flex items-center text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
