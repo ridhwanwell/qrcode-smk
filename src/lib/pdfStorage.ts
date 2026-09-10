@@ -1,6 +1,7 @@
 import { 
   collection, 
   doc, 
+  setDoc,
   getDocs, 
   writeBatch, 
   serverTimestamp, 
@@ -102,7 +103,8 @@ export async function uploadPdfToFirestore(
 
   // 5. Update parent label document
   const labelDocRef = doc(db, 'labels', labelId);
-  await updateDoc(labelDocRef, {
+  await setDoc(labelDocRef, {
+    noLabel: labelId,
     status: 'Sertifikat Tertaut',
     hasPdf: true,
     pdfName: file.name,
@@ -110,7 +112,7 @@ export async function uploadPdfToFirestore(
     pdfChunksCount: totalChunks,
     pdfUrl: null, // No external url needed
     updatedAt: serverTimestamp()
-  });
+  }, { merge: true });
 
   if (onProgress) onProgress(100);
 }
@@ -215,18 +217,19 @@ export async function linkGoogleDriveToLabel(
   const viewUrl = fileId ? getGoogleDriveViewUrl(fileId) : driveUrl.trim();
 
   const labelDocRef = doc(db, 'labels', labelId);
-  await updateDoc(labelDocRef, {
+  await setDoc(labelDocRef, {
+    noLabel: labelId,
     status: 'Sertifikat Tertaut',
     hasPdf: false,
     pdfSource: 'drive',
     pdfUrl: embedUrl,
     pdfDriveUrl: viewUrl,
     pdfOriginalUrl: driveUrl.trim(),
-    pdfName: customDocName?.trim() || 'Sertifikat Kalibrasi (Google Drive)',
+    pdfName: customDocName?.trim() || `Sertifikat Kalibrasi ${labelId}`,
     pdfSize: null,
     pdfChunksCount: 0,
     updatedAt: serverTimestamp()
-  });
+  }, { merge: true });
 }
 
 /**
