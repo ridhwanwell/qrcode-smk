@@ -170,21 +170,18 @@ export function extractGoogleDriveFileId(url: string): string | null {
   if (!url) return null;
   const trimmed = url.trim();
 
-  // Pattern 1: /file/d/FILE_ID/
-  const matchFileD = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (matchFileD && matchFileD[1]) return matchFileD[1];
-
-  // Pattern 2: id=FILE_ID
-  const matchIdParam = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (matchIdParam && matchIdParam[1]) return matchIdParam[1];
-
-  // Pattern 3: /d/FILE_ID
-  const matchD = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  // Pattern 1: /d/FILE_ID or /file/d/FILE_ID or /file/u/0/d/FILE_ID or /document/d/FILE_ID
+  const matchD = trimmed.match(/\/(?:file\/|file\/u\/\d+\/|document\/|spreadsheets\/|presentation\/)?d\/([a-zA-Z0-9_-]+)/i);
   if (matchD && matchD[1]) return matchD[1];
 
-  // Pattern 4: /open?id=FILE_ID
-  const matchOpenId = trimmed.match(/\/open\?id=([a-zA-Z0-9_-]+)/);
-  if (matchOpenId && matchOpenId[1]) return matchOpenId[1];
+  // Pattern 2: id=FILE_ID or ?id=FILE_ID
+  const matchIdParam = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/i);
+  if (matchIdParam && matchIdParam[1]) return matchIdParam[1];
+
+  // Pattern 3: Raw File ID (e.g. 25+ alphanumeric characters)
+  if (/^[a-zA-Z0-9_-]{25,}$/.test(trimmed)) {
+    return trimmed;
+  }
 
   return null;
 }
@@ -194,8 +191,11 @@ export function extractGoogleDriveFileId(url: string): string | null {
  */
 export function getGoogleDriveEmbedUrl(urlOrId: string): string {
   if (!urlOrId) return '';
-  const fileId = extractGoogleDriveFileId(urlOrId) || urlOrId.trim();
-  return `https://drive.google.com/file/d/${fileId}/preview`;
+  const fileId = extractGoogleDriveFileId(urlOrId);
+  if (fileId) {
+    return `https://drive.google.com/file/d/${fileId}/preview`;
+  }
+  return urlOrId.trim();
 }
 
 /**
@@ -203,8 +203,11 @@ export function getGoogleDriveEmbedUrl(urlOrId: string): string {
  */
 export function getGoogleDriveViewUrl(urlOrId: string): string {
   if (!urlOrId) return '';
-  const fileId = extractGoogleDriveFileId(urlOrId) || urlOrId.trim();
-  return `https://drive.google.com/file/d/${fileId}/view?usp=sharing`;
+  const fileId = extractGoogleDriveFileId(urlOrId);
+  if (fileId) {
+    return `https://drive.google.com/file/d/${fileId}/view?usp=sharing`;
+  }
+  return urlOrId.trim();
 }
 
 /**

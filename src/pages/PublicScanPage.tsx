@@ -88,150 +88,95 @@ export default function PublicScanPage() {
     }
 
     let isMounted = true;
-    let unsubListener: (() => void) | null = null;
+    setLoading(true);
+    setError(false);
 
-    const setupLabelRealtimeListener = async () => {
-      setLoading(true);
-      setError(false);
-      setLabelData(null);
-      setResolvedLabelId('');
-      setPdfBlobUrl(null);
+    const targetClean = cleanNoLabel.trim().toLowerCase();
+    const candidateList = generateLabelSearchCandidates(cleanNoLabel).map(c => c.trim().toLowerCase());
+    const candidateSet = new Set([targetClean, ...candidateList]);
 
-      try {
-        let foundId: string = cleanNoLabel;
-        let initialDoc: any = null;
+    // Real-time collection listener ensures 100% immediate sync across all tabs and devices
+    const labelsColRef = collection(db, 'labels');
+    const unsubscribe = onSnapshot(labelsColRef, async (snapshot) => {
+      if (!isMounted) return;
 
-        // Generate exhaustive candidate variants (standard XXX.XXXX, digits, hyphens, uppercase, etc.)
-        const candidates = generateLabelSearchCandidates(cleanNoLabel);
+      let foundDocId = '';
+      let foundData: any = null;
 
-        // Step 1: Direct document lookups on top candidate IDs
-        const topDocIds = candidates.slice(0, 6);
-        const docSnaps = await Promise.allSettled(
-          topDocIds.map(id => getDoc(doc(db, 'labels', id)))
-        );
+      for (const docSnap of snapshot.docs) {
+        const dId = docSnap.id.trim().toLowerCase();
+        const data = docSnap.data();
+        const noLabelField = (data.noLabel || data.nomorLabel || data.label || '').toString().trim().toLowerCase();
 
-        for (const res of docSnaps) {
-          if (res.status === 'fulfilled' && res.value.exists()) {
-            initialDoc = res.value.data();
-            foundId = res.value.id;
-            break;
-          }
-        }
+        const cleanDocId = cleanLabelString(docSnap.id)?.toLowerCase();
+        const cleanField = cleanLabelString(data.noLabel || '')?.toLowerCase();
 
-        // Step 2: Query by 'noLabel' field in chunks of 10
-        if (!initialDoc) {
-          for (let i = 0; i < candidates.length; i += 10) {
-            const chunk = candidates.slice(i, i + 10);
-            try {
-              const q = query(collection(db, 'labels'), where('noLabel', 'in', chunk));
-              const qSnap = await getDocs(q);
-              if (!qSnap.empty) {
-                initialDoc = qSnap.docs[0].data();
-                foundId = qSnap.docs[0].id;
-                break;
-              }
-            } catch (queryErr) {
-              console.warn("Query by noLabel batch search error:", queryErr);
-            }
-          }
-        }
-
-        // Step 3: Fallback query on alternative field names
-        if (!initialDoc) {
-          const topChunk = candidates.slice(0, 10);
-          for (const altField of ['nomorLabel', 'label', 'code', 'id']) {
-            try {
-              const qAlt = query(collection(db, 'labels'), where(altField, 'in', topChunk));
-              const qAltSnap = await getDocs(qAlt);
-              if (!qAltSnap.empty) {
-                initialDoc = qAltSnap.docs[0].data();
-                foundId = qAltSnap.docs[0].id;
-                break;
-              }
-            } catch {}
-          }
-        }
-
-        if (!isMounted) return;
-
-        if (initialDoc || foundId) {
-          setResolvedLabelId(foundId);
-
-          // Attach real-time listener to the specific document ID in Firestore
-          const docRef = doc(db, 'labels', foundId);
-          unsubListener = onSnapshot(docRef, async (snapshot) => {
-            if (!isMounted) return;
-
-            if (snapshot.exists()) {
-              const data = snapshot.data();
-              setLabelData(data);
-
-              // If certificate PDF is stored in chunks
-              if (data.hasPdf) {
-                setLoadingPdf(true);
-                try {
-                  const res = await getPdfBlobUrl(foundId);
-                  if (res && isMounted) {
-                    setPdfBlobUrl(res.url);
-                  }
-                } catch (pdfErr) {
-                  console.error("Error retrieving certificate PDF:", pdfErr);
-                } finally {
-                  if (isMounted) setLoadingPdf(false);
-                }
-              }
-            } else {
-              const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
-              setLabelData({
-                noLabel: norm,
-                status: 'Menunggu Sertifikat',
-                isPrePrinted: true
-              });
-            }
-            setLoading(false);
-          }, (err) => {
-            console.error("Realtime listener error:", err);
-            if (isMounted) setLoading(false);
-          });
-        } else {
-          // If not in Firestore yet, but matches valid label format
-          const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
-          if (/\d{2,}/.test(norm)) {
-            setLabelData({
-              noLabel: norm,
-              status: 'Menunggu Sertifikat',
-              isPrePrinted: true
-            });
-            setResolvedLabelId(norm);
-          } else {
-            setError(true);
-          }
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error("Error fetching label from Firestore:", err);
-        if (isMounted) {
-          const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
-          if (/\d{2,}/.test(norm)) {
-            setLabelData({
-              noLabel: norm,
-              status: 'Menunggu Sertifikat',
-              isPrePrinted: true
-            });
-            setResolvedLabelId(norm);
-          } else {
-            setError(true);
-          }
-          setLoading(false);
+        if (
+          candidateSet.has(dId) ||
+          candidateSet.has(noLabelField) ||
+          (cleanDocId && candidateSet.has(cleanDocId)) ||
+          (cleanField && candidateSet.has(cleanField))
+        ) {
+          foundDocId = docSnap.id;
+          foundData = data;
+          break;
         }
       }
-    };
 
-    setupLabelRealtimeListener();
+      if (foundData) {
+        setLabelData(foundData);
+        setResolvedLabelId(foundDocId || cleanNoLabel);
+        setError(false);
+
+        if (foundData.hasPdf) {
+          setLoadingPdf(true);
+          try {
+            const res = await getPdfBlobUrl(foundDocId);
+            if (res && isMounted) {
+              setPdfBlobUrl(res.url);
+            }
+          } catch (pdfErr) {
+            console.error("Error retrieving certificate PDF:", pdfErr);
+          } finally {
+            if (isMounted) setLoadingPdf(false);
+          }
+        }
+      } else {
+        const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
+        if (/\d{2,}/.test(norm)) {
+          setLabelData({
+            noLabel: norm,
+            status: 'Menunggu Sertifikat',
+            isPrePrinted: true
+          });
+          setResolvedLabelId(norm);
+          setError(false);
+        } else {
+          setError(true);
+        }
+      }
+
+      setLoading(false);
+    }, (err) => {
+      console.error("Firestore real-time subscription error:", err);
+      if (!isMounted) return;
+      const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
+      if (/\d{2,}/.test(norm)) {
+        setLabelData({
+          noLabel: norm,
+          status: 'Menunggu Sertifikat',
+          isPrePrinted: true
+        });
+        setResolvedLabelId(norm);
+      } else {
+        setError(true);
+      }
+      setLoading(false);
+    });
 
     return () => {
       isMounted = false;
-      if (unsubListener) unsubListener();
+      unsubscribe();
     };
   }, [cleanNoLabel]);
 
