@@ -31,15 +31,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
  * Otherwise, redirect to /admin/labels.
  */
 const ScanOrRedirect = () => {
-  const location = useLocation();
-  const detectedLabel = extractLabelFromLocation(location);
-  const hasSearch = !!location.search && location.search.length > 1;
-  const hasHash = !!location.hash && location.hash.length > 1;
-
-  if (detectedLabel || hasSearch || hasHash) {
-    return <PublicScanPage />;
-  }
-  return <Navigate to="/admin/labels" replace />;
+  return <PublicScanPage />;
 };
 
 export default function App() {

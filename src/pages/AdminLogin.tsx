@@ -15,8 +15,10 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useAppConfig } from '../lib/appConfig';
 
 export default function AdminLogin() {
+  const { logoUrl } = useAppConfig();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -93,9 +95,11 @@ export default function AdminLogin() {
         {/* Header */}
         <div className="bg-slate-900 px-8 py-7 text-center relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-          <Verified className="w-12 h-12 text-amber-500 mx-auto mb-3 relative z-10" />
-          <h1 className="text-2xl font-bold text-white relative z-10">PT Sarana Multi Kalibrasi</h1>
-          <p className="text-slate-400 mt-1 text-xs uppercase tracking-wider font-semibold relative z-10">
+          <div className="h-12 px-3 bg-white/95 rounded-xl inline-flex items-center justify-center mb-3 border border-slate-700 shadow relative z-10 mx-auto">
+            <img src={logoUrl} alt="Logo SMK" className="h-8 max-w-[120px] object-contain" />
+          </div>
+          <h1 className="text-xl font-bold text-white relative z-10">PT Sarana Multi Kalibrasi</h1>
+          <p className="text-amber-400 mt-1 text-xs uppercase tracking-wider font-semibold relative z-10">
             Masuk ke Dasbor Admin
           </p>
         </div>

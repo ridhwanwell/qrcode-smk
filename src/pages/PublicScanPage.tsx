@@ -36,8 +36,10 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import CameraQrScanner from '../components/CameraQrScanner';
+import { useAppConfig } from '../lib/appConfig';
 
 export default function PublicScanPage() {
+  const { logoUrl } = useAppConfig();
   const params = useParams();
   const rawParam = params.noLabel || params['*'];
   const [searchParams] = useSearchParams();
@@ -221,21 +223,28 @@ export default function PublicScanPage() {
       {/* Top Header */}
       <header className="bg-slate-900 text-white relative overflow-hidden shadow-md shrink-0 border-b border-slate-800">
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
-        <div className="max-w-4xl mx-auto px-4 md:px-8 py-4 relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <Link to="/" className="w-11 h-11 bg-white rounded-xl flex items-center justify-center shrink-0 shadow hover:opacity-90 transition-opacity">
-              <span className="font-black text-xl text-blue-600 italic tracking-tighter">SMK</span>
-            </Link>
+        <div className="max-w-4xl mx-auto px-4 md:px-8 py-3.5 relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <Link to="/" className="flex items-center gap-3.5 group shrink-0">
+            <div className="h-11 px-2.5 bg-white/95 rounded-xl flex items-center justify-center shrink-0 shadow border border-slate-700/50 group-hover:bg-white transition-colors">
+              <img 
+                src={logoUrl} 
+                alt="Logo PT. Sarana Multi Kalibrasi" 
+                className="h-8 max-w-[130px] object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/logo-smk.svg';
+                }}
+              />
+            </div>
             <div>
-              <Link to="/" className="text-base md:text-lg font-bold tracking-tight text-white hover:text-amber-400 transition-colors block leading-snug">
+              <span className="text-base md:text-lg font-bold tracking-tight text-white group-hover:text-amber-400 transition-colors block leading-snug">
                 PT. Sarana Multi Kalibrasi
-              </Link>
+              </span>
               <p className="text-amber-400 text-xs font-medium flex items-center mt-0.5">
                 <ShieldCheck className="w-3.5 h-3.5 mr-1 shrink-0" />
                 Portal Verifikasi Resmi Sertifikat Kalibrasi
               </p>
             </div>
-          </div>
+          </Link>
           
           <div className="flex items-center gap-2.5 self-start md:self-auto">
             {displayLabel && (
@@ -247,21 +256,12 @@ export default function PublicScanPage() {
 
             <button
               onClick={() => setIsCameraOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold flex items-center transition-colors border border-amber-500/30"
+              className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold flex items-center transition-colors border border-amber-500/30 shadow-sm"
               title="Buka Scanner Kamera"
             >
-              <Camera className="w-3.5 h-3.5 mr-1" />
+              <Camera className="w-4 h-4 mr-1.5" />
               Scan QR
             </button>
-
-            <Link 
-              to="/admin/login" 
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center transition-colors border border-slate-700"
-              title="Masuk ke Portal Admin"
-            >
-              <LogIn className="w-3.5 h-3.5 mr-1" />
-              Admin
-            </Link>
           </div>
         </div>
       </header>

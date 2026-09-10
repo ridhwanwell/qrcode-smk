@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 180" width="380" height="180">
+  <defs>
+    <!-- Metallic Silver Gradients -->
+    <linearGradient id="silverTop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="25%" stop-color="#E2E8F0" />
+      <stop offset="70%" stop-color="#94A3B8" />
+      <stop offset="100%" stop-color="#64748B" />
+    </linearGradient>
+
+    <linearGradient id="silverBevel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC" />
+      <stop offset="50%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#475569" />
+    </linearGradient>
+
+    <!-- Vibrant Cyan Blue Gradients -->
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="45%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#0369A1" />
+    </linearGradient>
+
+    <!-- Swoosh Arc Gradient -->
+    <linearGradient id="arcMetallic" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95" />
+      <stop offset="30%" stop-color="#CBD5E1" />
+      <stop offset="60%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+
+    <filter id="softShadow" x="-10%" y="-10%" width="125%" height="125%">
+      <feDropShadow dx="2" dy="4" stdDeviation="2.5" flood-color="#0F172A" flood-opacity="0.2" />
+    </filter>
+  </defs>
+
+  <g transform="skewX(-10)" filter="url(#softShadow)">
+    <!-- Orbital Swoosh Ring enveloping S and M -->
+    <path d="M 210,32 
+             C 130,12 40,42 22,96 
+             C 4,152 85,168 200,138 
+             C 225,131 205,118 180,125 
+             C 95,148 42,132 52,95 
+             C 62,58 135,32 210,50 Z" 
+          fill="url(#arcMetallic)" />
+
+    <!-- Letter 'S' - Metallic Silver -->
+    <path d="M 95,58 
+             C 70,58 52,68 52,86 
+             C 52,112 100,105 100,122 
+             C 100,132 85,138 68,138 
+             C 52,138 40,130 35,122 
+             L 20,135 
+             C 32,150 52,158 75,158 
+             C 108,158 122,142 122,120 
+             C 122,94 74,101 74,84 
+             C 74,76 86,72 98,72 
+             C 112,72 124,78 130,85 
+             L 142,70 
+             C 130,58 114,58 95,58 Z" 
+          fill="url(#silverTop)" />
+
+    <!-- Letter 'M' - Metallic Silver -->
+    <path d="M 140,60 
+             L 162,60 
+             L 185,120 
+             L 208,60 
+             L 230,60 
+             L 218,156 
+             L 198,156 
+             L 207,88 
+             L 180,156 
+             L 168,156 
+             L 149,88 
+             L 140,156 
+             L 122,156 Z" 
+          fill="url(#silverBevel)" />
+
+    <!-- Letter 'K' - Cyan Blue -->
+    <path d="M 245,60 
+             L 267,60 
+             L 255,102 
+             L 295,60 
+             L 322,60 
+             L 278,106 
+             L 325,156 
+             L 298,156 
+             L 262,116 
+             L 248,130 
+             L 242,156 
+             L 222,156 Z" 
+          fill="url(#cyanGrad)" />
+  </g>
+</svg>

@@ -1,10 +1,15 @@
+import { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
-import { LayoutDashboard, Tags, FilePlus2, LogOut, Verified, UserCheck } from 'lucide-react';
+import { LayoutDashboard, Tags, FilePlus2, LogOut, Verified, UserCheck, Image as ImageIcon, Building2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import LogoManagerModal from './LogoManagerModal';
+import { useAppConfig } from '../lib/appConfig';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
+  const { logoUrl } = useAppConfig();
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
@@ -67,6 +72,14 @@ export default function AdminLayout() {
             <Verified className={cn("w-5 h-5 mr-3 transition-colors", "group-hover:text-amber-400")} />
             Desain Template
           </NavLink>
+
+          <button
+            onClick={() => setIsLogoModalOpen(true)}
+            className="w-full flex items-center px-4 py-3 rounded-lg text-sm font-medium text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-all duration-200 mt-4 cursor-pointer"
+          >
+            <ImageIcon className="w-5 h-5 mr-3 text-amber-400 shrink-0" />
+            <span>Pengaturan Logo Website</span>
+          </button>
         </nav>
 
         {/* User Info & Logout */}
@@ -94,11 +107,23 @@ export default function AdminLayout() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 hidden md:flex shadow-sm z-0">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800">PT Sarana Multi Kalibrasi</h2>
-            <p className="text-xs text-slate-500">Sistem Verifikasi Sertifikat & Label Kalibrasi</p>
+          <div className="flex items-center gap-3">
+            <div className="h-10 px-2.5 bg-slate-900 rounded-xl flex items-center justify-center border border-slate-700 shadow-sm">
+              <img src={logoUrl} alt="Logo SMK" className="h-7 max-w-[100px] object-contain" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">PT Sarana Multi Kalibrasi</h2>
+              <p className="text-xs text-slate-500">Sistem Verifikasi Sertifikat & Label Kalibrasi</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsLogoModalOpen(true)}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-900 border border-slate-200 hover:border-amber-300 font-semibold text-xs rounded-xl transition-all flex items-center gap-2 shadow-sm"
+            >
+              <ImageIcon className="w-4 h-4 text-amber-600" />
+              <span>Ganti Logo Website</span>
+            </button>
             <div className="text-right">
               <p className="text-sm font-bold text-slate-800">{user?.displayName || 'Administrator'}</p>
               <span className="inline-flex items-center text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -115,6 +140,11 @@ export default function AdminLayout() {
           <Outlet />
         </div>
       </main>
+
+      <LogoManagerModal 
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
+      />
     </div>
   );
 }
