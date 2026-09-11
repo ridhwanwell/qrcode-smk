@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen } from 'lucide-react';
+import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen, Building2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
@@ -16,6 +16,9 @@ export default function AdminGenerate() {
   // Bulk mode state
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
+
+  // Hospital Name state
+  const [namaRs, setNamaRs] = useState('');
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -126,6 +129,7 @@ export default function AdminGenerate() {
     try {
       const itemsToSave = labelsToGenerate.map(lbl => ({
         noLabel: lbl,
+        namaRs: namaRs.trim() || null,
         status: 'Menunggu Sertifikat'
       }));
 
@@ -143,10 +147,16 @@ export default function AdminGenerate() {
       try {
         const supabaseRows = labelsToGenerate.map(lbl => ({
           no_label: lbl,
+          nama_rs: namaRs.trim() || null,
           status: 'Menunggu Sertifikat',
           updated_at: new Date().toISOString()
         }));
-        await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
+        const supaRes = await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
+        if (supaRes.error && supaRes.error.message?.includes('nama_rs')) {
+          // Fallback if nama_rs column doesn't exist yet in Supabase
+          const fallbackRows = supabaseRows.map(({ nama_rs, ...rest }) => rest);
+          await supabase.from('labels').upsert(fallbackRows, { onConflict: 'no_label' });
+        }
       } catch (supaErr) {
         console.warn('Supabase bulk upsert error:', supaErr);
       }
@@ -156,6 +166,7 @@ export default function AdminGenerate() {
       setNoLabel('');
       setStartLabel('');
       setEndLabel('');
+      setNamaRs('');
     } catch (err: any) {
       setError(err.message || 'Gagal menyimpan label.');
     } finally {
@@ -306,6 +317,21 @@ export default function AdminGenerate() {
             </div>
 
             <form onSubmit={handleGenerate} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-amber-600" />
+                  Nama RS / Rumah Sakit
+                </label>
+                <input
+                  type="text"
+                  value={namaRs}
+                  onChange={(e) => setNamaRs(e.target.value)}
+                  className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none text-sm placeholder:text-slate-400"
+                  placeholder="Contoh: RSUD Dr. Soetomo Surabaya"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Nama RS akan dikaitkan pada label dan ditampilkan pada folder.</p>
+              </div>
+
               {mode === 'single' ? (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">No Label</label>

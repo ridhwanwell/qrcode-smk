@@ -6,6 +6,7 @@ import {
   deleteCertificateFromLabel, 
   deleteLabelCompletely,
   deleteBatchLabels,
+  deleteFolderCompletely,
   linkGoogleDriveToLabel,
   updateLabelDates,
   extractGoogleDriveFileId
@@ -31,7 +32,8 @@ import {
   ChevronRight,
   Layers,
   FileCheck,
-  Camera
+  Camera,
+  Building2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -46,6 +48,7 @@ export interface FolderGroup {
   pendingCount: number;
   minLabel: string;
   maxLabel: string;
+  namaRs?: string | null;
 }
 
 /**
@@ -79,49 +82,178 @@ export default function AdminLabels() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [deletingFolder, setDeletingFolder] = useState(false);
+
+  // Custom In-App Delete Confirmation Modal State
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: 'folder' | 'label' | 'cert';
+    target: any;
+    title: string;
+    description: string;
+    confirmText: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   
   // Modal State for Linking Certificate (Google Drive)
   const [activeModalLabel, setActiveModalLabel] = useState<any | null>(null);
   const [driveUrlInput, setDriveUrlInput] = useState('');
   const [docNameInput, setDocNameInput] = useState('');
+  const [namaRsInput, setNamaRsInput] = useState('');
   const [calibratedAtInput, setCalibratedAtInput] = useState('');
   const [validUntilInput, setValidUntilInput] = useState('');
   const [savingDrive, setSavingDrive] = useState(false);
   const [modalError, setModalError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
+  // Folder Hospital Name Editing State
+  const [editingFolderRs, setEditingFolderRs] = useState<{ prefix: string; currentNamaRs: string } | null>(null);
+  const [folderRsInput, setFolderRsInput] = useState('');
+  const [savingFolderRs, setSavingFolderRs] = useState(false);
+  const [folderRsError, setFolderRsError] = useState('');
+
+  const openFolderRsModal = (prefix: string, currentNamaRs?: string | null) => {
+    setEditingFolderRs({ prefix, currentNamaRs: currentNamaRs || '' });
+    setFolderRsInput(currentNamaRs || '');
+    setFolderRsError('');
+  };
+
+  const closeFolderRsModal = () => {
+    setEditingFolderRs(null);
+    setFolderRsInput('');
+    setFolderRsError('');
+  };
+
+  const handleSaveFolderRs = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFolderRs) return;
+    setSavingFolderRs(true);
+    setFolderRsError('');
+    try {
+      const trimmed = folderRsInput.trim() || null;
+      // 1. Update backend Cloud SQL
+      const res = await fetch(`/api/folders/${editingFolderRs.prefix}/nama-rs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ namaRs: trimmed }),
+      });
+      if (!res.ok) {
+        throw new Error('Gagal menyimpan ke server.');
+      }
+
+      // 2. Update local state immediately
+      setLabels(prev => prev.map(l => {
+        if (extractLabelPrefix(l.noLabel) === editingFolderRs.prefix) {
+          return { ...l, namaRs: trimmed };
+        }
+        return l;
+      }));
+
+      // 3. Attempt to update Supabase asynchronously
+      try {
+        await supabase
+          .from('labels')
+          .update({ nama_rs: trimmed, updated_at: new Date().toISOString() })
+          .like('no_label', `${editingFolderRs.prefix}.%`);
+      } catch (sbErr) {
+        console.warn('Supabase update non-fatal:', sbErr);
+      }
+
+      setSavingFolderRs(false);
+      closeFolderRsModal();
+    } catch (err: any) {
+      console.error('Error saving folder RS:', err);
+      setFolderRsError(err.message || 'Gagal menyimpan nama RS');
+      setSavingFolderRs(false);
+    }
+  };
+
   const fetchLabels = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      // 1. Fetch Cloud SQL / local API labels
+      let apiMap: Record<string, any> = {};
+      try {
+        const res = await fetch('/api/labels');
+        if (res.ok) {
+          const apiData = await res.json();
+          (apiData || []).forEach((d: any) => {
+            const key = d.noLabel || d.no_label;
+            if (key) apiMap[key] = d;
+          });
+        }
+      } catch (apiErr) {
+        console.warn('API labels fetch error:', apiErr);
+      }
+
+      // 2. Fetch Supabase labels
+      const { data } = await supabase
         .from('labels')
         .select('*')
         .order('no_label', { ascending: true });
 
       if (data && data.length > 0) {
-        const formatted = data.map((d: any) => ({
-          id: d.no_label,
-          noLabel: d.no_label,
-          status: d.status,
-          pdfSource: d.pdf_source,
-          pdfUrl: d.pdf_url,
-          pdfDriveUrl: d.pdf_drive_url,
-          pdfOriginalUrl: d.pdforiginal_url,
-          pdfName: d.pdf_name,
-          calibratedAt: d.calibrated_at,
-          validUntil: d.valid_until,
-          createdAt: d.created_at,
-          updatedAt: d.updated_at,
-        }));
+        const formatted = data.map((d: any) => {
+          const local = apiMap[d.no_label] || {};
+          return {
+            id: d.no_label,
+            noLabel: d.no_label,
+            namaRs: d.nama_rs || d.namaRs || local.namaRs || local.nama_rs || null,
+            status: d.status || local.status || 'Menunggu Sertifikat',
+            pdfSource: d.pdf_source || local.pdfSource || null,
+            pdfUrl: d.pdf_url || local.pdfUrl || null,
+            pdfDriveUrl: d.pdf_drive_url || local.pdfDriveUrl || null,
+            pdfOriginalUrl: d.pdforiginal_url || local.pdfOriginalUrl || null,
+            pdfName: d.pdf_name || local.pdfName || null,
+            calibratedAt: d.calibrated_at || local.calibratedAt || null,
+            validUntil: d.valid_until || local.validUntil || null,
+            createdAt: d.created_at || local.createdAt || null,
+            updatedAt: d.updated_at || local.updatedAt || null,
+          };
+        });
+
+        // Add any labels in apiMap that weren't in Supabase
+        const existingNos = new Set(formatted.map(f => f.noLabel));
+        Object.values(apiMap).forEach((item: any) => {
+          const no = item.noLabel || item.no_label;
+          if (no && !existingNos.has(no)) {
+            formatted.push({
+              id: no,
+              noLabel: no,
+              namaRs: item.namaRs || item.nama_rs || null,
+              status: item.status || 'Menunggu Sertifikat',
+              pdfSource: item.pdfSource || null,
+              pdfUrl: item.pdfUrl || null,
+              pdfDriveUrl: item.pdfDriveUrl || null,
+              pdfOriginalUrl: item.pdfOriginalUrl || null,
+              pdfName: item.pdfName || null,
+              calibratedAt: item.calibratedAt || null,
+              validUntil: item.validUntil || null,
+              createdAt: item.createdAt || null,
+              updatedAt: item.updatedAt || null,
+            });
+          }
+        });
+
         setLabels(formatted);
       } else {
-        const res = await fetch('/api/labels');
-        if (res.ok) {
-          const apiData = await res.json();
-          setLabels(apiData || []);
-        }
+        const formatted = Object.values(apiMap).map((d: any) => ({
+          id: d.noLabel,
+          noLabel: d.noLabel,
+          namaRs: d.namaRs || d.nama_rs || null,
+          status: d.status,
+          pdfSource: d.pdfSource,
+          pdfUrl: d.pdfUrl,
+          pdfDriveUrl: d.pdfDriveUrl,
+          pdfOriginalUrl: d.pdfOriginalUrl,
+          pdfName: d.pdfName,
+          calibratedAt: d.calibratedAt,
+          validUntil: d.validUntil,
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+        }));
+        setLabels(formatted);
       }
     } catch (err: any) {
-      console.error('Error fetching labels from Supabase:', err);
+      console.error('Error fetching labels:', err);
       setError('Gagal memuat daftar label.');
     } finally {
       setLoading(false);
@@ -166,6 +298,9 @@ export default function AdminLabels() {
         l.status === 'Sertifikat Tertaut' || l.hasPdf || !!l.pdfUrl || l.pdfSource === 'drive'
       ).length;
 
+      // Find hospital name associated with any label in this folder
+      const namaRs = sortedItems.find(l => l.namaRs && l.namaRs.trim())?.namaRs || null;
+
       return {
         prefix,
         items: sortedItems,
@@ -174,6 +309,7 @@ export default function AdminLabels() {
         pendingCount: sortedItems.length - certifiedCount,
         minLabel: sortedItems[0]?.noLabel || prefix,
         maxLabel: sortedItems[sortedItems.length - 1]?.noLabel || prefix,
+        namaRs,
       };
     });
 
@@ -195,7 +331,11 @@ export default function AdminLabels() {
     const q = searchQuery.toLowerCase().trim();
     return folders.filter(folder => 
       folder.prefix.toLowerCase().includes(q) ||
-      folder.items.some(item => item.noLabel.toLowerCase().includes(q))
+      (folder.namaRs && folder.namaRs.toLowerCase().includes(q)) ||
+      folder.items.some(item => 
+        item.noLabel.toLowerCase().includes(q) || 
+        (item.namaRs && item.namaRs.toLowerCase().includes(q))
+      )
     );
   }, [folders, searchQuery]);
 
@@ -206,6 +346,7 @@ export default function AdminLabels() {
     const q = folderSearch.toLowerCase().trim();
     return activeFolder.items.filter(item => 
       item.noLabel.toLowerCase().includes(q) ||
+      (item.namaRs && item.namaRs.toLowerCase().includes(q)) ||
       (item.pdfName && item.pdfName.toLowerCase().includes(q))
     );
   }, [activeFolder, folderSearch]);
@@ -224,7 +365,8 @@ export default function AdminLabels() {
     setActiveModalLabel(label);
     setModalError('');
     
-    // Set dates (preserves existing or leaves blank for manual entry by technician)
+    // Set dates and hospital name
+    setNamaRsInput(label.namaRs || '');
     setCalibratedAtInput(label.calibratedAt || '');
     setValidUntilInput(label.validUntil || '');
 
@@ -238,6 +380,7 @@ export default function AdminLabels() {
     setModalError('');
     setDriveUrlInput('');
     setDocNameInput('');
+    setNamaRsInput('');
     setCalibratedAtInput('');
     setValidUntilInput('');
   };
@@ -265,8 +408,18 @@ export default function AdminLabels() {
         activeModalLabel.id, 
         trimmedUrl, 
         docNameInput.trim() || undefined,
-        { calibratedAt: calibratedAtInput, validUntil: validUntilInput }
+        { calibratedAt: calibratedAtInput, validUntil: validUntilInput, namaRs: namaRsInput.trim() || undefined }
       );
+      setLabels(prev => prev.map(l => l.id === activeModalLabel.id ? { 
+        ...l, 
+        namaRs: namaRsInput.trim() || l.namaRs,
+        status: 'Sertifikat Tertaut',
+        calibratedAt: calibratedAtInput,
+        validUntil: validUntilInput,
+        pdfName: docNameInput.trim() || l.pdfName,
+        pdfSource: 'drive',
+        pdfDriveUrl: trimmedUrl
+      } : l));
       setSavingDrive(false);
       closeLinkModal();
     } catch (err: any) {
@@ -281,12 +434,18 @@ export default function AdminLabels() {
     setSavingDrive(true);
     setModalError('');
     try {
-      await updateLabelDates(activeModalLabel.id, calibratedAtInput, validUntilInput);
+      await updateLabelDates(activeModalLabel.id, calibratedAtInput, validUntilInput, namaRsInput.trim() || undefined);
+      setLabels(prev => prev.map(l => l.id === activeModalLabel.id ? { 
+        ...l, 
+        namaRs: namaRsInput.trim() || l.namaRs,
+        calibratedAt: calibratedAtInput,
+        validUntil: validUntilInput
+      } : l));
       setSavingDrive(false);
       closeLinkModal();
     } catch (err: any) {
       console.error("Error updating dates:", err);
-      setModalError('Gagal memperbarui tanggal: ' + (err.message || ''));
+      setModalError('Gagal memperbarui data: ' + (err.message || ''));
       setSavingDrive(false);
     }
   };
@@ -318,62 +477,104 @@ export default function AdminLabels() {
     }
   };
 
-  const handleDeleteCert = async (id: string) => {
-    const labelToUpdate = labels.find(l => l.id === id);
-    if (!labelToUpdate) return;
-    
-    if (!window.confirm(`Yakin ingin melepas/menghapus sertifikat untuk label ${labelToUpdate.noLabel}?`)) return;
-    
-    try {
-      setLabels(prev => prev.map(l => l.id === id ? { ...l, status: 'Menunggu Sertifikat', hasPdf: false, pdfUrl: null, pdfDriveUrl: null, pdfSource: null } : l));
-      await deleteCertificateFromLabel(id);
-    } catch(err: any) {
-      console.error("Delete cert error:", err);
-      alert('Gagal menghapus sertifikat: ' + (err.message || ''));
-    }
+  const promptDeleteCert = (label: any) => {
+    setDeleteError('');
+    setConfirmDelete({
+      type: 'cert',
+      target: label,
+      title: `Lepas Sertifikat Label ${label.noLabel}?`,
+      description: `Apakah Anda yakin ingin melepas tautan Google Drive / sertifikat dari label ${label.noLabel}? Status label akan kembali menjadi 'Menunggu Sertifikat'.`,
+      confirmText: 'Lepas Sertifikat'
+    });
   };
 
-  const handleDeleteLabel = async (id: string) => {
-    const labelToDelete = labels.find(l => l.id === id);
-    if (!labelToDelete) return;
-    
-    if (!window.confirm(`PERINGATAN: Yakin ingin MENGHAPUS Label ${labelToDelete.noLabel} sepenuhnya dari sistem? Tindakan ini tidak dapat dibatalkan.`)) return;
-    
-    const previousLabels = [...labels];
-    setLabels(prev => prev.filter(l => l.id !== id));
-
-    try {
-      await deleteLabelCompletely(id);
-    } catch(err: any) {
-      console.error("Delete label error:", err);
-      setLabels(previousLabels);
-      alert('Gagal menghapus label: ' + (err.message || 'Terjadi kesalahan sistem'));
-    }
+  const promptDeleteLabel = (label: any) => {
+    setDeleteError('');
+    setConfirmDelete({
+      type: 'label',
+      target: label,
+      title: `Hapus Label ${label.noLabel}?`,
+      description: `Apakah Anda yakin ingin menghapus label ${label.noLabel} sepenuhnya dari sistem? Tindakan ini permanen dan tidak dapat dibatalkan.`,
+      confirmText: `Hapus Label ${label.noLabel}`
+    });
   };
 
-  const handleDeleteEntireFolder = async (folder: FolderGroup) => {
-    if (!window.confirm(`PERINGATAN: Yakin ingin MENGHAPUS SELURUH ${folder.totalCount} label di dalam Folder ${folder.prefix} (${folder.minLabel} s/d ${folder.maxLabel})? Tindakan ini tidak dapat dibatalkan.`)) {
-      return;
-    }
+  const promptDeleteEntireFolder = (folder: FolderGroup) => {
+    setDeleteError('');
+    setConfirmDelete({
+      type: 'folder',
+      target: folder,
+      title: `Hapus Seluruh Folder ${folder.prefix}?`,
+      description: `Apakah Anda yakin ingin menghapus Folder ${folder.prefix} dan seluruh ${folder.totalCount} label (${folder.minLabel} s/d ${folder.maxLabel}) di dalamnya? Tindakan ini permanen dan data tidak dapat dipulihkan.`,
+      confirmText: `Hapus Folder (${folder.totalCount} File)`
+    });
+  };
 
-    setDeletingFolder(true);
-    const idsToDelete = folder.items.map(i => i.id);
-    const previousLabels = [...labels];
-
-    // Optimistic remove
-    setLabels(prev => prev.filter(l => !idsToDelete.includes(l.id)));
+  const executeDelete = async () => {
+    if (!confirmDelete) return;
+    setIsDeleting(true);
+    setDeleteError('');
 
     try {
-      await deleteBatchLabels(idsToDelete);
-      if (activePrefix === folder.prefix) {
-        closeFolder();
+      if (confirmDelete.type === 'folder') {
+        const folder: FolderGroup = confirmDelete.target;
+        const idsToDelete = folder.items.map(i => i.noLabel || i.id);
+        const previousLabels = [...labels];
+
+        // Optimistic remove from UI state
+        setLabels(prev => prev.filter(l => !idsToDelete.includes(l.noLabel) && !idsToDelete.includes(l.id)));
+
+        try {
+          await deleteFolderCompletely(folder.prefix, idsToDelete);
+          if (activePrefix === folder.prefix) {
+            closeFolder();
+          }
+          setConfirmDelete(null);
+        } catch (err: any) {
+          console.error("Delete folder error:", err);
+          setLabels(previousLabels);
+          throw err;
+        }
+      } else if (confirmDelete.type === 'label') {
+        const label = confirmDelete.target;
+        const targetId = label.noLabel || label.id;
+        const previousLabels = [...labels];
+
+        setLabels(prev => prev.filter(l => l.id !== label.id && l.noLabel !== label.noLabel));
+
+        try {
+          await deleteLabelCompletely(targetId);
+          setConfirmDelete(null);
+        } catch (err: any) {
+          console.error("Delete label error:", err);
+          setLabels(previousLabels);
+          throw err;
+        }
+      } else if (confirmDelete.type === 'cert') {
+        const label = confirmDelete.target;
+        const targetId = label.noLabel || label.id;
+
+        setLabels(prev => prev.map(l => (l.id === label.id || l.noLabel === label.noLabel) ? { 
+          ...l, 
+          status: 'Menunggu Sertifikat', 
+          hasPdf: false, 
+          pdfUrl: null, 
+          pdfDriveUrl: null, 
+          pdfSource: null,
+          pdfName: null,
+          pdfOriginalUrl: null,
+          calibratedAt: null,
+          validUntil: null
+        } : l));
+
+        await deleteCertificateFromLabel(targetId);
+        setConfirmDelete(null);
       }
     } catch (err: any) {
-      console.error("Delete folder error:", err);
-      setLabels(previousLabels);
-      alert('Gagal menghapus folder: ' + (err.message || 'Terjadi kesalahan sistem'));
+      console.error("Execution delete failed:", err);
+      setDeleteError(err.message || 'Gagal menghapus. Silakan coba kembali.');
     } finally {
-      setDeletingFolder(false);
+      setIsDeleting(false);
     }
   };
 
@@ -590,8 +791,33 @@ export default function AdminLabels() {
                         Folder {folder.prefix}
                       </h3>
 
+                      {/* Nama RS under Folder */}
+                      <div className="mt-1.5 flex items-center justify-between gap-1.5 bg-slate-50 group-hover:bg-amber-50/60 p-2 rounded-xl border border-slate-100 group-hover:border-amber-200 transition-colors">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 truncate">
+                          <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span className="truncate" title={folder.namaRs || 'Nama RS belum diisi'}>
+                            {folder.namaRs ? (
+                              <span className="text-slate-900 font-bold">{folder.namaRs}</span>
+                            ) : (
+                              <span className="text-slate-400 font-normal italic">Belum Ada Nama RS</span>
+                            )}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFolderRsModal(folder.prefix, folder.namaRs);
+                          }}
+                          className="text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-100/70 hover:bg-amber-200 px-2 py-0.5 rounded-md transition-colors shrink-0"
+                          title="Atur / Ubah Nama RS untuk folder ini"
+                        >
+                          {folder.namaRs ? 'Ubah' : '+ Set RS'}
+                        </button>
+                      </div>
+
                       {/* Label Range */}
-                      <p className="text-xs text-slate-500 font-mono mt-1 flex items-center">
+                      <p className="text-xs text-slate-500 font-mono mt-2 flex items-center">
                         <span className="truncate">{folder.minLabel}</span>
                         <span className="mx-1 text-slate-300">&rarr;</span>
                         <span className="truncate">{folder.maxLabel}</span>
@@ -630,13 +856,13 @@ export default function AdminLabels() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteEntireFolder(folder);
+                            promptDeleteEntireFolder(folder);
                           }}
-                          disabled={deletingFolder}
-                          className="text-slate-300 hover:text-rose-600 p-1 rounded transition-colors"
-                          title="Hapus Seluruh Folder Ini"
+                          disabled={isDeleting}
+                          className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors flex items-center justify-center"
+                          title={`Hapus Seluruh Folder ${folder.prefix}`}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -664,7 +890,28 @@ export default function AdminLabels() {
                     {activeFolder.totalCount} File
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">
+                {/* Nama RS in Active Folder View */}
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span>Rumah Sakit:</span>
+                    {activeFolder.namaRs ? (
+                      <span className="font-bold text-slate-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80">
+                        {activeFolder.namaRs}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 italic">Belum Diisi</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openFolderRsModal(activeFolder.prefix, activeFolder.namaRs)}
+                    className="text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-100/70 hover:bg-amber-200 px-2 py-0.5 rounded-md transition-colors"
+                  >
+                    {activeFolder.namaRs ? 'Ubah RS' : '+ Set Nama RS'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 font-mono mt-1">
                   Rentang Nomor: <span className="font-bold text-slate-700">{activeFolder.minLabel}</span> sampai <span className="font-bold text-slate-700">{activeFolder.maxLabel}</span>
                 </p>
               </div>
@@ -673,9 +920,9 @@ export default function AdminLabels() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => handleDeleteEntireFolder(activeFolder)}
-                disabled={deletingFolder}
-                className="px-3.5 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5"
+                onClick={() => promptDeleteEntireFolder(activeFolder)}
+                disabled={isDeleting}
+                className="px-3.5 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
                 title="Hapus seluruh file di folder ini"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -691,6 +938,7 @@ export default function AdminLabels() {
                 <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200/80">
                   <tr>
                     <th className="px-6 py-4">Nomor Label</th>
+                    <th className="px-6 py-4">Rumah Sakit</th>
                     <th className="px-6 py-4">Status Sertifikat</th>
                     <th className="px-6 py-4">Tipe & Dokumen</th>
                     <th className="px-6 py-4">Pada Tanggal</th>
@@ -701,7 +949,7 @@ export default function AdminLabels() {
                 <tbody className="divide-y divide-slate-100">
                   {filteredFolderItems.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
                         {folderSearch ? `Tidak ada label yang cocok dengan "${folderSearch}" di folder ini.` : 'Folder ini kosong.'}
                       </td>
                     </tr>
@@ -741,6 +989,17 @@ export default function AdminLabels() {
                                 )}
                               </button>
                             </div>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            {label.namaRs ? (
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-800">
+                                <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>{label.namaRs}</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">-</span>
+                            )}
                           </td>
 
                           <td className="px-6 py-4">
@@ -820,7 +1079,7 @@ export default function AdminLabels() {
                               {hasCertificate && (
                                 <button 
                                   type="button"
-                                  onClick={() => handleDeleteCert(label.id)}
+                                  onClick={() => promptDeleteCert(label)}
                                   className="inline-flex items-center px-2 py-1.5 text-xs font-medium bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"
                                   title="Lepas / Hapus Sertifikat"
                                 >
@@ -829,9 +1088,9 @@ export default function AdminLabels() {
                               )}
                               <button 
                                 type="button"
-                                onClick={() => handleDeleteLabel(label.id)}
+                                onClick={() => promptDeleteLabel(label)}
                                 className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                title="Hapus Seluruh Label"
+                                title="Hapus Label Ini"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -903,6 +1162,20 @@ export default function AdminLabels() {
                       ID File Terdeteksi: <span className="font-mono font-bold ml-1">{driveIdDetected}</span>
                     </p>
                   )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-amber-500" />
+                    Nama RS / Rumah Sakit <span className="text-slate-400 font-normal">(Opsional)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={namaRsInput}
+                    onChange={(e) => setNamaRsInput(e.target.value)}
+                    placeholder="Contoh: RSUD Dr. Soetomo Surabaya"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                  />
                 </div>
 
                 <div>
@@ -995,6 +1268,151 @@ export default function AdminLabels() {
               </form>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal for Editing Folder Hospital Name (Nama RS) */}
+      {editingFolderRs && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 border border-amber-100">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Atur Nama RS Folder {editingFolderRs.prefix}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Nama RS akan diterapkan ke semua label dalam folder {editingFolderRs.prefix}.*
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={closeFolderRsModal}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFolderRs} className="mt-5 space-y-4">
+              {folderRsError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{folderRsError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Nama RS / Rumah Sakit
+                </label>
+                <input 
+                  type="text" 
+                  value={folderRsInput}
+                  onChange={(e) => setFolderRsInput(e.target.value)}
+                  placeholder="Contoh: RSUD Dr. Soetomo Surabaya"
+                  autoFocus
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Kosongkan jika ingin menghapus nama RS dari folder ini.
+                </p>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={closeFolderRsModal}
+                  disabled={savingFolderRs}
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingFolderRs}
+                  className="px-5 py-2.5 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  {savingFolderRs ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Simpan Nama RS
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus (In-App Confirm Modal) */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  {confirmDelete.title}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                  {confirmDelete.description}
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isDeleting) return;
+                  setConfirmDelete(null);
+                  setDeleteError('');
+                }}
+                disabled={isDeleting}
+                className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeDelete}
+                disabled={isDeleting}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    {confirmDelete.confirmText}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

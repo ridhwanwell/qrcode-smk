@@ -24,6 +24,7 @@ export async function getLabelByNo(noLabel: string) {
 
 export async function upsertLabel(data: {
   noLabel: string;
+  namaRs?: string | null;
   status?: string;
   pdfSource?: string | null;
   pdfUrl?: string | null;
@@ -38,6 +39,7 @@ export async function upsertLabel(data: {
     if (existing) {
       const updated = await db.update(labels)
         .set({
+          namaRs: data.namaRs !== undefined ? data.namaRs : existing.namaRs,
           status: data.status !== undefined ? data.status : existing.status,
           pdfSource: data.pdfSource !== undefined ? data.pdfSource : existing.pdfSource,
           pdfUrl: data.pdfUrl !== undefined ? data.pdfUrl : existing.pdfUrl,
@@ -55,6 +57,7 @@ export async function upsertLabel(data: {
       const inserted = await db.insert(labels)
         .values({
           noLabel: data.noLabel,
+          namaRs: data.namaRs || null,
           status: data.status || 'Menunggu Sertifikat',
           pdfSource: data.pdfSource || null,
           pdfUrl: data.pdfUrl || null,
@@ -79,6 +82,49 @@ export async function deleteLabelByNo(noLabel: string) {
     return true;
   } catch (error) {
     console.error("Database query failed in deleteLabelByNo:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+
+export async function deleteLabelsByPrefix(prefix: string) {
+  try {
+    const all = await getAllLabels();
+    const matching = all.filter(l => l.noLabel.startsWith(prefix + '.') || l.noLabel === prefix);
+    for (const item of matching) {
+      await db.delete(labels).where(eq(labels.noLabel, item.noLabel));
+    }
+    return matching.length;
+  } catch (error) {
+    console.error("Database query failed in deleteLabelsByPrefix:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+
+export async function deleteBatchLabelsByNos(nos: string[]) {
+  try {
+    for (const no of nos) {
+      await db.delete(labels).where(eq(labels.noLabel, no));
+    }
+    return true;
+  } catch (error) {
+    console.error("Database query failed in deleteBatchLabelsByNos:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+
+export async function updateLabelsNamaRsByPrefix(prefix: string, namaRs: string | null) {
+  try {
+    // Prefix e.g. "001" matches "001.%"
+    const all = await getAllLabels();
+    const matching = all.filter(l => l.noLabel.startsWith(prefix + '.') || l.noLabel === prefix);
+    for (const item of matching) {
+      await db.update(labels)
+        .set({ namaRs: namaRs || null, updatedAt: new Date() })
+        .where(eq(labels.noLabel, item.noLabel));
+    }
+    return matching.length;
+  } catch (error) {
+    console.error("Database query failed in updateLabelsNamaRsByPrefix:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }

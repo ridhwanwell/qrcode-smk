@@ -61,7 +61,7 @@ export async function linkGoogleDriveToLabel(
   labelId: string, 
   driveUrl: string, 
   customDocName?: string,
-  dates?: { calibratedAt?: string; validUntil?: string }
+  dates?: { calibratedAt?: string; validUntil?: string; namaRs?: string }
 ): Promise<void> {
   const fileId = extractGoogleDriveFileId(driveUrl);
   const embedUrl = fileId ? getGoogleDriveEmbedUrl(fileId) : driveUrl.trim();
@@ -79,6 +79,10 @@ export async function linkGoogleDriveToLabel(
     validUntil: dates?.validUntil || null,
   };
 
+  if (dates?.namaRs !== undefined) {
+    updatePayload.namaRs = dates.namaRs;
+  }
+
   // 1. Update API backend
   await fetch('/api/labels', {
     method: 'POST',
@@ -88,7 +92,7 @@ export async function linkGoogleDriveToLabel(
 
   // 2. Update Supabase
   try {
-    await supabase.from('labels').upsert({
+    const supaPayload: any = {
       no_label: labelId,
       status: 'Sertifikat Tertaut',
       pdf_source: 'drive',
@@ -99,7 +103,17 @@ export async function linkGoogleDriveToLabel(
       calibrated_at: dates?.calibratedAt || null,
       valid_until: dates?.validUntil || null,
       updated_at: new Date().toISOString()
-    }, { onConflict: 'no_label' });
+    };
+
+    if (dates?.namaRs !== undefined) {
+      supaPayload.nama_rs = dates.namaRs;
+    }
+
+    const res = await supabase.from('labels').upsert(supaPayload, { onConflict: 'no_label' });
+    if (res.error && res.error.message?.includes('nama_rs')) {
+      delete supaPayload.nama_rs;
+      await supabase.from('labels').upsert(supaPayload, { onConflict: 'no_label' });
+    }
   } catch (err) {
     console.warn('Supabase linkGoogleDriveToLabel error:', err);
   }
@@ -111,20 +125,34 @@ export async function linkGoogleDriveToLabel(
 export async function updateLabelDates(
   labelId: string,
   calibratedAt: string,
-  validUntil: string
+  validUntil: string,
+  namaRs?: string
 ): Promise<void> {
+  const payload: any = { noLabel: labelId, calibratedAt, validUntil };
+  if (namaRs !== undefined) {
+    payload.namaRs = namaRs;
+  }
+
   await fetch('/api/labels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ noLabel: labelId, calibratedAt, validUntil }),
+    body: JSON.stringify(payload),
   });
 
   try {
-    await supabase.from('labels').update({
+    const supaPayload: any = {
       calibrated_at: calibratedAt,
       valid_until: validUntil,
       updated_at: new Date().toISOString()
-    }).eq('no_label', labelId);
+    };
+    if (namaRs !== undefined) {
+      supaPayload.nama_rs = namaRs;
+    }
+    const res = await supabase.from('labels').update(supaPayload).eq('no_label', labelId);
+    if (res.error && res.error.message?.includes('nama_rs')) {
+      delete supaPayload.nama_rs;
+      await supabase.from('labels').update(supaPayload).eq('no_label', labelId);
+    }
   } catch (err) {
     console.warn('Supabase updateLabelDates error:', err);
   }
@@ -192,5 +220,31 @@ export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
     await supabase.from('labels').delete().in('no_label', labelIds);
   } catch (err) {
     console.warn('Supabase deleteBatchLabels error:', err);
+  }
+}
+
+/**
+ * Delete an entire folder and all its labels
+ */
+export async function deleteFolderCompletely(prefix: string, labelIds: string[]): Promise<void> {
+  try {
+    await fetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('API delete folder error:', err);
+  }
+
+  if (labelIds && labelIds.length > 0) {
+    for (const id of labelIds) {
+      await fetch(`/api/labels/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    }
+  }
+
+  try {
+    if (labelIds && labelIds.length > 0) {
+      await supabase.from('labels').delete().in('no_label', labelIds);
+    }
+    await supabase.from('labels').delete().like('no_label', `${prefix}.%`);
+  } catch (err) {
+    console.warn('Supabase deleteFolderCompletely error:', err);
   }
 }

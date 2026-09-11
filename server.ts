@@ -7,6 +7,9 @@ import {
   getLabelByNo, 
   upsertLabel, 
   deleteLabelByNo,
+  deleteLabelsByPrefix,
+  deleteBatchLabelsByNos,
+  updateLabelsNamaRsByPrefix,
   getAllFolders,
   upsertFolder,
   deleteFolderById,
@@ -57,12 +60,13 @@ async function startServer() {
 
   app.post("/api/labels", async (req, res) => {
     try {
-      const { noLabel, status, pdfSource, pdfUrl, pdfDriveUrl, pdfOriginalUrl, pdfName, calibratedAt, validUntil } = req.body;
+      const { noLabel, namaRs, status, pdfSource, pdfUrl, pdfDriveUrl, pdfOriginalUrl, pdfName, calibratedAt, validUntil } = req.body;
       if (!noLabel) {
         return res.status(400).json({ error: "noLabel is required" });
       }
       const saved = await upsertLabel({
         noLabel,
+        namaRs,
         status,
         pdfSource,
         pdfUrl,
@@ -93,6 +97,7 @@ async function startServer() {
         if (it && (it.noLabel || it.id)) {
           await upsertLabel({
             noLabel: it.noLabel || it.id,
+            namaRs: it.namaRs || it.nama_rs,
             status: it.status,
             pdfSource: it.pdfSource,
             pdfUrl: it.pdfUrl,
@@ -123,6 +128,29 @@ async function startServer() {
     } catch (err: any) {
       console.error("API error in DELETE /api/labels/:noLabel:", err);
       res.status(500).json({ error: "Failed to delete label" });
+    }
+  });
+
+  app.delete("/api/folders/:prefix", async (req, res) => {
+    try {
+      const { prefix } = req.params;
+      const count = await deleteLabelsByPrefix(prefix);
+      res.json({ success: true, count });
+    } catch (err: any) {
+      console.error("API error in DELETE /api/folders/:prefix:", err);
+      res.status(500).json({ error: "Failed to delete folder labels" });
+    }
+  });
+
+  app.put("/api/folders/:prefix/nama-rs", async (req, res) => {
+    try {
+      const { prefix } = req.params;
+      const { namaRs } = req.body;
+      const count = await updateLabelsNamaRsByPrefix(prefix, namaRs || null);
+      res.json({ success: true, count, namaRs });
+    } catch (err: any) {
+      console.error("API error in PUT /api/folders/:prefix/nama-rs:", err);
+      res.status(500).json({ error: "Failed to update hospital name for folder" });
     }
   });
 

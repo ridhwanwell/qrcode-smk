@@ -33,6 +33,7 @@ export default function AdminDashboard() {
 CREATE TABLE IF NOT EXISTS public.labels (
   id BIGSERIAL PRIMARY KEY,
   no_label TEXT NOT NULL UNIQUE,
+  nama_rs TEXT,
   status TEXT NOT NULL DEFAULT 'Menunggu Sertifikat',
   pdf_source TEXT,
   pdf_url TEXT,
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS public.labels (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS nama_rs TEXT;
 ALTER TABLE public.labels ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Public Read Access" ON public.labels
@@ -64,6 +66,7 @@ CREATE POLICY "Service Role Full Access" ON public.labels
         setLabels(data.map((d: any) => ({
           id: d.no_label,
           noLabel: d.no_label,
+          namaRs: d.nama_rs || d.namaRs || null,
           status: d.status,
           pdfSource: d.pdf_source,
           pdfUrl: d.pdf_url,
@@ -78,7 +81,10 @@ CREATE POLICY "Service Role Full Access" ON public.labels
         const res = await fetch('/api/labels');
         if (res.ok) {
           const apiLabels = await res.json();
-          setLabels(apiLabels || []);
+          setLabels((apiLabels || []).map((d: any) => ({
+            ...d,
+            namaRs: d.namaRs || d.nama_rs || null,
+          })));
         }
       }
     } catch (err) {
@@ -294,6 +300,7 @@ CREATE POLICY "Service Role Full Access" ON public.labels
             <thead className="bg-slate-50 text-slate-500 font-medium">
               <tr>
                 <th className="px-6 py-4">No Label</th>
+                <th className="px-6 py-4">Rumah Sakit</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Tanggal Dibuat</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
@@ -302,16 +309,25 @@ CREATE POLICY "Service Role Full Access" ON public.labels
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400">Memuat data...</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">Memuat data...</td>
                 </tr>
               ) : labels.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400">Belum ada label.</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">Belum ada label.</td>
                 </tr>
               ) : (
                 labels.slice(0, 10).map((label) => (
                   <tr key={label.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-800">{label.noLabel}</td>
+                    <td className="px-6 py-4 font-semibold text-slate-800 font-mono">{label.noLabel}</td>
+                    <td className="px-6 py-4 text-slate-700">
+                      {label.namaRs ? (
+                        <span className="font-semibold text-slate-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80 text-xs">
+                          {label.namaRs}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic text-xs">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                         label.status === 'Sertifikat Tertaut' 
@@ -321,11 +337,11 @@ CREATE POLICY "Service Role Full Access" ON public.labels
                         {label.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-xs text-slate-500">
                       {formatDateSafe(label.createdAt)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                       <a href={`/sertifikat/${label.noLabel}`} target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:text-amber-700 font-medium text-sm">
+                       <a href={`/sertifikat/${label.noLabel}`} target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:text-amber-700 font-medium text-xs">
                          Lihat Publik
                        </a>
                     </td>

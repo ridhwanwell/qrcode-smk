@@ -111,6 +111,7 @@ export default function PublicScanPage() {
             found = {
               id: row.no_label,
               noLabel: row.no_label,
+              namaRs: row.nama_rs || row.namaRs || null,
               status: row.status,
               pdfSource: row.pdf_source,
               pdfUrl: row.pdf_url,
@@ -507,11 +508,19 @@ export default function PublicScanPage() {
             </div>
 
             {/* Certificate Details Info Bar */}
-            <div className="px-4 md:px-6 py-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="px-4 md:px-6 py-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3 text-xs">
               <div>
                 <span className="text-slate-400 block font-medium">No. Label</span>
                 <span className="font-mono font-bold text-slate-800 text-sm">{displayLabel}</span>
               </div>
+              {labelData.namaRs && (
+                <div>
+                  <span className="text-slate-400 block font-medium">Rumah Sakit</span>
+                  <span className="font-bold text-amber-700 truncate block" title={labelData.namaRs}>
+                    {labelData.namaRs}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="text-slate-400 block font-medium">Status</span>
                 <span className="font-semibold text-emerald-700 flex items-center gap-1">
@@ -601,7 +610,15 @@ export default function PublicScanPage() {
               Sertifikat digital untuk nomor label <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md">{displayLabel}</span> belum ditautkan oleh tim laboratorium.
             </p>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 grid grid-cols-2 gap-3 text-left">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-left">
+              {labelData?.namaRs && (
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Rumah Sakit</span>
+                  <span className="text-xs font-bold text-amber-800">
+                    {labelData.namaRs}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Pada Tanggal</span>
                 <span className="text-xs font-bold text-slate-800">

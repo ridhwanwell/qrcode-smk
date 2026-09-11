@@ -12,6 +12,7 @@ export const users = pgTable('users', {
 export const labels = pgTable('labels', {
   id: serial('id').primaryKey(),
   noLabel: text('no_label').notNull().unique(),
+  namaRs: text('nama_rs'),
   status: text('status').notNull().default('Menunggu Sertifikat'),
   pdfSource: text('pdf_source'),
   pdfUrl: text('pdf_url'),

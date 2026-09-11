@@ -45,6 +45,7 @@ export async function testSupabaseConnection(): Promise<SupabaseSyncResult> {
  */
 export async function syncLabelToSupabase(label: {
   noLabel: string;
+  namaRs?: string | null;
   status?: string;
   pdfSource?: string | null;
   pdfUrl?: string | null;
@@ -68,10 +69,19 @@ export async function syncLabelToSupabase(label: {
       updated_at: new Date().toISOString(),
     };
 
+    if (label.namaRs !== undefined) {
+      payload.nama_rs = label.namaRs;
+    }
+
     const { error } = await supabase.from('labels').upsert(payload, { onConflict: 'no_label' });
     if (error) {
-      // If table doesn't exist yet, silently ignore or log
-      console.warn('Supabase sync label error:', error.message);
+      if (error.message?.includes('nama_rs')) {
+        // Column nama_rs might not exist yet in Supabase schema cache
+        delete payload.nama_rs;
+        await supabase.from('labels').upsert(payload, { onConflict: 'no_label' });
+      } else {
+        console.warn('Supabase sync label error:', error.message);
+      }
     }
   } catch (err) {
     console.warn('Supabase sync label exception:', err);
@@ -97,23 +107,41 @@ export async function deleteLabelFromSupabase(noLabel: string) {
  */
 export async function bulkSyncLabelsToSupabase(items: any[]) {
   try {
-    const payloads = items.map((it) => ({
-      no_label: it.noLabel || it.no_label || it.id,
-      status: it.status || 'Menunggu Sertifikat',
-      pdf_source: it.pdfSource || it.pdf_source || null,
-      pdf_url: it.pdfUrl || it.pdf_url || null,
-      pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
-      pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || it.pdf_original_url || null,
-      pdf_name: it.pdfName || it.pdf_name || null,
-      calibrated_at: it.calibratedAt || it.calibrated_at || null,
-      valid_until: it.validUntil || it.valid_until || null,
-      updated_at: new Date().toISOString(),
-    }));
+    const payloads = items.map((it) => {
+      const p: any = {
+        no_label: it.noLabel || it.no_label || it.id,
+        status: it.status || 'Menunggu Sertifikat',
+        pdf_source: it.pdfSource || it.pdf_source || null,
+        pdf_url: it.pdfUrl || it.pdf_url || null,
+        pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
+        pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || it.pdf_original_url || null,
+        pdf_name: it.pdfName || it.pdf_name || null,
+        calibrated_at: it.calibratedAt || it.calibrated_at || null,
+        valid_until: it.validUntil || it.valid_until || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (it.namaRs !== undefined || it.nama_rs !== undefined) {
+        p.nama_rs = it.namaRs || it.nama_rs || null;
+      }
+      return p;
+    });
 
     if (payloads.length === 0) return { success: true, count: 0 };
 
     const { error } = await supabase.from('labels').upsert(payloads, { onConflict: 'no_label' });
     if (error) {
+      if (error.message?.includes('nama_rs')) {
+        // Fallback without nama_rs if column is not yet added in Supabase
+        const fallbackPayloads = payloads.map((p: any) => {
+          const { nama_rs, ...rest } = p;
+          return rest;
+        });
+        const retry = await supabase.from('labels').upsert(fallbackPayloads, { onConflict: 'no_label' });
+        if (retry.error) {
+          return { success: false, error: retry.error.message };
+        }
+        return { success: true, count: fallbackPayloads.length };
+      }
       return { success: false, error: error.message };
     }
     return { success: true, count: payloads.length };
