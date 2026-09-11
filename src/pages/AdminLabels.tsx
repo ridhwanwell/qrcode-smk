@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { useSearchParams } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
-  uploadPdfToFirestore, 
   getPdfBlobUrl, 
   deleteCertificateFromLabel, 
   deleteLabelCompletely,
@@ -14,7 +13,6 @@ import {
 } from '../lib/pdfStorage';
 import { 
   Search, 
-  Upload, 
   FileText, 
   CheckCircle2, 
   Clock, 
@@ -78,16 +76,13 @@ export default function AdminLabels() {
   const [folderSearch, setFolderSearch] = useState('');
   
   // Operation states
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [deletingFolder, setDeletingFolder] = useState(false);
   
-  // Modal State for Linking Certificate (Google Drive or Upload)
+  // Modal State for Linking Certificate (Google Drive)
   const [activeModalLabel, setActiveModalLabel] = useState<any | null>(null);
-  const [modalTab, setModalTab] = useState<'drive' | 'upload'>('drive');
   const [driveUrlInput, setDriveUrlInput] = useState('');
   const [docNameInput, setDocNameInput] = useState('');
   const [calibratedAtInput, setCalibratedAtInput] = useState('');
@@ -95,9 +90,6 @@ export default function AdminLabels() {
   const [savingDrive, setSavingDrive] = useState(false);
   const [modalError, setModalError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'labels'), orderBy('createdAt', 'desc'));
@@ -195,32 +187,23 @@ export default function AdminLabels() {
   const openLinkModal = (label: any) => {
     setActiveModalLabel(label);
     setModalError('');
-    setSelectedFile(null);
     
     // Set dates (preserves existing or leaves blank for manual entry by technician)
     setCalibratedAtInput(label.calibratedAt || '');
     setValidUntilInput(label.validUntil || '');
 
-    if (label.pdfSource === 'drive' || label.pdfDriveUrl) {
-      setModalTab('drive');
-      setDriveUrlInput(label.pdfOriginalUrl || label.pdfDriveUrl || '');
-      setDocNameInput(label.pdfName || '');
-    } else {
-      setModalTab('drive');
-      setDriveUrlInput('');
-      setDocNameInput(label.pdfName || '');
-    }
+    setDriveUrlInput(label.pdfOriginalUrl || label.pdfDriveUrl || (typeof label.pdfUrl === 'string' && label.pdfUrl.includes('drive.google.com') ? label.pdfUrl : ''));
+    setDocNameInput(label.pdfName || '');
   };
 
   const closeLinkModal = () => {
-    if (savingDrive || uploadingId) return;
+    if (savingDrive) return;
     setActiveModalLabel(null);
     setModalError('');
     setDriveUrlInput('');
     setDocNameInput('');
     setCalibratedAtInput('');
     setValidUntilInput('');
-    setSelectedFile(null);
   };
 
   const handleSaveGoogleDrive = async (e: React.FormEvent) => {
@@ -254,44 +237,6 @@ export default function AdminLabels() {
       console.error("Error saving Google Drive link:", err);
       setModalError(err.message || 'Gagal menyimpan link Google Drive.');
       setSavingDrive(false);
-    }
-  };
-
-  const handleModalFileUpload = async () => {
-    if (!selectedFile || !activeModalLabel) return;
-    
-    if (selectedFile.type !== 'application/pdf') {
-      setModalError('Hanya file PDF yang diperbolehkan.');
-      return;
-    }
-
-    if (selectedFile.size > 20 * 1024 * 1024) {
-      setModalError('Ukuran file maksimal 20MB.');
-      return;
-    }
-
-    const labelId = activeModalLabel.id;
-    setUploadingId(labelId);
-    setUploadProgress(5);
-    setModalError('');
-
-    try {
-      await uploadPdfToFirestore(
-        labelId, 
-        selectedFile, 
-        (percent) => {
-          setUploadProgress(percent);
-        },
-        { calibratedAt: calibratedAtInput, validUntil: validUntilInput }
-      );
-      
-      setUploadingId(null);
-      setUploadProgress(0);
-      closeLinkModal();
-    } catch (err: any) {
-      console.error("Upload error:", err);
-      setModalError(`Gagal mengunggah PDF: ${err?.message || 'Terjadi kesalahan sistem'}`);
-      setUploadingId(null);
     }
   };
 
@@ -821,52 +766,40 @@ export default function AdminLabels() {
                           </td>
 
                           <td className="px-6 py-4 text-right">
-                            {uploadingId === label.id ? (
-                              <div className="w-full max-w-[150px] ml-auto h-8 bg-slate-100 rounded-md overflow-hidden relative border border-slate-200 shadow-inner">
-                                <div 
-                                  className="absolute inset-y-0 left-0 bg-amber-500 transition-all duration-300" 
-                                  style={{ width: `${uploadProgress}%` }}
-                                ></div>
-                                <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-slate-900 drop-shadow-sm">
-                                  Mengunggah {uploadProgress}%
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-end gap-2">
-                                <button 
-                                  type="button"
-                                  onClick={() => openLinkModal(label)}
-                                  className={cn(
-                                    "inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-sm",
-                                    hasCertificate
-                                      ? "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                                      : "bg-amber-500 hover:bg-amber-400 text-slate-900"
-                                  )}
-                                  title={hasCertificate ? "Ubah Link atau Ganti File Sertifikat" : "Tautkan Sertifikat (Google Drive / Upload)"}
-                                >
-                                  <Link2 className="w-3.5 h-3.5 mr-1" />
-                                  {hasCertificate ? 'Ganti' : 'Tautkan'}
-                                </button>
-                                {hasCertificate && (
-                                  <button 
-                                    type="button"
-                                    onClick={() => handleDeleteCert(label.id)}
-                                    className="inline-flex items-center px-2 py-1.5 text-xs font-medium bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"
-                                    title="Lepas / Hapus Sertifikat"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button 
+                                type="button"
+                                onClick={() => openLinkModal(label)}
+                                className={cn(
+                                  "inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-sm",
+                                  hasCertificate
+                                    ? "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                                    : "bg-blue-600 hover:bg-blue-700 text-white"
                                 )}
+                                title={hasCertificate ? "Ubah Link Google Drive Sertifikat" : "Tautkan Link Google Drive Sertifikat"}
+                              >
+                                <Link2 className="w-3.5 h-3.5 mr-1" />
+                                {hasCertificate ? 'Ubah Link' : 'Tautkan Link'}
+                              </button>
+                              {hasCertificate && (
                                 <button 
                                   type="button"
-                                  onClick={() => handleDeleteLabel(label.id)}
-                                  className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                  title="Hapus Seluruh Label"
+                                  onClick={() => handleDeleteCert(label.id)}
+                                  className="inline-flex items-center px-2 py-1.5 text-xs font-medium bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"
+                                  title="Lepas / Hapus Sertifikat"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                              </div>
-                            )}
+                              )}
+                              <button 
+                                type="button"
+                                onClick={() => handleDeleteLabel(label.id)}
+                                className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                title="Hapus Seluruh Label"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -879,7 +812,7 @@ export default function AdminLabels() {
         </div>
       )}
 
-      {/* Modal: Tautkan Sertifikat (Google Drive or Upload File) */}
+      {/* Modal: Tautkan Sertifikat (Link Google Drive) */}
       {activeModalLabel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
@@ -888,8 +821,8 @@ export default function AdminLabels() {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="font-bold text-slate-800 text-base flex items-center">
-                  <Link2 className="w-4 h-4 mr-2 text-amber-500" />
-                  Tautkan Sertifikat Kalibrasi
+                  <Globe className="w-4 h-4 mr-2 text-blue-600" />
+                  Tautkan Sertifikat (Google Drive)
                 </h3>
                 <p className="text-xs text-slate-500 font-mono mt-0.5">
                   Nomor Label: <span className="font-bold text-slate-900">{activeModalLabel.noLabel}</span>
@@ -898,40 +831,10 @@ export default function AdminLabels() {
               <button 
                 type="button" 
                 onClick={closeLinkModal}
-                disabled={savingDrive || !!uploadingId}
+                disabled={savingDrive}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Tabs */}
-            <div className="flex border-b border-slate-200 bg-slate-100/50 p-1.5 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setModalTab('drive')}
-                className={cn(
-                  "flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5",
-                  modalTab === 'drive'
-                    ? "bg-white text-blue-700 shadow-sm border border-slate-200/80"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-              >
-                <Globe className="w-3.5 h-3.5 text-blue-600" />
-                Link Google Drive (Direkomendasikan)
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalTab('upload')}
-                className={cn(
-                  "flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5",
-                  modalTab === 'upload'
-                    ? "bg-white text-emerald-700 shadow-sm border border-slate-200/80"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-              >
-                <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                Unggah File PDF
               </button>
             </div>
 
@@ -944,215 +847,116 @@ export default function AdminLabels() {
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto">
-              {modalTab === 'drive' ? (
-                /* TAB 1: GOOGLE DRIVE LINK */
-                <form onSubmit={handleSaveGoogleDrive} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Link Berbagi Google Drive <span className="text-rose-500">*</span>
-                    </label>
-                    <input 
-                      type="url" 
-                      value={driveUrlInput}
-                      onChange={(e) => setDriveUrlInput(e.target.value)}
-                      placeholder="https://drive.google.com/file/d/1A2B3C.../view?usp=sharing"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      required
-                      autoFocus
-                    />
-                    {driveIdDetected && (
-                      <p className="text-[11px] text-emerald-600 font-medium flex items-center mt-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 mr-1 shrink-0" />
-                        ID File Terdeteksi: <span className="font-mono font-bold ml-1">{driveIdDetected}</span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Nama Sertifikat / Alat <span className="text-slate-400 font-normal">(Opsional)</span>
-                    </label>
-                    <input 
-                      type="text" 
-                      value={docNameInput}
-                      onChange={(e) => setDocNameInput(e.target.value)}
-                      placeholder="Contoh: Sertifikat Kalibrasi AED Mindray"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-
-                  {/* Calibration & Expiration Dates */}
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Pada Tanggal (Kalibrasi)</label>
-                      <input 
-                        type="date"
-                        value={calibratedAtInput}
-                        onChange={(e) => setCalibratedAtInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Berlaku Hingga</label>
-                      <input 
-                        type="date"
-                        value={validUntilInput}
-                        onChange={(e) => setValidUntilInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Tutorial Tip */}
-                  <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-900 space-y-1.5">
-                    <div className="font-bold flex items-center text-blue-800">
-                      <Sparkles className="w-3.5 h-3.5 mr-1.5 text-blue-600" />
-                      Petunjuk Akses Google Drive:
-                    </div>
-                    <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] pl-1">
-                      <li>Buka file PDF sertifikat di Google Drive Anda.</li>
-                      <li>Klik <strong>Bagikan (Share)</strong> &gt; ubah Akses Umum menjadi <strong>"Siapa saja yang memiliki tautan"</strong> (Viewer).</li>
-                      <li>Klik <strong>Salin Tautan</strong> lalu tempelkan di kotak di atas.</li>
-                    </ol>
-                  </div>
-
-                  <div className="pt-2 flex items-center justify-between border-t border-slate-100 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveDatesOnly}
-                      disabled={savingDrive}
-                      className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
-                      title="Update tanggal kalibrasi tanpa mengubah link sertifikat"
-                    >
-                      Simpan Tanggal Saja
-                    </button>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={closeLinkModal}
-                        disabled={savingDrive}
-                        className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-                      >
-                        Batal
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={savingDrive || !driveUrlInput.trim()}
-                        className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
-                      >
-                        {savingDrive ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            Menyimpan Link...
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-3.5 h-3.5" />
-                            Simpan Link Google Drive
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </form>
-              ) : (
-                /* TAB 2: DIRECT PDF UPLOAD */
-                <div className="space-y-4">
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-50 hover:bg-emerald-50/40"
-                  >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      onChange={(e) => {
-                        if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
-                      }}
-                      accept="application/pdf" 
-                      className="hidden" 
-                    />
-                    <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center mx-auto mb-2">
-                      <FileText className="w-6 h-6" />
-                    </div>
-                    {selectedFile ? (
-                      <div>
-                        <p className="font-bold text-slate-900 text-xs truncate max-w-xs mx-auto">{selectedFile.name}</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{(selectedFile.size / 1024).toFixed(0)} KB</p>
-                        <p className="text-[11px] text-emerald-600 font-semibold mt-1">Klik untuk mengganti file</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="font-bold text-slate-800 text-xs">Pilih File PDF Sertifikat</p>
-                        <p className="text-[11px] text-slate-400 mt-1">Maksimal 20MB (.pdf)</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Calibration & Expiration Dates */}
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Pada Tanggal (Kalibrasi)</label>
-                      <input 
-                        type="date"
-                        value={calibratedAtInput}
-                        onChange={(e) => setCalibratedAtInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Berlaku Hingga</label>
-                      <input 
-                        type="date"
-                        value={validUntilInput}
-                        onChange={(e) => setValidUntilInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
-
-                  {uploadingId && (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs font-bold text-slate-700">
-                        <span>Mengunggah...</span>
-                        <span>{uploadProgress}%</span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 transition-all duration-200" style={{ width: `${uploadProgress}%` }}></div>
-                      </div>
-                    </div>
+              <form onSubmit={handleSaveGoogleDrive} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Link Berbagi Google Drive <span className="text-rose-500">*</span>
+                  </label>
+                  <input 
+                    type="url" 
+                    value={driveUrlInput}
+                    onChange={(e) => setDriveUrlInput(e.target.value)}
+                    placeholder="https://drive.google.com/file/d/1A2B3C.../view?usp=sharing"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    autoFocus
+                  />
+                  {driveIdDetected && (
+                    <p className="text-[11px] text-emerald-600 font-medium flex items-center mt-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1 shrink-0" />
+                      ID File Terdeteksi: <span className="font-mono font-bold ml-1">{driveIdDetected}</span>
+                    </p>
                   )}
+                </div>
 
-                  <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Nama Sertifikat / Alat <span className="text-slate-400 font-normal">(Opsional)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={docNameInput}
+                    onChange={(e) => setDocNameInput(e.target.value)}
+                    placeholder="Contoh: Sertifikat Kalibrasi AED Mindray"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Calibration & Expiration Dates */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Pada Tanggal (Kalibrasi)</label>
+                    <input 
+                      type="date"
+                      value={calibratedAtInput}
+                      onChange={(e) => setCalibratedAtInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Berlaku Hingga</label>
+                    <input 
+                      type="date"
+                      value={validUntilInput}
+                      onChange={(e) => setValidUntilInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Tutorial Tip */}
+                <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-900 space-y-1.5">
+                  <div className="font-bold flex items-center text-blue-800">
+                    <Sparkles className="w-3.5 h-3.5 mr-1.5 text-blue-600" />
+                    Petunjuk Akses Google Drive:
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] pl-1">
+                    <li>Buka file PDF sertifikat di Google Drive Anda.</li>
+                    <li>Klik <strong>Bagikan (Share)</strong> &gt; ubah Akses Umum menjadi <strong>"Siapa saja yang memiliki tautan"</strong> (Viewer).</li>
+                    <li>Klik <strong>Salin Tautan</strong> lalu tempelkan di kotak di atas.</li>
+                  </ol>
+                </div>
+
+                <div className="pt-2 flex items-center justify-between border-t border-slate-100 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveDatesOnly}
+                    disabled={savingDrive}
+                    className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
+                    title="Update tanggal kalibrasi tanpa mengubah link sertifikat"
+                  >
+                    Simpan Tanggal Saja
+                  </button>
+
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={closeLinkModal}
-                      disabled={!!uploadingId}
+                      disabled={savingDrive}
                       className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
                     >
                       Batal
                     </button>
                     <button
-                      type="button"
-                      onClick={handleModalFileUpload}
-                      disabled={!selectedFile || !!uploadingId}
-                      className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
+                      type="submit"
+                      disabled={savingDrive || !driveUrlInput.trim()}
+                      className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
                     >
-                      {uploadingId ? (
+                      {savingDrive ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Mengunggah PDF ({uploadProgress}%)...
+                          Menyimpan Link...
                         </>
                       ) : (
                         <>
-                          <Upload className="w-3.5 h-3.5" />
-                          Unggah File PDF
+                          <Check className="w-3.5 h-3.5" />
+                          Simpan Link Google Drive
                         </>
                       )}
                     </button>
                   </div>
                 </div>
-              )}
+              </form>
             </div>
 
           </div>

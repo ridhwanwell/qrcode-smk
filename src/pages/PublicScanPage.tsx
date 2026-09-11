@@ -592,7 +592,7 @@ export default function PublicScanPage() {
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">Sertifikat Belum Tersedia</h2>
             <p className="text-slate-600 text-sm leading-relaxed mb-4">
-              Sertifikat digital untuk nomor label <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md">{displayLabel}</span> belum diunggah atau ditautkan oleh tim laboratorium.
+              Sertifikat digital untuk nomor label <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md">{displayLabel}</span> belum ditautkan oleh tim laboratorium.
             </p>
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 grid grid-cols-2 gap-3 text-left">

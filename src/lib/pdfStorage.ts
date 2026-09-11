@@ -15,24 +15,7 @@ import { db } from './firebase';
 const CHUNK_SIZE = 400 * 1024; // 400 KB characters per chunk (safe within 1MB Firestore limit)
 
 /**
- * Convert a File or Blob into a Base64 data string
- */
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Extract pure base64 without the "data:application/pdf;base64," prefix
-      const base64 = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64);
-    };
-    reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Convert a Base64 string into a Blob
+ * Convert a Base64 string into a Blob (used for backward compatibility with legacy uploaded chunks)
  */
 function base64ToBlob(base64: string, mimeType = 'application/pdf'): Blob {
   const byteCharacters = atob(base64);
@@ -50,77 +33,6 @@ function base64ToBlob(base64: string, mimeType = 'application/pdf'): Blob {
   }
 
   return new Blob(byteArrays, { type: mimeType });
-}
-
-/**
- * Upload a PDF by splitting into Firestore chunks
- */
-export async function uploadPdfToFirestore(
-  labelId: string, 
-  file: File, 
-  onProgress?: (percent: number) => void,
-  dates?: { calibratedAt?: string; validUntil?: string }
-): Promise<void> {
-  if (onProgress) onProgress(10);
-  
-  // 1. Read file to Base64
-  const base64Data = await fileToBase64(file);
-  if (onProgress) onProgress(30);
-
-  // 2. Split into chunks
-  const totalLength = base64Data.length;
-  const chunks: string[] = [];
-  for (let i = 0; i < totalLength; i += CHUNK_SIZE) {
-    chunks.push(base64Data.substring(i, i + CHUNK_SIZE));
-  }
-  const totalChunks = chunks.length;
-
-  // 3. Clear any existing chunks first
-  await deleteExistingChunks(labelId);
-  if (onProgress) onProgress(45);
-
-  // 4. Save chunks using batched writes (up to 500 per batch)
-  const batchSize = 100;
-  for (let b = 0; b < chunks.length; b += batchSize) {
-    const batch = writeBatch(db);
-    const slice = chunks.slice(b, b + batchSize);
-    
-    slice.forEach((chunkStr, idx) => {
-      const chunkIndex = b + idx;
-      const chunkDocRef = doc(db, 'labels', labelId, 'chunks', String(chunkIndex).padStart(4, '0'));
-      batch.set(chunkDocRef, {
-        index: chunkIndex,
-        data: chunkStr,
-        createdAt: serverTimestamp()
-      });
-    });
-
-    await batch.commit();
-    if (onProgress) {
-      const pct = Math.min(95, Math.round(45 + ((b + slice.length) / chunks.length) * 45));
-      onProgress(pct);
-    }
-  }
-
-  // 5. Update parent label document
-  const labelDocRef = doc(db, 'labels', labelId);
-  const updatePayload: any = {
-    noLabel: labelId,
-    status: 'Sertifikat Tertaut',
-    hasPdf: true,
-    pdfName: file.name,
-    pdfSize: file.size,
-    pdfChunksCount: totalChunks,
-    pdfUrl: null, // No external url needed
-    updatedAt: serverTimestamp()
-  };
-
-  if (dates?.calibratedAt) updatePayload.calibratedAt = dates.calibratedAt;
-  if (dates?.validUntil) updatePayload.validUntil = dates.validUntil;
-
-  await setDoc(labelDocRef, updatePayload, { merge: true });
-
-  if (onProgress) onProgress(100);
 }
 
 /**
