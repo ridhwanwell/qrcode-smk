@@ -1,7 +1,4 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
 import { Rnd } from 'react-rnd';
 import { Save, Upload, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -44,10 +41,13 @@ export default function AdminTemplates() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'templates');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setConfigs(docSnap.data() as any);
+        const res = await fetch('/api/settings/templates');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.value) {
+            const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+            setConfigs(val);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -69,9 +69,6 @@ export default function AdminTemplates() {
     }
 
     setError('');
-    const storageRef = ref(storage, `templates/${activeTab}_${Date.now()}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
     // Read the file as Data URL to store directly (avoids html2canvas CORS issues)
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -97,10 +94,12 @@ export default function AdminTemplates() {
     setSaving(true);
     setError('');
     try {
-      await setDoc(doc(db, 'settings', 'templates'), {
-        ...configs,
-        updatedAt: serverTimestamp()
+      const res = await fetch('/api/settings/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: configs })
       });
+      if (!res.ok) throw new Error('Gagal menyimpan template.');
       alert('Pengaturan template berhasil disimpan!');
     } catch (err: any) {
       console.error(err);

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, setDoc, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
@@ -42,21 +41,27 @@ export default function AdminGenerate() {
   useEffect(() => {
     const fetchTemplatesAndSettings = async () => {
       try {
-        const [templateSnap, settingsSnap] = await Promise.all([
-          getDoc(doc(db, 'settings', 'templates')),
-          getDoc(doc(db, 'settings', 'general'))
+        const [tplRes, genRes] = await Promise.all([
+          fetch('/api/settings/templates'),
+          fetch('/api/settings/general')
         ]);
 
-        if (templateSnap.exists()) {
-          setTemplateConfigs(templateSnap.data());
+        if (tplRes.ok) {
+          const tplData = await tplRes.json();
+          if (tplData?.value) {
+            const val = typeof tplData.value === 'string' ? JSON.parse(tplData.value) : tplData.value;
+            setTemplateConfigs(val);
+          }
         }
 
-        if (settingsSnap.exists() && settingsSnap.data().publicBaseUrl) {
-          setCustomDomain(settingsSnap.data().publicBaseUrl);
-        } else {
-          // Auto-save public origin if not set
-          const suggested = getSuggestedPublicOrigin();
-          setDoc(doc(db, 'settings', 'general'), { publicBaseUrl: suggested }, { merge: true }).catch(() => {});
+        if (genRes.ok) {
+          const genData = await genRes.json();
+          if (genData?.value) {
+            const val = typeof genData.value === 'string' ? JSON.parse(genData.value) : genData.value;
+            if (val?.publicBaseUrl) {
+              setCustomDomain(val.publicBaseUrl);
+            }
+          }
         }
       } catch (err) {
         console.error("Failed to load templates or settings", err);
@@ -119,25 +124,31 @@ export default function AdminGenerate() {
     setProgressMsg('Menyimpan ke database...');
     
     try {
-      // Create documents in Firestore using batched writes (max 500 per batch)
-      const chunkSize = 500;
-      for (let i = 0; i < labelsToGenerate.length; i += chunkSize) {
-        const batch = writeBatch(db);
-        const chunk = labelsToGenerate.slice(i, i + chunkSize);
-        
-        setProgressMsg(`Menyimpan ke database... (${Math.min(i + chunkSize, labelsToGenerate.length)}/${labelsToGenerate.length})`);
-        
-        chunk.forEach(labelStr => {
-          const docRef = doc(db, 'labels', labelStr);
-          batch.set(docRef, {
-            noLabel: labelStr,
-            status: 'Menunggu Sertifikat',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          }, { merge: true });
-        });
-        
-        await batch.commit();
+      const itemsToSave = labelsToGenerate.map(lbl => ({
+        noLabel: lbl,
+        status: 'Menunggu Sertifikat'
+      }));
+
+      // 1. Bulk save to API backend (PostgreSQL)
+      const res = await fetch('/api/labels/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: itemsToSave })
+      });
+      if (!res.ok) {
+        throw new Error('Gagal menyimpan label ke server.');
+      }
+
+      // 2. Upsert to Supabase
+      try {
+        const supabaseRows = labelsToGenerate.map(lbl => ({
+          no_label: lbl,
+          status: 'Menunggu Sertifikat',
+          updated_at: new Date().toISOString()
+        }));
+        await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
+      } catch (supaErr) {
+        console.warn('Supabase bulk upsert error:', supaErr);
       }
 
       setGeneratedLabels(labelsToGenerate);

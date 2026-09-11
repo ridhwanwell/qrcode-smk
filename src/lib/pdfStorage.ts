@@ -1,92 +1,17 @@
-import { 
-  collection, 
-  doc, 
-  setDoc,
-  getDocs, 
-  writeBatch, 
-  serverTimestamp, 
-  deleteDoc, 
-  query, 
-  orderBy,
-  updateDoc 
-} from 'firebase/firestore';
-import { db } from './firebase';
-
-const CHUNK_SIZE = 400 * 1024; // 400 KB characters per chunk (safe within 1MB Firestore limit)
+import { supabase } from './supabase';
 
 /**
- * Convert a Base64 string into a Blob (used for backward compatibility with legacy uploaded chunks)
- */
-function base64ToBlob(base64: string, mimeType = 'application/pdf'): Blob {
-  const byteCharacters = atob(base64);
-  const byteArrays: Uint8Array[] = [];
-
-  const sliceSize = 1024;
-  for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-    const slice = byteCharacters.slice(offset, offset + sliceSize);
-    const byteNumbers = new Array(slice.length);
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    byteArrays.push(byteArray);
-  }
-
-  return new Blob(byteArrays, { type: mimeType });
-}
-
-/**
- * Delete existing chunks for a label
- */
-async function deleteExistingChunks(labelId: string): Promise<void> {
-  const chunksCol = collection(db, 'labels', labelId, 'chunks');
-  const snap = await getDocs(chunksCol);
-  if (snap.empty) return;
-
-  const batch = writeBatch(db);
-  snap.docs.forEach((d) => {
-    batch.delete(d.ref);
-  });
-  await batch.commit();
-}
-
-/**
- * Reconstruct a PDF Blob URL from Firestore chunks
- */
-export async function getPdfBlobUrl(labelId: string): Promise<{ url: string; blob: Blob } | null> {
-  const chunksCol = collection(db, 'labels', labelId, 'chunks');
-  const q = query(chunksCol, orderBy('index', 'asc'));
-  const snap = await getDocs(q);
-
-  if (snap.empty) return null;
-
-  let fullBase64 = '';
-  snap.docs.forEach(docSnap => {
-    const data = docSnap.data();
-    if (data.data) {
-      fullBase64 += data.data;
-    }
-  });
-
-  if (!fullBase64) return null;
-
-  const blob = base64ToBlob(fullBase64, 'application/pdf');
-  const url = URL.createObjectURL(blob);
-  return { url, blob };
-}
-
-/**
- * Helper to extract Google Drive file ID from various sharing URL formats
+ * Validates and extracts a Google Drive File ID from various link formats
  */
 export function extractGoogleDriveFileId(url: string): string | null {
   if (!url) return null;
   const trimmed = url.trim();
 
-  // Pattern 1: /d/FILE_ID or /file/d/FILE_ID or /file/u/0/d/FILE_ID or /document/d/FILE_ID
-  const matchD = trimmed.match(/\/(?:file\/|file\/u\/\d+\/|document\/|spreadsheets\/|presentation\/)?d\/([a-zA-Z0-9_-]+)/i);
-  if (matchD && matchD[1]) return matchD[1];
+  // Pattern 1: /file/d/{fileId}/view or /file/d/{fileId}/preview
+  const matchFileD = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/i);
+  if (matchFileD && matchFileD[1]) return matchFileD[1];
 
-  // Pattern 2: id=FILE_ID or ?id=FILE_ID
+  // Pattern 2: id={fileId} parameter (open?id= or uc?id=)
   const matchIdParam = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/i);
   if (matchIdParam && matchIdParam[1]) return matchIdParam[1];
 
@@ -123,7 +48,14 @@ export function getGoogleDriveViewUrl(urlOrId: string): string {
 }
 
 /**
- * Link a Google Drive certificate to a label document in Firestore
+ * Reconstruct a PDF Blob URL if needed
+ */
+export async function getPdfBlobUrl(_labelId: string): Promise<{ url: string; blob: Blob } | null> {
+  return null;
+}
+
+/**
+ * Link a Google Drive certificate to a label
  */
 export async function linkGoogleDriveToLabel(
   labelId: string, 
@@ -131,32 +63,46 @@ export async function linkGoogleDriveToLabel(
   customDocName?: string,
   dates?: { calibratedAt?: string; validUntil?: string }
 ): Promise<void> {
-  // Delete any existing chunks if previously stored as file chunks
-  await deleteExistingChunks(labelId);
-
   const fileId = extractGoogleDriveFileId(driveUrl);
   const embedUrl = fileId ? getGoogleDriveEmbedUrl(fileId) : driveUrl.trim();
   const viewUrl = fileId ? getGoogleDriveViewUrl(fileId) : driveUrl.trim();
 
-  const labelDocRef = doc(db, 'labels', labelId);
   const updatePayload: any = {
     noLabel: labelId,
     status: 'Sertifikat Tertaut',
-    hasPdf: false,
     pdfSource: 'drive',
     pdfUrl: embedUrl,
     pdfDriveUrl: viewUrl,
     pdfOriginalUrl: driveUrl.trim(),
     pdfName: customDocName?.trim() || `Sertifikat Kalibrasi ${labelId}`,
-    pdfSize: null,
-    pdfChunksCount: 0,
-    updatedAt: serverTimestamp()
+    calibratedAt: dates?.calibratedAt || null,
+    validUntil: dates?.validUntil || null,
   };
 
-  if (dates?.calibratedAt) updatePayload.calibratedAt = dates.calibratedAt;
-  if (dates?.validUntil) updatePayload.validUntil = dates.validUntil;
+  // 1. Update API backend
+  await fetch('/api/labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updatePayload),
+  });
 
-  await setDoc(labelDocRef, updatePayload, { merge: true });
+  // 2. Update Supabase
+  try {
+    await supabase.from('labels').upsert({
+      no_label: labelId,
+      status: 'Sertifikat Tertaut',
+      pdf_source: 'drive',
+      pdf_url: embedUrl,
+      pdf_drive_url: viewUrl,
+      pdforiginal_url: driveUrl.trim(),
+      pdf_name: customDocName?.trim() || `Sertifikat Kalibrasi ${labelId}`,
+      calibrated_at: dates?.calibratedAt || null,
+      valid_until: dates?.validUntil || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'no_label' });
+  } catch (err) {
+    console.warn('Supabase linkGoogleDriveToLabel error:', err);
+  }
 }
 
 /**
@@ -167,58 +113,84 @@ export async function updateLabelDates(
   calibratedAt: string,
   validUntil: string
 ): Promise<void> {
-  const labelDocRef = doc(db, 'labels', labelId);
-  await setDoc(labelDocRef, {
-    calibratedAt,
-    validUntil,
-    updatedAt: serverTimestamp()
-  }, { merge: true });
+  await fetch('/api/labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ noLabel: labelId, calibratedAt, validUntil }),
+  });
+
+  try {
+    await supabase.from('labels').update({
+      calibrated_at: calibratedAt,
+      valid_until: validUntil,
+      updated_at: new Date().toISOString()
+    }).eq('no_label', labelId);
+  } catch (err) {
+    console.warn('Supabase updateLabelDates error:', err);
+  }
 }
 
 /**
  * Delete PDF certificate from a label
  */
 export async function deleteCertificateFromLabel(labelId: string): Promise<void> {
-  await deleteExistingChunks(labelId);
-  
-  const labelDocRef = doc(db, 'labels', labelId);
-  await updateDoc(labelDocRef, {
+  const payload = {
+    noLabel: labelId,
     status: 'Menunggu Sertifikat',
-    hasPdf: false,
     pdfSource: null,
     pdfName: null,
-    pdfSize: null,
-    pdfChunksCount: 0,
     pdfUrl: null,
     pdfDriveUrl: null,
     pdfOriginalUrl: null,
-    updatedAt: serverTimestamp()
+  };
+
+  await fetch('/api/labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
-}
 
-/**
- * Delete label document completely along with its subcollection chunks
- */
-export async function deleteLabelCompletely(labelId: string): Promise<void> {
-  // 1. Delete all chunks
-  await deleteExistingChunks(labelId);
-
-  // 2. Delete label document
-  const labelDocRef = doc(db, 'labels', labelId);
-  await deleteDoc(labelDocRef);
-}
-
-/**
- * Delete a batch of labels completely (e.g. when deleting an entire folder)
- */
-export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
-  for (let i = 0; i < labelIds.length; i += 400) {
-    const chunk = labelIds.slice(i, i + 400);
-    const batch = writeBatch(db);
-    for (const id of chunk) {
-      batch.delete(doc(db, 'labels', id));
-    }
-    await batch.commit();
+  try {
+    await supabase.from('labels').update({
+      status: 'Menunggu Sertifikat',
+      pdf_source: null,
+      pdf_name: null,
+      pdf_url: null,
+      pdf_drive_url: null,
+      pdforiginal_url: null,
+      updated_at: new Date().toISOString()
+    }).eq('no_label', labelId);
+  } catch (err) {
+    console.warn('Supabase deleteCertificateFromLabel error:', err);
   }
 }
 
+/**
+ * Delete label document completely
+ */
+export async function deleteLabelCompletely(labelId: string): Promise<void> {
+  await fetch(`/api/labels/${encodeURIComponent(labelId)}`, {
+    method: 'DELETE',
+  });
+
+  try {
+    await supabase.from('labels').delete().eq('no_label', labelId);
+  } catch (err) {
+    console.warn('Supabase deleteLabelCompletely error:', err);
+  }
+}
+
+/**
+ * Delete a batch of labels completely
+ */
+export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
+  for (const id of labelIds) {
+    await fetch(`/api/labels/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+  }
+
+  try {
+    await supabase.from('labels').delete().in('no_label', labelIds);
+  } catch (err) {
+    console.warn('Supabase deleteBatchLabels error:', err);
+  }
+}

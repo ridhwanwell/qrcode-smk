@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { 
   cleanLabelString, 
   extractLabelFromLocation, 
@@ -80,7 +79,7 @@ export default function PublicScanPage() {
     }
   };
 
-  useEffect(() => {
+  const fetchLabelData = useCallback(async () => {
     if (!cleanNoLabel) {
       setLoading(false);
       setLabelData(null);
@@ -89,7 +88,6 @@ export default function PublicScanPage() {
       return;
     }
 
-    let isMounted = true;
     setLoading(true);
     setError(false);
 
@@ -97,52 +95,51 @@ export default function PublicScanPage() {
     const candidateList = generateLabelSearchCandidates(cleanNoLabel).map(c => c.trim().toLowerCase());
     const candidateSet = new Set([targetClean, ...candidateList]);
 
-    // Real-time collection listener ensures 100% immediate sync across all tabs and devices
-    const labelsColRef = collection(db, 'labels');
-    const unsubscribe = onSnapshot(labelsColRef, async (snapshot) => {
-      if (!isMounted) return;
+    try {
+      // 1. Query Supabase
+      const { data: supaLabels, error: supaErr } = await supabase
+        .from('labels')
+        .select('*');
 
-      let foundDocId = '';
-      let foundData: any = null;
+      let found: any = null;
 
-      for (const docSnap of snapshot.docs) {
-        const dId = docSnap.id.trim().toLowerCase();
-        const data = docSnap.data();
-        const noLabelField = (data.noLabel || data.nomorLabel || data.label || '').toString().trim().toLowerCase();
-
-        const cleanDocId = cleanLabelString(docSnap.id)?.toLowerCase();
-        const cleanField = cleanLabelString(data.noLabel || '')?.toLowerCase();
-
-        if (
-          candidateSet.has(dId) ||
-          candidateSet.has(noLabelField) ||
-          (cleanDocId && candidateSet.has(cleanDocId)) ||
-          (cleanField && candidateSet.has(cleanField))
-        ) {
-          foundDocId = docSnap.id;
-          foundData = data;
-          break;
+      if (supaLabels && supaLabels.length > 0) {
+        for (const row of supaLabels) {
+          const rawNo = (row.no_label || '').toString().trim().toLowerCase();
+          const cleanNo = cleanLabelString(row.no_label || '')?.toLowerCase();
+          if (candidateSet.has(rawNo) || (cleanNo && candidateSet.has(cleanNo))) {
+            found = {
+              id: row.no_label,
+              noLabel: row.no_label,
+              status: row.status,
+              pdfSource: row.pdf_source,
+              pdfUrl: row.pdf_url,
+              pdfDriveUrl: row.pdf_drive_url,
+              pdfOriginalUrl: row.pdforiginal_url,
+              pdfName: row.pdf_name,
+              calibratedAt: row.calibrated_at,
+              validUntil: row.valid_until,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at
+            };
+            break;
+          }
         }
       }
 
-      if (foundData) {
-        setLabelData(foundData);
-        setResolvedLabelId(foundDocId || cleanNoLabel);
-        setError(false);
-
-        if (foundData.hasPdf) {
-          setLoadingPdf(true);
-          try {
-            const res = await getPdfBlobUrl(foundDocId);
-            if (res && isMounted) {
-              setPdfBlobUrl(res.url);
-            }
-          } catch (pdfErr) {
-            console.error("Error retrieving certificate PDF:", pdfErr);
-          } finally {
-            if (isMounted) setLoadingPdf(false);
-          }
+      // 2. Fallback to API backend if not found
+      if (!found) {
+        const res = await fetch(`/api/labels/${encodeURIComponent(cleanNoLabel)}`);
+        if (res.ok) {
+          const apiLabel = await res.json();
+          if (apiLabel) found = apiLabel;
         }
+      }
+
+      if (found) {
+        setLabelData(found);
+        setResolvedLabelId(found.noLabel || cleanNoLabel);
+        setError(false);
       } else {
         const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
         if (/\d{2,}/.test(norm)) {
@@ -157,11 +154,8 @@ export default function PublicScanPage() {
           setError(true);
         }
       }
-
-      setLoading(false);
-    }, (err) => {
-      console.error("Firestore real-time subscription error:", err);
-      if (!isMounted) return;
+    } catch (err) {
+      console.warn("Error fetching label from Supabase:", err);
       const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
       if (/\d{2,}/.test(norm)) {
         setLabelData({
@@ -173,14 +167,26 @@ export default function PublicScanPage() {
       } else {
         setError(true);
       }
+    } finally {
       setLoading(false);
-    });
+    }
+  }, [cleanNoLabel]);
+
+  useEffect(() => {
+    fetchLabelData();
+
+    // Realtime Supabase updates
+    const channel = supabase
+      .channel('public-scan-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+        fetchLabelData();
+      })
+      .subscribe();
 
     return () => {
-      isMounted = false;
-      unsubscribe();
+      supabase.removeChannel(channel);
     };
-  }, [cleanNoLabel]);
+  }, [fetchLabelData]);
 
   const handleCopyLink = () => {
     const targetUrl = window.location.href;

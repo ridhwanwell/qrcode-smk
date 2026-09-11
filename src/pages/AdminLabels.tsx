@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { 
   getPdfBlobUrl, 
   deleteCertificateFromLabel, 
@@ -91,22 +90,59 @@ export default function AdminLabels() {
   const [modalError, setModalError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  useEffect(() => {
-    const q = query(collection(db, 'labels'), orderBy('createdAt', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setLabels(data);
-      setLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'labels');
-    });
+  const fetchLabels = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('labels')
+        .select('*')
+        .order('no_label', { ascending: true });
 
-    return () => unsubscribe();
+      if (data && data.length > 0) {
+        const formatted = data.map((d: any) => ({
+          id: d.no_label,
+          noLabel: d.no_label,
+          status: d.status,
+          pdfSource: d.pdf_source,
+          pdfUrl: d.pdf_url,
+          pdfDriveUrl: d.pdf_drive_url,
+          pdfOriginalUrl: d.pdforiginal_url,
+          pdfName: d.pdf_name,
+          calibratedAt: d.calibrated_at,
+          validUntil: d.valid_until,
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+        }));
+        setLabels(formatted);
+      } else {
+        const res = await fetch('/api/labels');
+        if (res.ok) {
+          const apiData = await res.json();
+          setLabels(apiData || []);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error fetching labels from Supabase:', err);
+      setError('Gagal memuat daftar label.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchLabels();
+
+    // Realtime Supabase updates
+    const channel = supabase
+      .channel('admin-labels-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+        fetchLabels();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchLabels]);
 
   // Group labels into 3-digit prefix folders
   const folders = useMemo(() => {

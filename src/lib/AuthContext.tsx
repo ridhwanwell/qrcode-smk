@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onAuthStateChanged, signOut as firebaseSignOut, getRedirectResult, signInAnonymously } from 'firebase/auth';
-import { auth } from './firebase';
+import { supabase } from './supabase';
 
 export interface AdminUser {
   username: string;
@@ -60,43 +59,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.warn('Error reading stored user session:', e);
     }
 
-    // 2. Check Firebase Redirect result
-    getRedirectResult(auth)
-      .then((res) => {
-        if (res?.user) {
-          const u: AdminUser = {
-            username: res.user.email?.split('@')[0] || 'admin',
-            displayName: res.user.displayName || res.user.email || 'Admin',
-            role: 'Admin',
-            email: res.user.email || undefined,
-            photoURL: res.user.photoURL || undefined,
-            avatarLetter: (res.user.displayName || res.user.email || 'A')[0].toUpperCase(),
-          };
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(u));
-          setUser(u);
-        }
-      })
-      .catch((err) => {
-        console.warn('Redirect login error:', err);
-      });
-
-    // 3. Listen to Firebase Auth state
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      if (u) {
+    // 2. Check Supabase session if any
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
         const adminUser: AdminUser = {
-          username: u.email ? u.email.split('@')[0] : 'admin',
-          displayName: u.displayName || u.email || 'Admin',
+          username: session.user.email ? session.user.email.split('@')[0] : 'admin',
+          displayName: session.user.user_metadata?.full_name || session.user.email || 'Admin',
           role: 'Admin',
-          email: u.email || undefined,
-          photoURL: u.photoURL || undefined,
-          avatarLetter: (u.displayName || u.email || 'A')[0].toUpperCase(),
+          email: session.user.email,
+          avatarLetter: (session.user.email || 'A')[0].toUpperCase(),
         };
-        setUser((prev) => prev || adminUser);
+        setUser(adminUser);
       }
+      setLoading(false);
+    }).catch(() => {
       setLoading(false);
     });
 
-    return unsubscribe;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const adminUser: AdminUser = {
+          username: session.user.email ? session.user.email.split('@')[0] : 'admin',
+          displayName: session.user.user_metadata?.full_name || session.user.email || 'Admin',
+          role: 'Admin',
+          email: session.user.email,
+          avatarLetter: (session.user.email || 'A')[0].toUpperCase(),
+        };
+        setUser((prev) => prev || adminUser);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loginWithCredentials = async (
@@ -129,13 +124,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(adminUser));
     setUser(adminUser);
 
-    // Optional background anonymous sign-in to satisfy firebase if needed
-    try {
-      await signInAnonymously(auth);
-    } catch {
-      // Non-blocking
-    }
-
     return { success: true };
   };
 
@@ -143,9 +131,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     setUser(null);
     try {
-      await firebaseSignOut(auth);
+      await supabase.auth.signOut();
     } catch (e) {
-      console.warn('Firebase signout warning:', e);
+      console.warn('Supabase signout warning:', e);
     }
   };
 
