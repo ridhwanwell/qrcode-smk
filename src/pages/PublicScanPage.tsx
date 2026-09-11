@@ -22,7 +22,6 @@ import {
   ExternalLink,
   Copy,
   Check,
-  LogIn,
   Globe,
   QrCode,
   Search,
@@ -232,7 +231,7 @@ export default function PublicScanPage() {
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
         <div className="max-w-4xl mx-auto px-4 md:px-8 py-3.5 relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-3.5 group shrink-0">
-            <div className="h-11 px-2.5 bg-white/95 rounded-xl flex items-center justify-center shrink-0 shadow border border-slate-700/50 group-hover:bg-white transition-colors">
+            <div className="h-11 px-3 bg-slate-900 rounded-xl flex items-center justify-center shrink-0 shadow border border-slate-700 group-hover:border-slate-600 transition-colors">
               <img 
                 src={logoUrl} 
                 alt="Logo PT. Sarana Multi Kalibrasi" 
@@ -351,16 +350,6 @@ export default function PublicScanPage() {
                 002.0018
               </button>
             </div>
-
-            <div className="pt-6 mt-6 border-t border-slate-100 flex justify-center">
-              <Link
-                to="/admin/login"
-                className="inline-flex items-center px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
-              >
-                <LogIn className="w-3.5 h-3.5 mr-1.5" />
-                Masuk ke Portal Admin
-              </Link>
-            </div>
           </motion.div>
         ) : error && !labelData ? (
           /* Not Found State (only for totally non-numeric strings) */
@@ -399,17 +388,11 @@ export default function PublicScanPage() {
               <button
                 type="button"
                 onClick={() => setIsCameraOpen(true)}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-xs rounded-xl transition-colors flex items-center"
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-xs rounded-xl transition-colors flex items-center shadow-sm"
               >
                 <Camera className="w-3.5 h-3.5 mr-1.5" />
                 Scan Ulang
               </button>
-              <Link
-                to="/admin/login"
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors"
-              >
-                Masuk Admin
-              </Link>
             </div>
           </motion.div>
         ) : isReady ? (
