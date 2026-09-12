@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { saveFolderRsToSupabase } from '../lib/supabaseSync';
-import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen, Building2 } from 'lucide-react';
+import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
@@ -17,9 +16,6 @@ export default function AdminGenerate() {
   // Bulk mode state
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
-
-  // Hospital Name state
-  const [namaRs, setNamaRs] = useState('');
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -128,71 +124,29 @@ export default function AdminGenerate() {
     setProgressMsg('Menyimpan ke database...');
     
     try {
-      const trimmedRs = namaRs.trim() || null;
       const itemsToSave = labelsToGenerate.map(lbl => ({
         noLabel: lbl,
-        namaRs: trimmedRs,
         status: 'Menunggu Sertifikat'
       }));
 
-      // 1. Direct sync to Supabase (primary)
-      let supabaseSuccess = false;
-      try {
-        const supabaseRows = labelsToGenerate.map(lbl => ({
-          no_label: lbl,
-          status: 'Menunggu Sertifikat',
-          updated_at: new Date().toISOString()
-        }));
+      // 1. Direct save to Supabase (primary)
+      const supabaseRows = labelsToGenerate.map(lbl => ({
+        no_label: lbl,
+        status: 'Menunggu Sertifikat',
+        updated_at: new Date().toISOString()
+      }));
 
-        // Try upserting with nama_rs, fallback without nama_rs if column is not yet in Supabase
-        const rowsWithRs = supabaseRows.map(r => ({ ...r, nama_rs: trimmedRs }));
-        const supaRes = await supabase.from('labels').upsert(rowsWithRs, { onConflict: 'no_label' });
-        
-        if (supaRes.error) {
-          if (supaRes.error.message?.includes('nama_rs')) {
-            const fallbackRes = await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
-            if (!fallbackRes.error) supabaseSuccess = true;
-          }
-        } else {
-          supabaseSuccess = true;
-        }
-
-        // Also save folder metadata to Supabase if hospital name is provided
-        if (trimmedRs) {
-          const prefixes = Array.from(new Set(labelsToGenerate.map(lbl => lbl.split('.')[0])));
-          for (const prefix of prefixes) {
-            await saveFolderRsToSupabase(prefix, trimmedRs);
-            // Update local storage map
-            try {
-              const currentMap = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
-              currentMap[prefix] = trimmedRs;
-              localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(currentMap));
-            } catch (_) {}
-          }
-        }
-      } catch (supaErr) {
-        console.warn('Supabase bulk save warning:', supaErr);
+      const supaRes = await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
+      if (supaRes.error) {
+        console.warn('Supabase bulk save warning:', supaRes.error.message);
       }
 
       // 2. Sync to API backend (Cloud SQL) in parallel / background
-      try {
-        fetch('/api/labels/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: itemsToSave })
-        }).catch(err => console.warn('API bulk sync deferred:', err));
-
-        if (trimmedRs) {
-          const prefixes = Array.from(new Set(labelsToGenerate.map(lbl => lbl.split('.')[0])));
-          for (const prefix of prefixes) {
-            fetch(`/api/folders/${prefix}/nama-rs`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ namaRs: trimmedRs }),
-            }).catch(() => {});
-          }
-        }
-      } catch (_) {}
+      fetch('/api/labels/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: itemsToSave })
+      }).catch(err => console.warn('API bulk sync deferred:', err));
 
       // 3. Update localStorage labels
       try {
@@ -202,7 +156,6 @@ export default function AdminGenerate() {
           existingMap.set(it.noLabel, {
             id: it.noLabel,
             noLabel: it.noLabel,
-            namaRs: it.namaRs,
             status: it.status,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -216,7 +169,6 @@ export default function AdminGenerate() {
       setNoLabel('');
       setStartLabel('');
       setEndLabel('');
-      setNamaRs('');
     } catch (err: any) {
       setError(err.message || 'Gagal menyimpan label.');
     } finally {
@@ -367,21 +319,6 @@ export default function AdminGenerate() {
             </div>
 
             <form onSubmit={handleGenerate} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1.5">
-                  <Building2 className="w-4 h-4 text-amber-600" />
-                  Nama RS / Rumah Sakit
-                </label>
-                <input
-                  type="text"
-                  value={namaRs}
-                  onChange={(e) => setNamaRs(e.target.value)}
-                  className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none text-sm placeholder:text-slate-400"
-                  placeholder="Contoh: RSUD Dr. Soetomo Surabaya"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">Nama RS akan dikaitkan pada label dan ditampilkan pada folder.</p>
-              </div>
-
               {mode === 'single' ? (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">No Label</label>

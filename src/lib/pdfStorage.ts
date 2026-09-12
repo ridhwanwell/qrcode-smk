@@ -105,14 +105,9 @@ export async function linkGoogleDriveToLabel(
       updated_at: new Date().toISOString()
     };
 
-    if (dates?.namaRs !== undefined) {
-      supaPayload.nama_rs = dates.namaRs;
-    }
-
     const res = await supabase.from('labels').upsert(supaPayload, { onConflict: 'no_label' });
-    if (res.error && res.error.message?.includes('nama_rs')) {
-      delete supaPayload.nama_rs;
-      await supabase.from('labels').upsert(supaPayload, { onConflict: 'no_label' });
+    if (res.error) {
+      console.warn('Supabase linkGoogleDriveToLabel warning:', res.error.message);
     }
   } catch (err) {
     console.warn('Supabase linkGoogleDriveToLabel error:', err);
@@ -145,13 +140,9 @@ export async function updateLabelDates(
       valid_until: validUntil,
       updated_at: new Date().toISOString()
     };
-    if (namaRs !== undefined) {
-      supaPayload.nama_rs = namaRs;
-    }
     const res = await supabase.from('labels').update(supaPayload).eq('no_label', labelId);
-    if (res.error && res.error.message?.includes('nama_rs')) {
-      delete supaPayload.nama_rs;
-      await supabase.from('labels').update(supaPayload).eq('no_label', labelId);
+    if (res.error) {
+      console.warn('Supabase updateLabelDates warning:', res.error.message);
     }
   } catch (err) {
     console.warn('Supabase updateLabelDates error:', err);
