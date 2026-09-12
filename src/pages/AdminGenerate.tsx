@@ -25,7 +25,13 @@ export default function AdminGenerate() {
   // Generated result state
   const [generatedLabels, setGeneratedLabels] = useState<string[]>([]);
   const [labelType, setLabelType] = useState<'kecil' | 'besar'>('kecil');
-  const [templateConfigs, setTemplateConfigs] = useState<any>(null);
+  const [templateConfigs, setTemplateConfigs] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('smk_template_configs');
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return null;
+  });
 
   const getSuggestedPublicOrigin = () => {
     const origin = window.location.origin;
@@ -51,6 +57,9 @@ export default function AdminGenerate() {
           if (tplData?.value) {
             const val = typeof tplData.value === 'string' ? JSON.parse(tplData.value) : tplData.value;
             setTemplateConfigs(val);
+            try {
+              localStorage.setItem('smk_template_configs', JSON.stringify(val));
+            } catch (_) {}
           }
         }
 

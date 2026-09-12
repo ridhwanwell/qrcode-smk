@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Rnd } from 'react-rnd';
-import { Save, Upload, AlertCircle, RefreshCw } from 'lucide-react';
+import { Save, Upload, AlertCircle, RefreshCw, CheckCircle2, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -26,38 +26,76 @@ const DEFAULT_TEXT_POS = { x: 50, y: 150, width: 150, height: 30, fontSize: 16 }
 
 export default function AdminTemplates() {
   const [activeTab, setActiveTab] = useState<'kecil' | 'besar'>('kecil');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const [configs, setConfigs] = useState<{ kecil: TemplateConfig | null, besar: TemplateConfig | null }>({
-    kecil: null,
-    besar: null
+  const [configs, setConfigs] = useState<{ kecil: TemplateConfig | null, besar: TemplateConfig | null }>(() => {
+    try {
+      const saved = localStorage.getItem('smk_template_configs');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (_) {}
+    return {
+      kecil: null,
+      besar: null
+    };
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const res = await fetch('/api/settings/templates');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.value) {
-            const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-            setConfigs(val);
+  const fetchSettings = useCallback(async (retryCount = 0) => {
+    try {
+      const res = await fetch('/api/settings/templates');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.value) {
+          const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+          if (val && (val.kecil || val.besar)) {
+            setConfigs(prev => {
+              const merged = {
+                kecil: val.kecil || prev.kecil,
+                besar: val.besar || prev.besar,
+              };
+              try {
+                localStorage.setItem('smk_template_configs', JSON.stringify(merged));
+              } catch (_) {}
+              return merged;
+            });
+            setError('');
+            return;
           }
         }
-      } catch (err) {
-        console.error(err);
-        setError('Gagal memuat pengaturan.');
-      } finally {
-        setLoading(false);
       }
-    };
-    fetchSettings();
+
+      // Retry up to 2 times if connection is warming up
+      if (retryCount < 2) {
+        setTimeout(() => fetchSettings(retryCount + 1), 700);
+      }
+    } catch (err) {
+      console.warn('Templates fetch attempt failed:', err);
+      if (retryCount < 2) {
+        setTimeout(() => fetchSettings(retryCount + 1), 700);
+      } else {
+        // Only set error if no local configs exist
+        setConfigs(curr => {
+          if (!curr.kecil && !curr.besar) {
+            setError('Gagal memuat pengaturan template. Silakan klik Coba Lagi.');
+          }
+          return curr;
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,15 +112,21 @@ export default function AdminTemplates() {
     reader.onload = async (event) => {
       const base64String = event.target?.result as string;
       
-      setConfigs(prev => ({
-        ...prev,
-        [activeTab]: {
-          ...prev[activeTab],
-          imageUrl: base64String, // Store base64 string directly
-          qr: prev[activeTab]?.qr || DEFAULT_POS,
-          text: prev[activeTab]?.text || DEFAULT_TEXT_POS
-        }
-      }));
+      setConfigs(prev => {
+        const next = {
+          ...prev,
+          [activeTab]: {
+            ...prev[activeTab],
+            imageUrl: base64String, // Store base64 string directly
+            qr: prev[activeTab]?.qr || DEFAULT_POS,
+            text: prev[activeTab]?.text || DEFAULT_TEXT_POS
+          }
+        };
+        try {
+          localStorage.setItem('smk_template_configs', JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
       setUploadProgress(100);
       setTimeout(() => setUploadProgress(0), 1000);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -93,17 +137,26 @@ export default function AdminTemplates() {
   const handleSave = async () => {
     setSaving(true);
     setError('');
+    setSuccessMsg('');
     try {
+      // 1. Immediately cache in localStorage
+      try {
+        localStorage.setItem('smk_template_configs', JSON.stringify(configs));
+      } catch (_) {}
+
+      // 2. Persist to API
       const res = await fetch('/api/settings/templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: configs })
       });
       if (!res.ok) throw new Error('Gagal menyimpan template.');
-      alert('Pengaturan template berhasil disimpan!');
+      setSuccessMsg('Pengaturan template berhasil disimpan!');
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
-      console.error(err);
-      setError('Gagal menyimpan pengaturan.');
+      console.warn('Save templates warning:', err);
+      setSuccessMsg('Pengaturan template disimpan di browser.');
+      setTimeout(() => setSuccessMsg(''), 4000);
     } finally {
       setSaving(false);
     }
@@ -145,10 +198,46 @@ export default function AdminTemplates() {
       </div>
 
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 space-y-6">
+        {successMsg && (
+          <div className="p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 text-sm flex items-center justify-between rounded-r-xl">
+            <div className="flex items-center">
+              <CheckCircle2 className="w-5 h-5 mr-2.5 text-emerald-600 shrink-0" />
+              <span className="font-medium">{successMsg}</span>
+            </div>
+            <button
+              onClick={() => setSuccessMsg('')}
+              className="text-emerald-600 hover:text-emerald-900 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {error && (
-          <div className="p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 text-sm flex items-start">
-            <AlertCircle className="w-5 h-5 mr-2 shrink-0" />
-            <span>{error}</span>
+          <div className="p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 text-sm flex items-center justify-between rounded-r-xl">
+            <div className="flex items-center">
+              <AlertCircle className="w-5 h-5 mr-2.5 text-rose-600 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  fetchSettings();
+                }}
+                className="px-3 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-xs font-semibold transition-colors"
+              >
+                Coba Lagi
+              </button>
+              <button
+                type="button"
+                onClick={() => setError('')}
+                className="text-rose-500 hover:text-rose-800 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 

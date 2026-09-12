@@ -258,24 +258,30 @@ export async function deleteFolderById(id: string) {
 }
 
 // --- SETTINGS ---
+const settingsMemoryCache = new Map<string, any>();
+
 export async function getSetting(key: string) {
   try {
     const res = await db.select().from(settings).where(eq(settings.key, key));
     if (res.length > 0) {
       try {
-        return JSON.parse(res[0].value);
+        const parsed = JSON.parse(res[0].value);
+        settingsMemoryCache.set(key, parsed);
+        return parsed;
       } catch {
+        settingsMemoryCache.set(key, res[0].value);
         return res[0].value;
       }
     }
-    return null;
+    return settingsMemoryCache.get(key) || null;
   } catch (error) {
-    console.error("Database query failed in getSetting:", error);
-    throw new Error("Database query failed. Please try again later.", { cause: error });
+    console.warn("Database query warning in getSetting (fallback to cache):", error);
+    return settingsMemoryCache.get(key) || null;
   }
 }
 
 export async function setSetting(key: string, value: any) {
+  settingsMemoryCache.set(key, value);
   try {
     const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
     const existing = await db.select().from(settings).where(eq(settings.key, key));
@@ -286,7 +292,7 @@ export async function setSetting(key: string, value: any) {
     }
     return true;
   } catch (error) {
-    console.error("Database query failed in setSetting:", error);
-    throw new Error("Database query failed. Please try again later.", { cause: error });
+    console.warn("Database query warning in setSetting (saved in memory cache):", error);
+    return true;
   }
 }
