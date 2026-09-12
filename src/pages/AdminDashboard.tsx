@@ -57,35 +57,48 @@ CREATE POLICY "Service Role Full Access" ON public.labels
 
   const fetchLabels = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      // 1. Fetch Cloud SQL API labels
+      let apiMap: Record<string, any> = {};
+      try {
+        const res = await fetch('/api/labels');
+        if (res.ok) {
+          const apiData = await res.json();
+          (apiData || []).forEach((d: any) => {
+            const key = d.noLabel || d.no_label;
+            if (key) apiMap[key] = d;
+          });
+        }
+      } catch (_) {}
+
+      // 2. Fetch Supabase labels
+      const { data } = await supabase
         .from('labels')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (data && data.length > 0) {
-        setLabels(data.map((d: any) => ({
-          id: d.no_label,
-          noLabel: d.no_label,
-          namaRs: d.nama_rs || d.namaRs || null,
-          status: d.status,
-          pdfSource: d.pdf_source,
-          pdfUrl: d.pdf_url,
-          pdfDriveUrl: d.pdf_drive_url,
-          pdfName: d.pdf_name,
-          calibratedAt: d.calibrated_at,
-          validUntil: d.valid_until,
-          createdAt: d.created_at,
-          updatedAt: d.updated_at
-        })));
+        setLabels(data.map((d: any) => {
+          const local = apiMap[d.no_label] || {};
+          return {
+            id: d.no_label,
+            noLabel: d.no_label,
+            namaRs: local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || null,
+            status: d.status || local.status,
+            pdfSource: d.pdf_source || local.pdfSource,
+            pdfUrl: d.pdf_url || local.pdfUrl,
+            pdfDriveUrl: d.pdf_drive_url || local.pdfDriveUrl,
+            pdfName: d.pdf_name || local.pdfName,
+            calibratedAt: d.calibrated_at || local.calibratedAt,
+            validUntil: d.valid_until || local.validUntil,
+            createdAt: d.created_at || local.createdAt,
+            updatedAt: d.updated_at || local.updatedAt
+          };
+        }));
       } else {
-        const res = await fetch('/api/labels');
-        if (res.ok) {
-          const apiLabels = await res.json();
-          setLabels((apiLabels || []).map((d: any) => ({
-            ...d,
-            namaRs: d.namaRs || d.nama_rs || null,
-          })));
-        }
+        setLabels(Object.values(apiMap).map((d: any) => ({
+          ...d,
+          namaRs: d.namaRs || d.nama_rs || null,
+        })));
       }
     } catch (err) {
       console.warn('Dashboard fetch error:', err);

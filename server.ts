@@ -14,13 +14,17 @@ import {
   upsertFolder,
   deleteFolderById,
   getSetting,
-  setSetting
+  setSetting,
+  getAllFolderHospitalNames,
+  getFolderHospitalName,
+  setFolderHospitalName
 } from "./src/db/queries.ts";
 import { 
   testSupabaseConnection, 
   syncLabelToSupabase, 
   deleteLabelFromSupabase, 
-  bulkSyncLabelsToSupabase 
+  bulkSyncLabelsToSupabase,
+  fetchAllLabelsFromSupabase
 } from "./src/lib/supabaseSync.ts";
 
 async function startServer() {
@@ -142,12 +146,23 @@ async function startServer() {
     }
   });
 
+  app.get("/api/folders/nama-rs", async (req, res) => {
+    try {
+      const map = await getAllFolderHospitalNames();
+      res.json(map);
+    } catch (err: any) {
+      console.error("API error in GET /api/folders/nama-rs:", err);
+      res.status(500).json({ error: "Failed to retrieve folder hospital names" });
+    }
+  });
+
   app.put("/api/folders/:prefix/nama-rs", async (req, res) => {
     try {
       const { prefix } = req.params;
       const { namaRs } = req.body;
-      const count = await updateLabelsNamaRsByPrefix(prefix, namaRs || null);
-      res.json({ success: true, count, namaRs });
+      const trimmed = typeof namaRs === 'string' ? namaRs.trim() : null;
+      const count = await updateLabelsNamaRsByPrefix(prefix, trimmed);
+      res.json({ success: true, count, namaRs: trimmed, prefix });
     } catch (err: any) {
       console.error("API error in PUT /api/folders/:prefix/nama-rs:", err);
       res.status(500).json({ error: "Failed to update hospital name for folder" });
@@ -251,6 +266,31 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+    
+    // Background backfill: sync any existing labels from Supabase to Cloud SQL
+    fetchAllLabelsFromSupabase().then(async (supaLabels) => {
+      if (supaLabels && supaLabels.length > 0) {
+        for (const item of supaLabels) {
+          if (item && item.no_label) {
+            try {
+              await upsertLabel({
+                noLabel: item.no_label,
+                status: item.status || 'Menunggu Sertifikat',
+                pdfSource: item.pdf_source || null,
+                pdfUrl: item.pdf_url || null,
+                pdfDriveUrl: item.pdf_drive_url || null,
+                pdfOriginalUrl: item.pdforiginal_url || null,
+                pdfName: item.pdf_name || null,
+                calibratedAt: item.calibrated_at || null,
+                validUntil: item.valid_until || null,
+              });
+            } catch {
+              // non-fatal
+            }
+          }
+        }
+      }
+    }).catch(() => {});
   });
 }
 

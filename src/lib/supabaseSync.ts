@@ -41,6 +41,26 @@ export async function testSupabaseConnection(): Promise<SupabaseSyncResult> {
 }
 
 /**
+ * Fetch all labels from Supabase
+ */
+export async function fetchAllLabelsFromSupabase(): Promise<any[]> {
+  try {
+    const { data, error } = await supabase
+      .from('labels')
+      .select('*')
+      .order('no_label', { ascending: true });
+    if (error) {
+      console.warn('fetchAllLabelsFromSupabase error:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn('fetchAllLabelsFromSupabase exception:', err);
+    return [];
+  }
+}
+
+/**
  * Synchronize a single label to Supabase
  */
 export async function syncLabelToSupabase(label: {

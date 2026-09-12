@@ -106,14 +106,22 @@ export default function AdminLabels() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   // Folder Hospital Name Editing State
+  const [folderRsMap, setFolderRsMap] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const [editingFolderRs, setEditingFolderRs] = useState<{ prefix: string; currentNamaRs: string } | null>(null);
   const [folderRsInput, setFolderRsInput] = useState('');
   const [savingFolderRs, setSavingFolderRs] = useState(false);
   const [folderRsError, setFolderRsError] = useState('');
 
   const openFolderRsModal = (prefix: string, currentNamaRs?: string | null) => {
-    setEditingFolderRs({ prefix, currentNamaRs: currentNamaRs || '' });
-    setFolderRsInput(currentNamaRs || '');
+    const existing = currentNamaRs || folderRsMap[prefix] || '';
+    setEditingFolderRs({ prefix, currentNamaRs: existing });
+    setFolderRsInput(existing);
     setFolderRsError('');
   };
 
@@ -130,11 +138,21 @@ export default function AdminLabels() {
     setFolderRsError('');
     try {
       const trimmed = folderRsInput.trim() || null;
+      const prefix = editingFolderRs.prefix;
       
-      // 1. Update local state immediately for instant feedback
+      // 1. Update local folderRsMap immediately
+      setFolderRsMap(prev => {
+        const next = { ...prev, [prefix]: trimmed || '' };
+        try {
+          localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
+
+      // 2. Update local state immediately for instant feedback
       setLabels(prev => {
         const updated = prev.map(l => {
-          if (extractLabelPrefix(l.noLabel) === editingFolderRs.prefix) {
+          if (extractLabelPrefix(l.noLabel) === prefix) {
             return { ...l, namaRs: trimmed };
           }
           return l;
@@ -145,8 +163,8 @@ export default function AdminLabels() {
         return updated;
       });
 
-      // 2. Update backend Cloud SQL
-      const res = await fetch(`/api/folders/${editingFolderRs.prefix}/nama-rs`, {
+      // 3. Update backend Cloud SQL
+      const res = await fetch(`/api/folders/${prefix}/nama-rs`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ namaRs: trimmed }),
@@ -156,12 +174,12 @@ export default function AdminLabels() {
         throw new Error(errData.error || 'Gagal menyimpan ke server.');
       }
 
-      // 3. Attempt to update Supabase asynchronously
+      // 4. Attempt to update Supabase asynchronously (non-fatal)
       try {
         await supabase
           .from('labels')
           .update({ nama_rs: trimmed, updated_at: new Date().toISOString() })
-          .like('no_label', `${editingFolderRs.prefix}.%`);
+          .like('no_label', `${prefix}.%`);
       } catch (sbErr) {
         console.warn('Supabase update non-fatal:', sbErr);
       }
@@ -177,15 +195,29 @@ export default function AdminLabels() {
 
   const fetchLabels = useCallback(async () => {
     try {
-      // 1. Fetch Cloud SQL / local API labels
+      // 1. Fetch Cloud SQL / local API labels and folder RS map
       let apiMap: Record<string, any> = {};
+      let remoteFolderMap: Record<string, string> = {};
       try {
-        const res = await fetch('/api/labels');
-        if (res.ok) {
-          const apiData = await res.json();
+        const [labelsRes, foldersRes] = await Promise.all([
+          fetch('/api/labels'),
+          fetch('/api/folders/nama-rs')
+        ]);
+        if (labelsRes.ok) {
+          const apiData = await labelsRes.json();
           (apiData || []).forEach((d: any) => {
             const key = d.noLabel || d.no_label;
             if (key) apiMap[key] = d;
+          });
+        }
+        if (foldersRes.ok) {
+          remoteFolderMap = await foldersRes.json();
+          setFolderRsMap(prev => {
+            const merged = { ...prev, ...remoteFolderMap };
+            try {
+              localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(merged));
+            } catch (_) {}
+            return merged;
           });
         }
       } catch (apiErr) {
@@ -201,10 +233,13 @@ export default function AdminLabels() {
       if (data && data.length > 0) {
         const formatted = data.map((d: any) => {
           const local = apiMap[d.no_label] || {};
+          const prefix = extractLabelPrefix(d.no_label);
+          const effectiveNamaRs = local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || remoteFolderMap[prefix] || folderRsMap[prefix] || null;
+
           return {
             id: d.no_label,
             noLabel: d.no_label,
-            namaRs: d.nama_rs || d.namaRs || local.namaRs || local.nama_rs || null,
+            namaRs: effectiveNamaRs,
             status: d.status || local.status || 'Menunggu Sertifikat',
             pdfSource: d.pdf_source || local.pdfSource || null,
             pdfUrl: d.pdf_url || local.pdfUrl || null,
@@ -306,8 +341,10 @@ export default function AdminLabels() {
         l.status === 'Sertifikat Tertaut' || l.hasPdf || !!l.pdfUrl || l.pdfSource === 'drive'
       ).length;
 
-      // Find hospital name associated with any label in this folder
-      const namaRs = sortedItems.find(l => l.namaRs && l.namaRs.trim())?.namaRs || null;
+      // Find hospital name associated with folder (from folderRsMap or any label in this folder)
+      const namaRs = (folderRsMap[prefix] && folderRsMap[prefix].trim())
+        || sortedItems.find(l => l.namaRs && l.namaRs.trim())?.namaRs 
+        || null;
 
       return {
         prefix,
@@ -325,7 +362,7 @@ export default function AdminLabels() {
     return list.sort((a, b) => 
       a.prefix.localeCompare(b.prefix, undefined, { numeric: true, sensitivity: 'base' })
     );
-  }, [labels]);
+  }, [labels, folderRsMap]);
 
   // Determine active folder object
   const activeFolder = useMemo(() => {

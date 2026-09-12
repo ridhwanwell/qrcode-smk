@@ -127,13 +127,23 @@ export default function PublicScanPage() {
         }
       }
 
-      // 2. Fallback to API backend if not found
+      // 2. Fallback or enrich with API backend (Cloud SQL has namaRs & folder hospital name)
       if (!found) {
         const res = await fetch(`/api/labels/${encodeURIComponent(cleanNoLabel)}`);
         if (res.ok) {
           const apiLabel = await res.json();
           if (apiLabel) found = apiLabel;
         }
+      } else if (!found.namaRs) {
+        try {
+          const res = await fetch(`/api/labels/${encodeURIComponent(found.noLabel)}`);
+          if (res.ok) {
+            const apiLabel = await res.json();
+            if (apiLabel?.namaRs) {
+              found.namaRs = apiLabel.namaRs;
+            }
+          }
+        } catch (_) {}
       }
 
       if (found) {

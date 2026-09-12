@@ -3,9 +3,68 @@ import { labels, labelFolders, templates, settings, users } from './schema.ts';
 import { eq, desc } from 'drizzle-orm';
 
 // --- LABELS ---
+export async function getAllFolderHospitalNames(): Promise<Record<string, string>> {
+  try {
+    const all = await db.select().from(settings);
+    const map: Record<string, string> = {};
+    for (const item of all) {
+      if (item.key.startsWith('folder_rs:')) {
+        const prefix = item.key.replace('folder_rs:', '');
+        try {
+          const val = typeof item.value === 'string' ? item.value : JSON.parse(item.value);
+          if (val && typeof val === 'string') {
+            map[prefix] = val;
+          }
+        } catch {
+          map[prefix] = item.value;
+        }
+      }
+    }
+    return map;
+  } catch (err) {
+    console.error('Failed to get all folder hospital names:', err);
+    return {};
+  }
+}
+
+export async function getFolderHospitalName(prefix: string): Promise<string | null> {
+  try {
+    const val = await getSetting(`folder_rs:${prefix}`);
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setFolderHospitalName(prefix: string, namaRs: string | null) {
+  try {
+    const trimmed = namaRs?.trim() || '';
+    await setSetting(`folder_rs:${prefix}`, trimmed);
+    return true;
+  } catch (err) {
+    console.error(`Failed to set folder hospital name for ${prefix}:`, err);
+    return false;
+  }
+}
+
 export async function getAllLabels() {
   try {
-    return await db.select().from(labels).orderBy(desc(labels.createdAt));
+    const items = await db.select().from(labels).orderBy(desc(labels.createdAt));
+    const folderRsMap = await getAllFolderHospitalNames();
+    
+    // Automatically inherit folder hospital name if label has none
+    return items.map(item => {
+      if (!item.namaRs || !item.namaRs.trim()) {
+        const prefix = item.noLabel.includes('.') ? item.noLabel.split('.')[0] : item.noLabel;
+        if (folderRsMap[prefix]) {
+          return { ...item, namaRs: folderRsMap[prefix] };
+        }
+      }
+      return item;
+    });
   } catch (error) {
     console.error("Database query failed in getAllLabels:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
@@ -15,7 +74,18 @@ export async function getAllLabels() {
 export async function getLabelByNo(noLabel: string) {
   try {
     const result = await db.select().from(labels).where(eq(labels.noLabel, noLabel));
-    return result[0] || null;
+    if (result.length > 0) {
+      const item = result[0];
+      if (!item.namaRs || !item.namaRs.trim()) {
+        const prefix = item.noLabel.includes('.') ? item.noLabel.split('.')[0] : item.noLabel;
+        const folderRs = await getFolderHospitalName(prefix);
+        if (folderRs) {
+          return { ...item, namaRs: folderRs };
+        }
+      }
+      return item;
+    }
+    return null;
   } catch (error) {
     console.error("Database query failed in getLabelByNo:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
@@ -35,11 +105,23 @@ export async function upsertLabel(data: {
   validUntil?: string | null;
 }) {
   try {
+    const prefix = data.noLabel.includes('.') ? data.noLabel.split('.')[0] : data.noLabel;
+    const folderRs = await getFolderHospitalName(prefix);
+
+    // If namaRs is provided, also set as folder RS if not yet set
+    if (data.namaRs && data.namaRs.trim() && !folderRs) {
+      await setFolderHospitalName(prefix, data.namaRs.trim());
+    }
+
+    const effectiveNamaRs = data.namaRs !== undefined 
+      ? (data.namaRs || (folderRs || null))
+      : (folderRs || null);
+
     const existing = await getLabelByNo(data.noLabel);
     if (existing) {
       const updated = await db.update(labels)
         .set({
-          namaRs: data.namaRs !== undefined ? data.namaRs : existing.namaRs,
+          namaRs: data.namaRs !== undefined ? effectiveNamaRs : (existing.namaRs || effectiveNamaRs),
           status: data.status !== undefined ? data.status : existing.status,
           pdfSource: data.pdfSource !== undefined ? data.pdfSource : existing.pdfSource,
           pdfUrl: data.pdfUrl !== undefined ? data.pdfUrl : existing.pdfUrl,
@@ -57,7 +139,7 @@ export async function upsertLabel(data: {
       const inserted = await db.insert(labels)
         .values({
           noLabel: data.noLabel,
-          namaRs: data.namaRs || null,
+          namaRs: effectiveNamaRs,
           status: data.status || 'Menunggu Sertifikat',
           pdfSource: data.pdfSource || null,
           pdfUrl: data.pdfUrl || null,
@@ -114,12 +196,16 @@ export async function deleteBatchLabelsByNos(nos: string[]) {
 
 export async function updateLabelsNamaRsByPrefix(prefix: string, namaRs: string | null) {
   try {
-    // Prefix e.g. "001" matches "001.%"
-    const all = await getAllLabels();
+    const trimmed = namaRs?.trim() || null;
+    // 1. Permanently store hospital name for this folder prefix in settings
+    await setFolderHospitalName(prefix, trimmed);
+
+    // 2. Update all matching labels in Cloud SQL
+    const all = await db.select().from(labels);
     const matching = all.filter(l => l.noLabel.startsWith(prefix + '.') || l.noLabel === prefix);
     for (const item of matching) {
       await db.update(labels)
-        .set({ namaRs: namaRs || null, updatedAt: new Date() })
+        .set({ namaRs: trimmed, updatedAt: new Date() })
         .where(eq(labels.noLabel, item.noLabel));
     }
     return matching.length;
