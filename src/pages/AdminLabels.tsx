@@ -130,23 +130,31 @@ export default function AdminLabels() {
     setFolderRsError('');
     try {
       const trimmed = folderRsInput.trim() || null;
-      // 1. Update backend Cloud SQL
+      
+      // 1. Update local state immediately for instant feedback
+      setLabels(prev => {
+        const updated = prev.map(l => {
+          if (extractLabelPrefix(l.noLabel) === editingFolderRs.prefix) {
+            return { ...l, namaRs: trimmed };
+          }
+          return l;
+        });
+        try {
+          localStorage.setItem('smk_labels', JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
+
+      // 2. Update backend Cloud SQL
       const res = await fetch(`/api/folders/${editingFolderRs.prefix}/nama-rs`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ namaRs: trimmed }),
       });
       if (!res.ok) {
-        throw new Error('Gagal menyimpan ke server.');
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gagal menyimpan ke server.');
       }
-
-      // 2. Update local state immediately
-      setLabels(prev => prev.map(l => {
-        if (extractLabelPrefix(l.noLabel) === editingFolderRs.prefix) {
-          return { ...l, namaRs: trimmed };
-        }
-        return l;
-      }));
 
       // 3. Attempt to update Supabase asynchronously
       try {
