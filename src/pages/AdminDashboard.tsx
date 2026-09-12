@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { FileText, Clock, CheckCircle2, Tags, Database, RefreshCw, Copy, Check, ExternalLink, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { cn } from '../lib/utils';
 
 const formatDateSafe = (dateVal: any) => {
   if (!dateVal) return '-';
@@ -319,30 +320,30 @@ CREATE POLICY "Service Role Full Access" ON public.labels
           <h3 className="text-lg font-bold text-slate-800">Label Terbaru</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-slate-500 font-medium">
+          <table className="w-full text-left text-xs text-slate-600">
+            <thead className="bg-slate-50/90 text-slate-500 font-semibold border-b border-slate-200 text-[11px] uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4">No Label</th>
-                <th className="px-6 py-4">Rumah Sakit</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Tanggal Dibuat</th>
-                <th className="px-6 py-4 text-right">Aksi</th>
+                <th className="px-3 py-3 whitespace-nowrap">No Label</th>
+                <th className="px-3 py-3 whitespace-nowrap">Rumah Sakit</th>
+                <th className="px-3 py-3 whitespace-nowrap">Status</th>
+                <th className="px-3 py-3 whitespace-nowrap">Tanggal Dibuat</th>
+                <th className="px-3 py-3 text-right whitespace-nowrap">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">Memuat data...</td>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">Memuat data...</td>
                 </tr>
               ) : labels.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">Belum ada label.</td>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">Belum ada label.</td>
                 </tr>
               ) : (
                 labels.slice(0, 10).map((label) => (
-                  <tr key={label.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-800 font-mono">{label.noLabel}</td>
-                    <td className="px-6 py-4 text-slate-700">
+                  <tr key={label.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="px-3 py-2.5 font-bold text-slate-800 font-mono text-xs">{label.noLabel}</td>
+                    <td className="px-3 py-2.5 text-slate-700">
                       {label.namaRs ? (
                         <span className="font-semibold text-slate-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80 text-xs">
                           {label.namaRs}
@@ -351,20 +352,21 @@ CREATE POLICY "Service Role Full Access" ON public.labels
                         <span className="text-slate-400 italic text-xs">-</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={cn(
+                        "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium",
                         label.status === 'Sertifikat Tertaut' 
-                          ? 'bg-emerald-100 text-emerald-800' 
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' 
+                          : 'bg-amber-50 text-amber-700 border border-amber-200/60'
+                      )}>
                         {label.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-xs text-slate-500">
+                    <td className="px-3 py-2.5 text-xs text-slate-500 font-mono whitespace-nowrap">
                       {formatDateSafe(label.createdAt)}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                       <a href={`/sertifikat/${label.noLabel}`} target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:text-amber-700 font-medium text-xs">
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                       <a href={`/sertifikat/${label.noLabel}`} target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:text-amber-700 font-medium text-xs hover:underline">
                          Lihat Publik
                        </a>
                     </td>

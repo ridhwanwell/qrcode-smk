@@ -849,23 +849,23 @@ export default function AdminLabels() {
 
           {/* Table of Files inside Active Folder */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto min-h-[400px]">
-              <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200/80">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50/90 text-slate-500 font-semibold border-b border-slate-200 text-[11px] uppercase tracking-wider">
                   <tr>
-                    <th className="px-6 py-4">Nomor Label</th>
-                    <th className="px-6 py-4">Rumah Sakit</th>
-                    <th className="px-6 py-4">Status Sertifikat</th>
-                    <th className="px-6 py-4">Tipe & Dokumen</th>
-                    <th className="px-6 py-4">Pada Tanggal</th>
-                    <th className="px-6 py-4">Berlaku Hingga</th>
-                    <th className="px-6 py-4 text-right">Aksi</th>
+                    <th className="px-3 py-3 whitespace-nowrap">Nomor Label</th>
+                    <th className="px-3 py-3 whitespace-nowrap">Rumah Sakit</th>
+                    <th className="px-3 py-3 whitespace-nowrap">Status</th>
+                    <th className="px-3 py-3">Dokumen Sertifikat</th>
+                    <th className="px-2.5 py-3 whitespace-nowrap">Kalibrasi</th>
+                    <th className="px-2.5 py-3 whitespace-nowrap">Expired</th>
+                    <th className="px-3 py-3 text-right whitespace-nowrap">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredFolderItems.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                         {folderSearch ? `Tidak ada label yang cocok dengan "${folderSearch}" di folder ini.` : 'Folder ini kosong.'}
                       </td>
                     </tr>
@@ -875,92 +875,92 @@ export default function AdminLabels() {
                       const hasCertificate = label.status === 'Sertifikat Tertaut' || label.hasPdf || !!label.pdfUrl || isDrive;
 
                       return (
-                        <tr key={label.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-slate-900 font-mono text-sm">{label.noLabel}</div>
-                            <div className="flex items-center gap-2 mt-1">
+                        <tr key={label.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <div className="font-bold text-slate-900 font-mono text-xs">{label.noLabel}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
                               <button
                                 type="button"
                                 onClick={() => window.open(`/sertifikat/${label.noLabel}`, '_blank')}
-                                className="inline-flex items-center text-[11px] text-amber-600 hover:text-amber-800 font-medium hover:underline"
+                                className="inline-flex items-center text-[10px] text-amber-600 hover:text-amber-800 font-medium hover:underline"
                                 title="Buka halaman verifikasi scan publik"
                               >
-                                <ExternalLink className="w-3 h-3 mr-1" /> Tes Scan
+                                <ExternalLink className="w-2.5 h-2.5 mr-0.5" /> Tes Scan
                               </button>
                               <span className="text-slate-300">•</span>
                               <button
                                 type="button"
                                 onClick={() => handleCopyScanLink(label.noLabel)}
-                                className="inline-flex items-center text-[11px] text-slate-500 hover:text-slate-800"
+                                className="inline-flex items-center text-[10px] text-slate-500 hover:text-slate-800"
                                 title="Salin tautan scan"
                               >
                                 {copiedId === label.noLabel ? (
                                   <span className="text-emerald-600 font-semibold flex items-center">
-                                    <Check className="w-3 h-3 mr-0.5" /> Tersalin
+                                    <Check className="w-2.5 h-2.5 mr-0.5" /> Tersalin
                                   </span>
                                 ) : (
                                   <>
-                                    <Copy className="w-3 h-3 mr-1" /> Salin Link
+                                    <Copy className="w-2.5 h-2.5 mr-0.5" /> Salin Link
                                   </>
                                 )}
                               </button>
                             </div>
                           </td>
 
-                          <td className="px-6 py-4">
+                          <td className="px-3 py-2.5">
                             {label.namaRs ? (
-                              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-800">
-                                <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                <span>{label.namaRs}</span>
+                              <div className="flex items-center gap-1 text-xs font-medium text-slate-800 max-w-[130px] truncate" title={label.namaRs}>
+                                <Building2 className="w-3 h-3 text-amber-500 shrink-0" />
+                                <span className="truncate">{label.namaRs}</span>
                               </div>
                             ) : (
                               <span className="text-xs text-slate-400 italic">-</span>
                             )}
                           </td>
 
-                          <td className="px-6 py-4">
+                          <td className="px-3 py-2.5 whitespace-nowrap">
                             <span className={cn(
-                              "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold",
+                              "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
                               hasCertificate 
-                                ? "bg-emerald-100 text-emerald-800" 
-                                : "bg-amber-100 text-amber-800"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60" 
+                                : "bg-amber-50 text-amber-700 border border-amber-200/60"
                             )}>
-                              {hasCertificate ? <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> : <Clock className="w-3.5 h-3.5 mr-1" />}
+                              {hasCertificate ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
                               {hasCertificate ? 'Sertifikat Tertaut' : 'Menunggu Sertifikat'}
                             </span>
                           </td>
 
-                          <td className="px-6 py-4">
+                          <td className="px-3 py-2.5">
                             {hasCertificate ? (
-                              <div className="flex flex-col gap-1">
+                              <div className="flex flex-col gap-0.5 max-w-[180px]">
                                 <button 
                                   onClick={() => handleViewPdf(label)}
                                   disabled={viewingId === label.id}
-                                  className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium hover:underline disabled:opacity-50 text-left"
+                                  className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium hover:underline disabled:opacity-50 text-left text-xs truncate"
                                 >
                                   {viewingId === label.id ? (
                                     <>
-                                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                                      Membuka...
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin shrink-0" />
+                                      <span className="truncate">Membuka...</span>
                                     </>
                                   ) : isDrive ? (
                                     <>
-                                      <Globe className="w-4 h-4 mr-1.5 text-blue-500 shrink-0" />
-                                      <span className="truncate max-w-[200px]" title={label.pdfName || 'Google Drive'}>
+                                      <Globe className="w-3 h-3 mr-1 text-blue-500 shrink-0" />
+                                      <span className="truncate" title={label.pdfName || 'Google Drive'}>
                                         {label.pdfName || 'Link Google Drive'}
                                       </span>
                                     </>
                                   ) : (
                                     <>
-                                      <FileText className="w-4 h-4 mr-1.5 text-emerald-500 shrink-0" /> 
-                                      <span className="truncate max-w-[200px]" title={label.pdfName || 'File PDF'}>
+                                      <FileText className="w-3 h-3 mr-1 text-emerald-500 shrink-0" /> 
+                                      <span className="truncate" title={label.pdfName || 'File PDF'}>
                                         {label.pdfName || 'Lihat PDF'}
                                       </span>
                                     </>
                                   )}
                                 </button>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {isDrive ? 'Sumber: Google Drive Link' : (label.pdfSize ? `${(label.pdfSize / 1024).toFixed(0)} KB (File)` : 'Database File')}
+                                <span className="text-[10px] text-slate-400 font-mono truncate">
+                                  {isDrive ? 'Sumber: Google Drive Link' : (label.pdfSize ? `${(label.pdfSize / 1024).toFixed(0)} KB` : 'File')}
                                 </span>
                               </div>
                             ) : (
@@ -968,35 +968,35 @@ export default function AdminLabels() {
                             )}
                           </td>
 
-                          <td className="px-6 py-4 text-slate-700 text-xs font-mono font-medium">
+                          <td className="px-2.5 py-2.5 text-slate-600 text-[11px] font-mono whitespace-nowrap">
                             {label.calibratedAt || '-'}
                           </td>
 
-                          <td className="px-6 py-4 text-slate-700 text-xs font-mono font-medium">
+                          <td className="px-2.5 py-2.5 text-slate-600 text-[11px] font-mono whitespace-nowrap">
                             {label.validUntil || '-'}
                           </td>
 
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button 
                                 type="button"
                                 onClick={() => openLinkModal(label)}
                                 className={cn(
-                                  "inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-sm",
+                                  "inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors shadow-sm whitespace-nowrap",
                                   hasCertificate
                                     ? "bg-slate-100 hover:bg-slate-200 text-slate-700"
                                     : "bg-blue-600 hover:bg-blue-700 text-white"
                                 )}
                                 title={hasCertificate ? "Ubah Link Google Drive Sertifikat" : "Tautkan Link Google Drive Sertifikat"}
                               >
-                                <Link2 className="w-3.5 h-3.5 mr-1" />
+                                <Link2 className="w-3 h-3 mr-1 shrink-0" />
                                 {hasCertificate ? 'Ubah Link' : 'Tautkan Link'}
                               </button>
                               {hasCertificate && (
                                 <button 
                                   type="button"
                                   onClick={() => promptDeleteCert(label)}
-                                  className="inline-flex items-center px-2 py-1.5 text-xs font-medium bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"
+                                  className="p-1 text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
                                   title="Lepas / Hapus Sertifikat"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1005,7 +1005,7 @@ export default function AdminLabels() {
                               <button 
                                 type="button"
                                 onClick={() => promptDeleteLabel(label)}
-                                className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                                 title="Hapus Label Ini"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
