@@ -140,7 +140,8 @@ export default function AdminGenerate() {
         body: JSON.stringify({ items: itemsToSave })
       });
       if (!res.ok) {
-        throw new Error('Gagal menyimpan label ke server.');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Gagal menyimpan label ke server.');
       }
 
       // 2. Upsert to Supabase
