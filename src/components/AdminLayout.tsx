@@ -16,10 +16,12 @@ export default function AdminLayout() {
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-10 shrink-0 border-r border-slate-800">
         <div className="h-20 flex items-center px-6 border-b border-slate-800">
-          <Verified className="w-8 h-8 text-amber-500 mr-3 shrink-0" />
+          <div className="h-10 px-2 bg-white/95 rounded-xl flex items-center justify-center mr-3 shrink-0 shadow-sm border border-slate-700/50">
+            <img src={logoUrl} alt="Logo SMK" className="h-7 max-w-[85px] object-contain" />
+          </div>
           <div className="min-w-0">
-            <h1 className="text-lg font-bold text-slate-100 tracking-tight leading-none mb-1 truncate">SMK Kalibrasi</h1>
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Admin Panel</p>
+            <h1 className="text-base font-bold text-slate-100 tracking-tight leading-none mb-1 truncate">PT SMK</h1>
+            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Admin Panel</p>
           </div>
         </div>
 
@@ -112,8 +114,8 @@ export default function AdminLayout() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 hidden md:flex shadow-sm z-0">
           <div className="flex items-center gap-3">
-            <div className="h-10 px-2.5 bg-slate-900 rounded-xl flex items-center justify-center border border-slate-700 shadow-sm">
-              <img src={logoUrl} alt="Logo SMK" className="h-7 max-w-[100px] object-contain" />
+            <div className="h-11 px-3 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-sm">
+              <img src={logoUrl} alt="Logo SMK" className="h-8 max-w-[120px] object-contain" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-800">PT Sarana Multi Kalibrasi</h2>

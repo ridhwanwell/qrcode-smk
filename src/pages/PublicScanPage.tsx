@@ -258,13 +258,13 @@ export default function PublicScanPage() {
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
         <div className="max-w-4xl mx-auto px-4 md:px-8 py-3.5 relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-3.5 group shrink-0">
-            <div className="h-11 px-3 bg-slate-900 rounded-xl flex items-center justify-center shrink-0 shadow border border-slate-700 group-hover:border-slate-600 transition-colors">
+            <div className="h-11 px-3 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-sm border border-slate-200 group-hover:border-amber-400/50 transition-colors">
               <img 
                 src={logoUrl} 
                 alt="Logo PT. Sarana Multi Kalibrasi" 
                 className="h-8 max-w-[130px] object-contain"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/logo-smk.svg';
+                  (e.target as HTMLImageElement).src = '/logo-smk.webp';
                 }}
               />
             </div>

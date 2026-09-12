@@ -120,14 +120,16 @@ export default function LogoManagerModal({ isOpen, onClose }: LogoManagerModalPr
               {/* Dark Header Preview */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col items-center justify-center min-h-[100px] shadow-inner text-center">
                 <p className="text-[10px] text-slate-400 mb-2 font-mono">Tampilan Header Gelap</p>
-                <img 
-                  src={previewUrl} 
-                  alt="Preview Dark" 
-                  className="max-h-12 max-w-full object-contain filter drop-shadow"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = DEFAULT_LOGO_URL;
-                  }}
-                />
+                <div className="bg-white/95 px-3 py-1.5 rounded-lg border border-slate-700 shadow-sm flex items-center justify-center">
+                  <img 
+                    src={previewUrl} 
+                    alt="Preview Dark" 
+                    className="max-h-9 max-w-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = DEFAULT_LOGO_URL;
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Light Header Preview */}
@@ -149,12 +151,12 @@ export default function LogoManagerModal({ isOpen, onClose }: LogoManagerModalPr
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
             <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
               <Upload className="w-4 h-4 text-amber-600" />
-              1. Upload Logo dari Perangkat (PNG / JPG)
+              1. Upload Logo dari Perangkat (WebP / PNG / JPG)
             </h4>
-            <p className="text-xs text-slate-500">Pilih gambar logo transparan (.png) dari laptop atau HP Anda.</p>
+            <p className="text-xs text-slate-500">Pilih gambar logo transparan (.webp / .png) dari laptop atau HP Anda.</p>
             <label className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:border-amber-500 hover:bg-amber-50/50 text-slate-700 hover:text-amber-700 rounded-xl font-bold text-xs cursor-pointer transition-all shadow-sm">
               <Upload className="w-4 h-4" />
-              <span>Pilih File Gambar PNG / JPG...</span>
+              <span>Pilih File Logo (WebP / PNG / JPG / SVG)...</span>
               <input 
                 type="file" 
                 accept="image/png, image/jpeg, image/webp, image/svg+xml" 
@@ -167,8 +169,8 @@ export default function LogoManagerModal({ isOpen, onClose }: LogoManagerModalPr
           {/* Option 2: Reset to Default SMK Logo */}
           <div className="flex items-center justify-between p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
             <div>
-              <p className="text-xs font-bold text-amber-900">Logo Resmi SMK (Vector SVG)</p>
-              <p className="text-[11px] text-amber-700">Gunakan logo standar perak-biru PT Sarana Multi Kalibrasi</p>
+              <p className="text-xs font-bold text-amber-900">Logo Resmi SMK (WebP & SVG)</p>
+              <p className="text-[11px] text-amber-700">Gunakan logo standar resmi PT Sarana Multi Kalibrasi (Format WebP/SVG)</p>
             </div>
             <button
               onClick={handleResetDefault}

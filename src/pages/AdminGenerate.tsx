@@ -5,6 +5,7 @@ import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, External
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
+import { fetchTemplateConfigs } from '../lib/templateStorage';
 
 export default function AdminGenerate() {
   const navigate = useNavigate();
@@ -47,23 +48,14 @@ export default function AdminGenerate() {
   useEffect(() => {
     const fetchTemplatesAndSettings = async () => {
       try {
-        const [tplRes, genRes] = await Promise.all([
-          fetch('/api/settings/templates'),
-          fetch('/api/settings/general')
-        ]);
-
-        if (tplRes.ok) {
-          const tplData = await tplRes.json();
-          if (tplData?.value) {
-            const val = typeof tplData.value === 'string' ? JSON.parse(tplData.value) : tplData.value;
-            setTemplateConfigs(val);
-            try {
-              localStorage.setItem('smk_template_configs', JSON.stringify(val));
-            } catch (_) {}
-          }
+        // Fetch unified template configs directly from Supabase / cache
+        const tplConfigs = await fetchTemplateConfigs();
+        if (tplConfigs && (tplConfigs.kecil || tplConfigs.besar)) {
+          setTemplateConfigs(tplConfigs);
         }
 
-        if (genRes.ok) {
+        const genRes = await fetch('/api/settings/general').catch(() => null);
+        if (genRes && genRes.ok) {
           const genData = await genRes.json();
           if (genData?.value) {
             const val = typeof genData.value === 'string' ? JSON.parse(genData.value) : genData.value;

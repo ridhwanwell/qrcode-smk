@@ -3,26 +3,15 @@ import { Rnd } from 'react-rnd';
 import { Save, Upload, AlertCircle, RefreshCw, CheckCircle2, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { QRCodeSVG } from 'qrcode.react';
-
-interface ElementPos {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-interface TextPos extends ElementPos {
-  fontSize: number;
-}
-
-interface TemplateConfig {
-  imageUrl: string;
-  qr: ElementPos;
-  text: TextPos;
-}
-
-const DEFAULT_POS = { x: 50, y: 50, width: 64, height: 64 };
-const DEFAULT_TEXT_POS = { x: 50, y: 150, width: 150, height: 30, fontSize: 16 };
+import {
+  TemplateConfig,
+  TemplateConfigs,
+  DEFAULT_QR_POS,
+  DEFAULT_TEXT_POS,
+  getCachedTemplateConfigs,
+  fetchTemplateConfigs,
+  saveTemplateConfigs,
+} from '../lib/templateStorage';
 
 export default function AdminTemplates() {
   const [activeTab, setActiveTab] = useState<'kecil' | 'besar'>('kecil');
@@ -32,70 +21,34 @@ export default function AdminTemplates() {
   const [successMsg, setSuccessMsg] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const [configs, setConfigs] = useState<{ kecil: TemplateConfig | null, besar: TemplateConfig | null }>(() => {
-    try {
-      const saved = localStorage.getItem('smk_template_configs');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (_) {}
-    return {
-      kecil: null,
-      besar: null
-    };
-  });
+  const [configs, setConfigs] = useState<TemplateConfigs>(getCachedTemplateConfigs);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchSettings = useCallback(async (retryCount = 0) => {
+  const loadTemplates = useCallback(async () => {
     try {
-      const res = await fetch('/api/settings/templates');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.value) {
-          const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-          if (val && (val.kecil || val.besar)) {
-            setConfigs(prev => {
-              const merged = {
-                kecil: val.kecil || prev.kecil,
-                besar: val.besar || prev.besar,
-              };
-              try {
-                localStorage.setItem('smk_template_configs', JSON.stringify(merged));
-              } catch (_) {}
-              return merged;
-            });
-            setError('');
-            return;
-          }
+      const data = await fetchTemplateConfigs();
+      if (data && (data.kecil || data.besar)) {
+        setConfigs(data);
+        setError('');
+      }
+    } catch (err: any) {
+      console.warn('Error fetching unified templates:', err);
+      // Only set error if no local config exists
+      setConfigs(curr => {
+        if (!curr.kecil && !curr.besar) {
+          setError('Gagal memuat pengaturan template dari database. Silakan klik Coba Lagi.');
         }
-      }
-
-      // Retry up to 2 times if connection is warming up
-      if (retryCount < 2) {
-        setTimeout(() => fetchSettings(retryCount + 1), 700);
-      }
-    } catch (err) {
-      console.warn('Templates fetch attempt failed:', err);
-      if (retryCount < 2) {
-        setTimeout(() => fetchSettings(retryCount + 1), 700);
-      } else {
-        // Only set error if no local configs exist
-        setConfigs(curr => {
-          if (!curr.kecil && !curr.besar) {
-            setError('Gagal memuat pengaturan template. Silakan klik Coba Lagi.');
-          }
-          return curr;
-        });
-      }
+        return curr;
+      });
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
+    loadTemplates();
+  }, [loadTemplates]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -107,18 +60,17 @@ export default function AdminTemplates() {
     }
 
     setError('');
-    // Read the file as Data URL to store directly (avoids html2canvas CORS issues)
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64String = event.target?.result as string;
       
       setConfigs(prev => {
-        const next = {
+        const next: TemplateConfigs = {
           ...prev,
           [activeTab]: {
             ...prev[activeTab],
-            imageUrl: base64String, // Store base64 string directly
-            qr: prev[activeTab]?.qr || DEFAULT_POS,
+            imageUrl: base64String,
+            qr: prev[activeTab]?.qr || DEFAULT_QR_POS,
             text: prev[activeTab]?.text || DEFAULT_TEXT_POS
           }
         };
@@ -139,23 +91,16 @@ export default function AdminTemplates() {
     setError('');
     setSuccessMsg('');
     try {
-      // 1. Immediately cache in localStorage
-      try {
-        localStorage.setItem('smk_template_configs', JSON.stringify(configs));
-      } catch (_) {}
-
-      // 2. Persist to API
-      const res = await fetch('/api/settings/templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: configs })
-      });
-      if (!res.ok) throw new Error('Gagal menyimpan template.');
-      setSuccessMsg('Pengaturan template berhasil disimpan!');
-      setTimeout(() => setSuccessMsg(''), 4000);
+      const result = await saveTemplateConfigs(configs);
+      if (result.success) {
+        setSuccessMsg('Pengaturan template berhasil disimpan ke database (tersinkronisasi untuk semua perangkat & akun)!');
+        setTimeout(() => setSuccessMsg(''), 5000);
+      } else {
+        throw new Error(result.error || 'Gagal menyimpan template');
+      }
     } catch (err: any) {
       console.warn('Save templates warning:', err);
-      setSuccessMsg('Pengaturan template disimpan di browser.');
+      setSuccessMsg('Template disimpan di memori & browser.');
       setTimeout(() => setSuccessMsg(''), 4000);
     } finally {
       setSaving(false);
@@ -224,7 +169,7 @@ export default function AdminTemplates() {
                 type="button"
                 onClick={() => {
                   setError('');
-                  fetchSettings();
+                  loadTemplates();
                 }}
                 className="px-3 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-xs font-semibold transition-colors"
               >

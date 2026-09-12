@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" width="600" height="300">
+  <defs>
+    <!-- Metallic Gradient for S and M -->
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8E949C" />
+      <stop offset="25%" stop-color="#6C7178" />
+      <stop offset="65%" stop-color="#3E4247" />
+      <stop offset="100%" stop-color="#1F2124" />
+    </linearGradient>
+
+    <!-- Silver Highlight Gradient for Upper Ring -->
+    <linearGradient id="silverOuter" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#666C73" />
+      <stop offset="40%" stop-color="#B5BAC2" />
+      <stop offset="70%" stop-color="#DCE0E5" />
+      <stop offset="100%" stop-color="#8A9098" />
+    </linearGradient>
+
+    <linearGradient id="silverInner" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#484C52" />
+      <stop offset="50%" stop-color="#8E949C" />
+      <stop offset="100%" stop-color="#555A61" />
+    </linearGradient>
+
+    <!-- Vibrant Electric Cyan to Blue Gradient for K and Lower Swoosh -->
+    <linearGradient id="cyanBlueGrad" x1="0%" y1="0%" x2="60%" y2="100%">
+      <stop offset="0%" stop-color="#00E5FF" />
+      <stop offset="45%" stop-color="#00B4FF" />
+      <stop offset="100%" stop-color="#006CE6" />
+    </linearGradient>
+
+    <linearGradient id="swooshGrad" x1="0%" y1="0%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#007BFF" />
+      <stop offset="30%" stop-color="#00C3FF" />
+      <stop offset="70%" stop-color="#00E5FF" />
+      <stop offset="100%" stop-color="#0088FF" />
+    </linearGradient>
+
+    <!-- Filter for slight bevel / crisp edge -->
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000000" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <g transform="translate(30, 45)">
+    <!-- 1. UPPER RING: OUTER SILVER CRESCENT (Arcs over M) -->
+    <path d="M 185,95 
+             C 210,40 265,15 315,22 
+             C 335,25 352,36 358,54 
+             C 362,68 355,88 335,115 
+             C 333,118 330,113 331,108 
+             C 345,78 340,50 318,36 
+             C 278,12 225,35 198,82 
+             C 192,92 186,98 185,95 Z" 
+          fill="url(#silverOuter)" />
+
+    <!-- 2. UPPER RING: INNER SILVER CRESCENT (Parallel accent below outer crescent) -->
+    <path d="M 235,52 
+             C 265,30 305,28 328,42 
+             C 342,50 346,65 338,82 
+             C 335,88 332,84 333,80 
+             C 340,65 334,54 322,46 
+             C 298,34 260,38 238,55 
+             C 233,59 230,56 235,52 Z" 
+          fill="url(#silverInner)" />
+
+    <!-- 3. LOWER RING: SMALL SILVER ACCENT UNDER 'S' -->
+    <path d="M 142,152 
+             C 148,162 160,172 182,176 
+             C 172,173 158,166 150,156 
+             C 146,151 143,148 142,152 Z" 
+          fill="url(#silverInner)" />
+
+    <!-- 4. LETTER 'S' - Eurostile Bold Extended -->
+    <path d="M 70,80 
+             C 70,72 76,68 86,68 
+             L 165,68 
+             C 175,68 181,74 181,84 
+             L 181,95 
+             L 142,95 
+             L 142,88 
+             C 142,86 140,84 136,84 
+             L 115,84 
+             C 111,84 109,86 109,88 
+             L 109,98 
+             C 109,102 112,104 116,105 
+             L 165,116 
+             C 176,118 181,126 181,136 
+             L 181,152 
+             C 181,162 175,168 165,168 
+             L 86,168 
+             C 76,168 70,162 70,152 
+             L 70,138 
+             L 109,138 
+             L 109,148 
+             C 109,150 111,152 115,152 
+             L 136,152 
+             C 140,152 142,150 142,148 
+             L 142,136 
+             C 142,132 139,130 135,129 
+             L 86,118 
+             C 75,116 70,108 70,98 
+             Z" 
+          fill="url(#metalGrad)" />
+
+    <!-- 5. LETTER 'M' - Eurostile Bold Extended -->
+    <path d="M 192,68 
+             L 230,68 
+             L 255,124 
+             L 280,68 
+             L 318,68 
+             L 318,168 
+             L 282,168 
+             L 282,108 
+             L 264,148 
+             L 246,148 
+             L 228,108 
+             L 228,168 
+             L 192,168 
+             Z" 
+          fill="url(#metalGrad)" />
+
+    <!-- 6. LETTER 'K' - Electric Cyan/Blue Bold Extended -->
+    <path d="M 330,68 
+             L 368,68 
+             L 368,106 
+             L 408,68 
+             L 452,68 
+             L 402,118 
+             L 458,168 
+             L 412,168 
+             L 378,132 
+             L 368,142 
+             L 368,168 
+             L 330,168 
+             Z" 
+          fill="url(#cyanBlueGrad)" />
+
+    <!-- 7. LOWER RING: DYNAMIC ELECTRIC CYAN-BLUE SWOOSH (Sweeps from under S to K) -->
+    <path d="M 135,142 
+             C 142,168 175,198 232,204 
+             C 275,208 328,198 372,164 
+             C 388,152 398,140 402,130 
+             C 404,124 398,128 392,134 
+             C 358,168 312,186 265,188 
+             C 205,190 162,174 142,148 
+             C 138,142 135,138 135,142 Z" 
+          fill="url(#swooshGrad)" />
+  </g>
+</svg>
