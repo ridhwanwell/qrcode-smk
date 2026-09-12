@@ -244,6 +244,12 @@ export async function deleteFolderCompletely(prefix: string, labelIds: string[])
       await supabase.from('labels').delete().in('no_label', labelIds);
     }
     await supabase.from('labels').delete().like('no_label', `${prefix}.%`);
+    await supabase.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
+    try {
+      const map = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
+      delete map[prefix];
+      localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
+    } catch (_) {}
   } catch (err) {
     console.warn('Supabase deleteFolderCompletely error:', err);
   }

@@ -48,15 +48,71 @@ export async function fetchAllLabelsFromSupabase(): Promise<any[]> {
     const { data, error } = await supabase
       .from('labels')
       .select('*')
+      .not('no_label', 'like', '__meta_%')
       .order('no_label', { ascending: true });
     if (error) {
       console.warn('fetchAllLabelsFromSupabase error:', error.message);
       return [];
     }
-    return data || [];
+    return (data || []).filter(item => !item.no_label?.startsWith('__meta_'));
   } catch (err) {
     console.warn('fetchAllLabelsFromSupabase exception:', err);
     return [];
+  }
+}
+
+/**
+ * Save folder hospital name to Supabase
+ */
+export async function saveFolderRsToSupabase(prefix: string, namaRs: string | null): Promise<boolean> {
+  try {
+    const metaKey = `__meta_folder_${prefix}`;
+    const trimmed = namaRs?.trim();
+    if (!trimmed) {
+      await supabase.from('labels').delete().eq('no_label', metaKey);
+      return true;
+    }
+    const { error } = await supabase.from('labels').upsert({
+      no_label: metaKey,
+      status: 'metadata',
+      pdf_source: 'folder_rs',
+      pdf_name: trimmed,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'no_label' });
+    if (error) {
+      console.warn('saveFolderRsToSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('saveFolderRsToSupabase exception:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetch all folder hospital names stored in Supabase
+ */
+export async function fetchFolderRsFromSupabase(): Promise<Record<string, string>> {
+  try {
+    const { data, error } = await supabase
+      .from('labels')
+      .select('no_label, pdf_name')
+      .like('no_label', '__meta_folder_%');
+    if (error || !data) {
+      return {};
+    }
+    const map: Record<string, string> = {};
+    for (const item of data) {
+      if (item.no_label && item.pdf_name) {
+        const prefix = item.no_label.replace('__meta_folder_', '');
+        map[prefix] = item.pdf_name;
+      }
+    }
+    return map;
+  } catch (err) {
+    console.warn('fetchFolderRsFromSupabase exception:', err);
+    return {};
   }
 }
 

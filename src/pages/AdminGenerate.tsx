@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { saveFolderRsToSupabase } from '../lib/supabaseSync';
 import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen, Building2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
@@ -127,40 +128,88 @@ export default function AdminGenerate() {
     setProgressMsg('Menyimpan ke database...');
     
     try {
+      const trimmedRs = namaRs.trim() || null;
       const itemsToSave = labelsToGenerate.map(lbl => ({
         noLabel: lbl,
-        namaRs: namaRs.trim() || null,
+        namaRs: trimmedRs,
         status: 'Menunggu Sertifikat'
       }));
 
-      // 1. Bulk save to API backend (PostgreSQL)
-      const res = await fetch('/api/labels/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToSave })
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Gagal menyimpan label ke server.');
-      }
-
-      // 2. Upsert to Supabase
+      // 1. Direct sync to Supabase (primary)
+      let supabaseSuccess = false;
       try {
         const supabaseRows = labelsToGenerate.map(lbl => ({
           no_label: lbl,
-          nama_rs: namaRs.trim() || null,
           status: 'Menunggu Sertifikat',
           updated_at: new Date().toISOString()
         }));
-        const supaRes = await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
-        if (supaRes.error && supaRes.error.message?.includes('nama_rs')) {
-          // Fallback if nama_rs column doesn't exist yet in Supabase
-          const fallbackRows = supabaseRows.map(({ nama_rs, ...rest }) => rest);
-          await supabase.from('labels').upsert(fallbackRows, { onConflict: 'no_label' });
+
+        // Try upserting with nama_rs, fallback without nama_rs if column is not yet in Supabase
+        const rowsWithRs = supabaseRows.map(r => ({ ...r, nama_rs: trimmedRs }));
+        const supaRes = await supabase.from('labels').upsert(rowsWithRs, { onConflict: 'no_label' });
+        
+        if (supaRes.error) {
+          if (supaRes.error.message?.includes('nama_rs')) {
+            const fallbackRes = await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
+            if (!fallbackRes.error) supabaseSuccess = true;
+          }
+        } else {
+          supabaseSuccess = true;
+        }
+
+        // Also save folder metadata to Supabase if hospital name is provided
+        if (trimmedRs) {
+          const prefixes = Array.from(new Set(labelsToGenerate.map(lbl => lbl.split('.')[0])));
+          for (const prefix of prefixes) {
+            await saveFolderRsToSupabase(prefix, trimmedRs);
+            // Update local storage map
+            try {
+              const currentMap = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
+              currentMap[prefix] = trimmedRs;
+              localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(currentMap));
+            } catch (_) {}
+          }
         }
       } catch (supaErr) {
-        console.warn('Supabase bulk upsert error:', supaErr);
+        console.warn('Supabase bulk save warning:', supaErr);
       }
+
+      // 2. Sync to API backend (Cloud SQL) in parallel / background
+      try {
+        fetch('/api/labels/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: itemsToSave })
+        }).catch(err => console.warn('API bulk sync deferred:', err));
+
+        if (trimmedRs) {
+          const prefixes = Array.from(new Set(labelsToGenerate.map(lbl => lbl.split('.')[0])));
+          for (const prefix of prefixes) {
+            fetch(`/api/folders/${prefix}/nama-rs`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ namaRs: trimmedRs }),
+            }).catch(() => {});
+          }
+        }
+      } catch (_) {}
+
+      // 3. Update localStorage labels
+      try {
+        const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
+        const existingMap = new Map(localList.map((l: any) => [l.noLabel, l]));
+        itemsToSave.forEach(it => {
+          existingMap.set(it.noLabel, {
+            id: it.noLabel,
+            noLabel: it.noLabel,
+            namaRs: it.namaRs,
+            status: it.status,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        });
+        localStorage.setItem('smk_labels', JSON.stringify(Array.from(existingMap.values())));
+      } catch (_) {}
 
       setGeneratedLabels(labelsToGenerate);
       setSuccess(true);

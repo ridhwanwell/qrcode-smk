@@ -11,6 +11,7 @@ import {
   updateLabelDates,
   extractGoogleDriveFileId
 } from '../lib/pdfStorage';
+import { saveFolderRsToSupabase, fetchFolderRsFromSupabase } from '../lib/supabaseSync';
 import { 
   Search, 
   FileText, 
@@ -163,26 +164,27 @@ export default function AdminLabels() {
         return updated;
       });
 
-      // 3. Update backend Cloud SQL
-      const res = await fetch(`/api/folders/${prefix}/nama-rs`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ namaRs: trimmed }),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal menyimpan ke server.');
-      }
+      // 3. Save directly to Supabase metadata row (guaranteed to succeed in Supabase!)
+      await saveFolderRsToSupabase(prefix, trimmed);
 
-      // 4. Attempt to update Supabase asynchronously (non-fatal)
+      // 4. Attempt to update nama_rs on Supabase label rows if column exists
       try {
         await supabase
           .from('labels')
           .update({ nama_rs: trimmed, updated_at: new Date().toISOString() })
           .like('no_label', `${prefix}.%`);
       } catch (sbErr) {
-        console.warn('Supabase update non-fatal:', sbErr);
+        console.warn('Supabase label rows update non-fatal:', sbErr);
       }
+
+      // 5. Update backend Cloud SQL in background without letting it crash client
+      fetch(`/api/folders/${prefix}/nama-rs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ namaRs: trimmed }),
+      }).catch(apiErr => {
+        console.warn('Backend Cloud SQL sync deferred:', apiErr);
+      });
 
       setSavingFolderRs(false);
       closeFolderRsModal();
@@ -195,46 +197,42 @@ export default function AdminLabels() {
 
   const fetchLabels = useCallback(async () => {
     try {
-      // 1. Fetch Cloud SQL / local API labels and folder RS map
+      // 1. Fetch Supabase labels AND folder metadata in parallel with Cloud SQL API
       let apiMap: Record<string, any> = {};
-      let remoteFolderMap: Record<string, string> = {};
+
+      const [sbLabelsRes, sbFolderMap, apiLabelsRes, apiFolderRes] = await Promise.all([
+        supabase
+          .from('labels')
+          .select('*')
+          .not('no_label', 'like', '__meta_%')
+          .order('no_label', { ascending: true }),
+        fetchFolderRsFromSupabase(),
+        fetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/folders/nama-rs').then(r => r.ok ? r.json() : {}).catch(() => ({}))
+      ]);
+
+      (apiLabelsRes || []).forEach((d: any) => {
+        const key = d.noLabel || d.no_label;
+        if (key) apiMap[key] = d;
+      });
+
+      const mergedFolderMap = {
+        ...folderRsMap,
+        ...(apiFolderRes || {}),
+        ...(sbFolderMap || {})
+      };
+      setFolderRsMap(mergedFolderMap);
       try {
-        const [labelsRes, foldersRes] = await Promise.all([
-          fetch('/api/labels'),
-          fetch('/api/folders/nama-rs')
-        ]);
-        if (labelsRes.ok) {
-          const apiData = await labelsRes.json();
-          (apiData || []).forEach((d: any) => {
-            const key = d.noLabel || d.no_label;
-            if (key) apiMap[key] = d;
-          });
-        }
-        if (foldersRes.ok) {
-          remoteFolderMap = await foldersRes.json();
-          setFolderRsMap(prev => {
-            const merged = { ...prev, ...remoteFolderMap };
-            try {
-              localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(merged));
-            } catch (_) {}
-            return merged;
-          });
-        }
-      } catch (apiErr) {
-        console.warn('API labels fetch error:', apiErr);
-      }
+        localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(mergedFolderMap));
+      } catch (_) {}
 
-      // 2. Fetch Supabase labels
-      const { data } = await supabase
-        .from('labels')
-        .select('*')
-        .order('no_label', { ascending: true });
+      const sbData = (sbLabelsRes.data || []).filter((d: any) => !d.no_label?.startsWith('__meta_'));
 
-      if (data && data.length > 0) {
-        const formatted = data.map((d: any) => {
+      if (sbData && sbData.length > 0) {
+        const formatted = sbData.map((d: any) => {
           const local = apiMap[d.no_label] || {};
           const prefix = extractLabelPrefix(d.no_label);
-          const effectiveNamaRs = local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || remoteFolderMap[prefix] || folderRsMap[prefix] || null;
+          const effectiveNamaRs = local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || mergedFolderMap[prefix] || null;
 
           return {
             id: d.no_label,
@@ -258,10 +256,11 @@ export default function AdminLabels() {
         Object.values(apiMap).forEach((item: any) => {
           const no = item.noLabel || item.no_label;
           if (no && !existingNos.has(no)) {
+            const prefix = extractLabelPrefix(no);
             formatted.push({
               id: no,
               noLabel: no,
-              namaRs: item.namaRs || item.nama_rs || null,
+              namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
               status: item.status || 'Menunggu Sertifikat',
               pdfSource: item.pdfSource || null,
               pdfUrl: item.pdfUrl || null,
@@ -278,21 +277,24 @@ export default function AdminLabels() {
 
         setLabels(formatted);
       } else {
-        const formatted = Object.values(apiMap).map((d: any) => ({
-          id: d.noLabel,
-          noLabel: d.noLabel,
-          namaRs: d.namaRs || d.nama_rs || null,
-          status: d.status,
-          pdfSource: d.pdfSource,
-          pdfUrl: d.pdfUrl,
-          pdfDriveUrl: d.pdfDriveUrl,
-          pdfOriginalUrl: d.pdfOriginalUrl,
-          pdfName: d.pdfName,
-          calibratedAt: d.calibratedAt,
-          validUntil: d.validUntil,
-          createdAt: d.createdAt,
-          updatedAt: d.updatedAt,
-        }));
+        const formatted = Object.values(apiMap).map((d: any) => {
+          const prefix = extractLabelPrefix(d.noLabel);
+          return {
+            id: d.noLabel,
+            noLabel: d.noLabel,
+            namaRs: d.namaRs || d.nama_rs || mergedFolderMap[prefix] || null,
+            status: d.status,
+            pdfSource: d.pdfSource,
+            pdfUrl: d.pdfUrl,
+            pdfDriveUrl: d.pdfDriveUrl,
+            pdfOriginalUrl: d.pdfOriginalUrl,
+            pdfName: d.pdfName,
+            calibratedAt: d.calibratedAt,
+            validUntil: d.validUntil,
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt,
+          };
+        });
         setLabels(formatted);
       }
     } catch (err: any) {

@@ -101,10 +101,19 @@ export default function PublicScanPage() {
         .select('*');
 
       let found: any = null;
+      const folderMetaMap: Record<string, string> = {};
 
       if (supaLabels && supaLabels.length > 0) {
         for (const row of supaLabels) {
           const rawNo = (row.no_label || '').toString().trim().toLowerCase();
+          
+          // Collect metadata rows
+          if (rawNo.startsWith('__meta_folder_')) {
+            const p = row.no_label.replace('__meta_folder_', '');
+            if (p && row.pdf_name) folderMetaMap[p] = row.pdf_name;
+            continue;
+          }
+
           const cleanNo = cleanLabelString(row.no_label || '')?.toLowerCase();
           if (candidateSet.has(rawNo) || (cleanNo && candidateSet.has(cleanNo))) {
             found = {
@@ -122,8 +131,16 @@ export default function PublicScanPage() {
               createdAt: row.created_at,
               updatedAt: row.updated_at
             };
-            break;
+            // Do not break immediately so we also collect any metadata rows
           }
+        }
+      }
+
+      // If found but namaRs is not set directly on label, inherit from folder metadata
+      if (found && !found.namaRs) {
+        const prefix = found.noLabel ? found.noLabel.split('.')[0] : '';
+        if (prefix && folderMetaMap[prefix]) {
+          found.namaRs = folderMetaMap[prefix];
         }
       }
 

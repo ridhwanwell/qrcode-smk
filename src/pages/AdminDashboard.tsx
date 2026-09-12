@@ -77,12 +77,22 @@ CREATE POLICY "Service Role Full Access" ON public.labels
         .order('created_at', { ascending: false });
 
       if (data && data.length > 0) {
-        setLabels(data.map((d: any) => {
+        const folderMetaMap: Record<string, string> = {};
+        data.forEach((d: any) => {
+          if (d.no_label?.startsWith('__meta_folder_')) {
+            folderMetaMap[d.no_label.replace('__meta_folder_', '')] = d.pdf_name;
+          }
+        });
+
+        const actualLabels = data.filter((d: any) => !d.no_label?.startsWith('__meta_'));
+
+        setLabels(actualLabels.map((d: any) => {
           const local = apiMap[d.no_label] || {};
+          const prefix = d.no_label ? d.no_label.split('.')[0] : '';
           return {
             id: d.no_label,
             noLabel: d.no_label,
-            namaRs: local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || null,
+            namaRs: local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || folderMetaMap[prefix] || null,
             status: d.status || local.status,
             pdfSource: d.pdf_source || local.pdfSource,
             pdfUrl: d.pdf_url || local.pdfUrl,
