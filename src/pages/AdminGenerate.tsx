@@ -26,6 +26,7 @@ export default function AdminGenerate() {
   // Generated result state
   const [generatedLabels, setGeneratedLabels] = useState<string[]>([]);
   const [labelType, setLabelType] = useState<'kecil' | 'besar'>('kecil');
+  const [bulkFormat, setBulkFormat] = useState<'a3_plus' | 'individual'>('a3_plus');
   const [templateConfigs, setTemplateConfigs] = useState<any>(() => {
     try {
       const saved = localStorage.getItem('smk_template_configs');
@@ -198,76 +199,183 @@ export default function AdminGenerate() {
     try {
       const config = templateConfigs[labelType];
       
-      // Real physical dimensions
+      // Real physical dimensions of individual sticker
       const isKecil = labelType === 'kecil';
-      const pdfWidth = isKecil ? 30 : 70; // 7x3 cm for large now
-      const pdfHeight = isKecil ? 20 : 30;
+      const labelWidth = isKecil ? 30 : 70; // 3x2 cm atau 7x3 cm
+      const labelHeight = isKecil ? 20 : 30;
       
-      // Preview box dimensions in pixels
+      // Preview box dimensions in pixels from template editor
       const previewWidth = isKecil ? 450 : 700;
       const previewHeight = 300;
       
-      // Scale ratios from preview pixels to mm
-      const scaleX = pdfWidth / previewWidth;
-      const scaleY = pdfHeight / previewHeight;
-      
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: [pdfWidth, pdfHeight],
-      });
+      // Scale ratios from preview pixels to sticker mm
+      const scaleX = labelWidth / previewWidth;
+      const scaleY = labelHeight / previewHeight;
 
-      for (let i = 0; i < generatedLabels.length; i++) {
-        if (i > 0) pdf.addPage();
-        
-        if (i % 50 === 0) {
-           setProgressMsg(`Membuat halaman PDF... (${i + 1}/${generatedLabels.length})`);
-           // small delay to allow UI to update
-           await new Promise(r => setTimeout(r, 10));
+      const isBulkA3 = (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus';
+
+      if (isBulkA3) {
+        // Standar format cetak lembaran A3+ (320 mm x 480 mm, portrait)
+        const sheetWidth = 320;
+        const sheetHeight = 480;
+        const cols = isKecil ? 9 : 4;
+        const rows = isKecil ? 21 : 14;
+        const labelsPerSheet = cols * rows; // 189 stiker (kecil) / 56 stiker (besar)
+
+        const gapX = 2; // 2mm kiss-cut gap antar stiker
+        const gapY = 2; // 2mm kiss-cut gap antar stiker
+
+        const totalGridWidth = cols * labelWidth + (cols - 1) * gapX; // 286 mm
+        const marginLeft = (sheetWidth - totalGridWidth) / 2; // 17 mm margin kiri & kanan
+
+        const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 460 mm (kecil) / 446 mm (besar)
+        const marginTop = (sheetHeight - totalGridHeight) / 2; // 10 mm (kecil) / 17 mm (besar)
+
+        const totalSheets = Math.ceil(generatedLabels.length / labelsPerSheet);
+
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: [sheetWidth, sheetHeight],
+        });
+
+        for (let sheetIdx = 0; sheetIdx < totalSheets; sheetIdx++) {
+          if (sheetIdx > 0) pdf.addPage();
+
+          const startIdx = sheetIdx * labelsPerSheet;
+          const endIdx = Math.min(startIdx + labelsPerSheet, generatedLabels.length);
+          const sheetCount = endIdx - startIdx;
+
+          setProgressMsg(`Membuat lembar A3+ (${sheetIdx + 1}/${totalSheets})...`);
+          await new Promise(r => setTimeout(r, 10));
+
+          // 1. Header Metadata Text (di luar area stiker/margin atas)
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(7.5);
+          pdf.setTextColor(110, 110, 110);
+          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  ${labelType === 'besar' ? 'Ukuran Besar 70x30 mm (Maks 56/lbr)' : 'Ukuran Kecil 30x20 mm (Maks 189/lbr)'}  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
+          pdf.text(headerText, marginLeft, Math.max(5, marginTop - 3.5));
+
+          // 2. Optical Registration Crop Marks pada 4 sudut grid untuk kamera plotter / mesin potong
+          pdf.setDrawColor(160, 160, 160);
+          pdf.setLineWidth(0.2);
+          const rightEdge = marginLeft + totalGridWidth;
+          const bottomEdge = marginTop + totalGridHeight;
+          // Top-Left
+          pdf.line(marginLeft - 6, marginTop, marginLeft - 1, marginTop);
+          pdf.line(marginLeft, marginTop - 6, marginLeft, marginTop - 1);
+          // Top-Right
+          pdf.line(rightEdge + 1, marginTop, rightEdge + 6, marginTop);
+          pdf.line(rightEdge, marginTop - 6, rightEdge, marginTop - 1);
+          // Bottom-Left
+          pdf.line(marginLeft - 6, bottomEdge, marginLeft - 1, bottomEdge);
+          pdf.line(marginLeft, bottomEdge + 1, marginLeft, bottomEdge + 6);
+          // Bottom-Right
+          pdf.line(rightEdge + 1, bottomEdge, rightEdge + 6, bottomEdge);
+          pdf.line(rightEdge, bottomEdge + 1, rightEdge, bottomEdge + 6);
+
+          // 3. Render Setiap Stiker di dalam Grid Lembar A3+
+          for (let k = 0; k < sheetCount; k++) {
+            const globalIdx = startIdx + k;
+            const labelStr = generatedLabels[globalIdx];
+
+            const col = k % cols;
+            const row = Math.floor(k / cols);
+
+            const x = marginLeft + col * (labelWidth + gapX);
+            const y = marginTop + row * (labelHeight + gapY);
+
+            // A. Background Template Image
+            pdf.addImage(config.imageUrl, 'JPEG', x, y, labelWidth, labelHeight);
+
+            // B. QR Code
+            const qrUrl = getPublicUrl(labelStr);
+            const qrDataUrl = await QRCode.toDataURL(qrUrl, { 
+              margin: 0, 
+              width: 260, 
+              color: { dark: '#000000', light: '#FFFFFF' } 
+            });
+            pdf.addImage(
+              qrDataUrl,
+              'PNG',
+              x + (config.qr.x * scaleX),
+              y + (config.qr.y * scaleY),
+              config.qr.width * scaleX,
+              config.qr.height * scaleY
+            );
+
+            // C. Text Nomor Label
+            pdf.setFont("helvetica", "bold");
+            pdf.setTextColor('#000000');
+            const ptSize = config.text.fontSize * scaleY * 2.83465;
+            pdf.setFontSize(ptSize);
+            pdf.text(
+              labelStr,
+              x + (config.text.x * scaleX),
+              y + (config.text.y * scaleY) + (ptSize * 0.3527)
+            );
+
+            // D. Hairline Kiss-Cut / Die-Cut Boundary (0.08 mm)
+            pdf.setDrawColor(210, 210, 210);
+            pdf.setLineWidth(0.08);
+            pdf.rect(x, y, labelWidth, labelHeight);
+          }
         }
 
-        const labelStr = generatedLabels[i];
+        setProgressMsg('Menyimpan PDF A3+...');
+        const fileName = `Labels_A3Plus_KissCut_${labelType}_${generatedLabels[0]}_to_${generatedLabels[generatedLabels.length - 1]}.pdf`;
+        pdf.save(fileName);
+      } else {
+        // Mode satuan (1 label per halaman individual landscape)
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: [labelWidth, labelHeight],
+        });
+
+        for (let i = 0; i < generatedLabels.length; i++) {
+          if (i > 0) pdf.addPage();
+          
+          if (i % 25 === 0) {
+             setProgressMsg(`Membuat halaman PDF... (${i + 1}/${generatedLabels.length})`);
+             await new Promise(r => setTimeout(r, 10));
+          }
+
+          const labelStr = generatedLabels[i];
+          
+          // 1. Draw Background
+          pdf.addImage(config.imageUrl, 'JPEG', 0, 0, labelWidth, labelHeight);
+          
+          // 2. Draw QR Code
+          const qrUrl = getPublicUrl(labelStr);
+          const qrDataUrl = await QRCode.toDataURL(qrUrl, { margin: 0, width: 300, color: { dark: '#000000', light: '#FFFFFF' } });
+          pdf.addImage(
+            qrDataUrl, 
+            'PNG', 
+            config.qr.x * scaleX, 
+            config.qr.y * scaleY, 
+            config.qr.width * scaleX, 
+            config.qr.height * scaleY
+          );
+          
+          // 3. Draw Text
+          pdf.setFont("helvetica", "bold");
+          pdf.setTextColor('#000000');
+          const ptSize = (config.text.fontSize * scaleY * 2.83465); 
+          pdf.setFontSize(ptSize);
+          pdf.text(
+            labelStr, 
+            config.text.x * scaleX, 
+            (config.text.y * scaleY) + (ptSize * 0.3527)
+          );
+        }
         
-        // 1. Draw Background
-        pdf.addImage(config.imageUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-        
-        // 2. Draw QR Code
-        const qrUrl = getPublicUrl(labelStr);
-        // Explicitly set QR Code dark color to purely black for CMYK printing
-        const qrDataUrl = await QRCode.toDataURL(qrUrl, { margin: 0, width: 300, color: { dark: '#000000', light: '#FFFFFF' } });
-        pdf.addImage(
-          qrDataUrl, 
-          'PNG', 
-          config.qr.x * scaleX, 
-          config.qr.y * scaleY, 
-          config.qr.width * scaleX, 
-          config.qr.height * scaleY
-        );
-        
-        // 3. Draw Text
-        // Convert pixel font size to jsPDF points (approximate)
-        pdf.setFont("helvetica", "bold");
-        pdf.setTextColor('#000000'); // Ensure it is pure black, relying on RIP for CMYK 100% K
-        // FontSize in jsPDF is in points. 1 px = 0.75 pt. 
-        // We also need to scale it by the layout scale. 
-        // We'll calculate a proportional point size.
-        const ptSize = (config.text.fontSize * scaleY * 2.83465); 
-        pdf.setFontSize(ptSize);
-        
-        // Text positioning in jsPDF is from the bottom-left of the text (baseline)
-        // We estimate baseline by adding the font size to the Y coordinate
-        pdf.text(
-          labelStr, 
-          config.text.x * scaleX, 
-          (config.text.y * scaleY) + (ptSize * 0.3527) // convert pt to mm for baseline offset
-        );
+        setProgressMsg('Menyimpan PDF...');
+        const fileName = generatedLabels.length === 1 
+          ? `Label_${generatedLabels[0]}.pdf` 
+          : `Labels_${generatedLabels[0]}_to_${generatedLabels[generatedLabels.length - 1]}.pdf`;
+        pdf.save(fileName);
       }
-      
-      setProgressMsg('Menyimpan PDF...');
-      const fileName = generatedLabels.length === 1 
-        ? `Label_${generatedLabels[0]}.pdf` 
-        : `Labels_${generatedLabels[0]}_to_${generatedLabels[generatedLabels.length - 1]}.pdf`;
-      pdf.save(fileName);
     } catch (err) {
       console.error(err);
       alert('Terjadi kesalahan saat membuat PDF.');
@@ -413,29 +521,119 @@ export default function AdminGenerate() {
               </div>
             </div>
 
+            {/* Opsi Ukuran Cetak */}
             <div className="space-y-4">
               <h4 className="font-semibold text-slate-700">Pilih Ukuran Cetak:</h4>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-3">
                 <button
+                  type="button"
                   onClick={() => setLabelType('kecil')}
                   className={cn(
-                    "px-4 py-2 text-sm font-medium rounded-lg border transition-all",
-                    labelType === 'kecil' ? "border-amber-500 bg-amber-50 text-amber-700 ring-1 ring-amber-500" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    "px-4 py-2.5 text-sm font-medium rounded-xl border transition-all text-left",
+                    labelType === 'kecil' ? "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20" : "border-slate-200 text-slate-600 hover:bg-slate-50"
                   )}
                 >
-                  Kecil (3x2 cm)
+                  <div className="font-bold">Kecil (3x2 cm)</div>
+                  {(mode === 'bulk' || generatedLabels.length > 1) && (
+                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">189 stiker / lembar A3+ (9x21)</div>
+                  )}
                 </button>
                 <button
+                  type="button"
                   onClick={() => setLabelType('besar')}
                   className={cn(
-                    "px-4 py-2 text-sm font-medium rounded-lg border transition-all",
-                    labelType === 'besar' ? "border-amber-500 bg-amber-50 text-amber-700 ring-1 ring-amber-500" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    "px-4 py-2.5 text-sm font-medium rounded-xl border transition-all text-left",
+                    labelType === 'besar' ? "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20" : "border-slate-200 text-slate-600 hover:bg-slate-50"
                   )}
                 >
-                  Besar (7x3 cm)
+                  <div className="font-bold">Besar (7x3 cm)</div>
+                  {(mode === 'bulk' || generatedLabels.length > 1) && (
+                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">56 stiker / lembar A3+ (4x14)</div>
+                  )}
                 </button>
               </div>
             </div>
+
+            {/* Opsi Format Cetak untuk Bulk */}
+            {(mode === 'bulk' || generatedLabels.length > 1) && (
+              <div className="space-y-3">
+                <h4 className="font-semibold text-slate-700">Format Output PDF:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setBulkFormat('a3_plus')}
+                    className={cn(
+                      "p-3.5 rounded-xl border text-left transition-all",
+                      bulkFormat === 'a3_plus'
+                        ? "border-blue-500 bg-blue-50/70 text-blue-950 ring-2 ring-blue-500/20 shadow-sm"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs">Lembar Kertas A3+ Kiss-Cut / Die-Cut</span>
+                      {bulkFormat === 'a3_plus' && (
+                        <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded">Rekomendasi</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Ukuran 320 x 480 mm siap cetak offset/laser digital. Lengkap dengan garis potong kiss-cut & crop marks.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setBulkFormat('individual')}
+                    className={cn(
+                      "p-3.5 rounded-xl border text-left transition-all",
+                      bulkFormat === 'individual'
+                        ? "border-amber-500 bg-amber-50/70 text-amber-950 ring-2 ring-amber-500/20 shadow-sm"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    <div className="font-bold text-xs">Satuan / Thermal Roll</div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      1 stiker per halaman ({labelType === 'besar' ? '7x3 cm' : '3x2 cm'}), cocok untuk printer thermal gulungan.
+                    </p>
+                  </button>
+                </div>
+
+                {bulkFormat === 'a3_plus' && (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs text-slate-700">
+                    <div className="font-bold text-slate-800 flex items-center justify-between">
+                      <span>Rincian Lembar Cetak A3+ (320 × 480 mm):</span>
+                      <span className="text-blue-700 font-mono">
+                        {Math.ceil(generatedLabels.length / (labelType === 'besar' ? 56 : 189))} Lembar A3+
+                      </span>
+                    </div>
+                    <p className="text-slate-600">
+                      Total <strong>{generatedLabels.length} stiker</strong> akan di-layout otomatis:
+                    </p>
+                    <ul className="list-disc list-inside text-slate-600 space-y-0.5 pl-1">
+                      <li>
+                        Kapasitas per lembar: <strong>{labelType === 'besar' ? '56 stiker (4 kolom × 14 baris)' : '189 stiker (9 kolom × 21 baris)'}</strong>
+                      </li>
+                      <li>
+                        Lembar 1: <strong>{Math.min(generatedLabels.length, labelType === 'besar' ? 56 : 189)} stiker</strong>
+                      </li>
+                      {generatedLabels.length > (labelType === 'besar' ? 56 : 189) && (
+                        <li>
+                          Lembar 2: <strong>
+                            {Math.min(
+                              generatedLabels.length - (labelType === 'besar' ? 56 : 189),
+                              labelType === 'besar' ? 56 : 189
+                            )} stiker
+                          </strong>
+                          {generatedLabels.length > (labelType === 'besar' ? 112 : 378) && ' (dan lembar selanjutnya)'}
+                        </li>
+                      )}
+                    </ul>
+                    <p className="text-[11px] text-slate-500 pt-1">
+                      Tersedia margin keliling aman (17 mm) & jarak potong pisau / kiss-cut 2 mm antarlavel.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 text-amber-800 text-sm">
                <strong>Catatan Warna (CMYK):</strong> File PDF yang dihasilkan aplikasi ini secara bawaan berformat RGB (standar web). Namun jangan khawatir, ketika file ini dikirim ke mesin cetak digital offset/laser, <strong>RIP software pada mesin cetak akan otomatis mengkonversinya ke warna CMYK</strong> dengan sangat baik. 
@@ -448,7 +646,12 @@ export default function AdminGenerate() {
                 className="flex items-center px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 shadow-sm"
               >
                 {loading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Printer className="w-4 h-4 mr-2" />} 
-                {loading ? progressMsg : `Download Label PDF (${generatedLabels.length} Halaman)`}
+                {loading 
+                  ? progressMsg 
+                  : (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus'
+                    ? `Download PDF Lembar A3+ (${Math.ceil(generatedLabels.length / (labelType === 'besar' ? 56 : 189))} Lembar • ${generatedLabels.length} Stiker)`
+                    : `Download Label PDF (${generatedLabels.length} Halaman)`
+                }
               </button>
 
               {generatedLabels.length > 0 && (
