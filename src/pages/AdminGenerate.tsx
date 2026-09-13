@@ -201,11 +201,11 @@ export default function AdminGenerate() {
       
       // Real physical dimensions of individual sticker
       const isKecil = labelType === 'kecil';
-      const labelWidth = isKecil ? 30 : 70; // 3x2 cm atau 7x3 cm
-      const labelHeight = isKecil ? 20 : 30;
+      const labelWidth = isKecil ? 30 : 50; // 3x2 cm atau 5x2 cm
+      const labelHeight = 20; // 2 cm (20 mm) untuk kedua ukuran
       
       // Preview box dimensions in pixels from template editor
-      const previewWidth = isKecil ? 450 : 700;
+      const previewWidth = isKecil ? 450 : 750;
       const previewHeight = 300;
       
       // Scale ratios from preview pixels to sticker mm
@@ -218,18 +218,18 @@ export default function AdminGenerate() {
         // Standar format cetak lembaran A3+ (320 mm x 480 mm, portrait)
         const sheetWidth = 320;
         const sheetHeight = 480;
-        const cols = isKecil ? 9 : 4;
-        const rows = isKecil ? 21 : 14;
-        const labelsPerSheet = cols * rows; // 189 stiker (kecil) / 56 stiker (besar)
+        const cols = isKecil ? 9 : 6;
+        const rows = 21;
+        const labelsPerSheet = cols * rows; // 189 stiker (kecil: 9x21) / 126 stiker (besar: 6x21)
 
         const gapX = 2; // 2mm kiss-cut gap antar stiker
         const gapY = 2; // 2mm kiss-cut gap antar stiker
 
-        const totalGridWidth = cols * labelWidth + (cols - 1) * gapX; // 286 mm
-        const marginLeft = (sheetWidth - totalGridWidth) / 2; // 17 mm margin kiri & kanan
+        const totalGridWidth = cols * labelWidth + (cols - 1) * gapX; // kecil: 286 mm, besar: 310 mm
+        const marginLeft = (sheetWidth - totalGridWidth) / 2; // kecil: 17 mm, besar: 5 mm
 
-        const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 460 mm (kecil) / 446 mm (besar)
-        const marginTop = (sheetHeight - totalGridHeight) / 2; // 10 mm (kecil) / 17 mm (besar)
+        const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 460 mm (21 baris x 20mm + 40mm gap)
+        const marginTop = (sheetHeight - totalGridHeight) / 2; // 10 mm margin atas & bawah
 
         const totalSheets = Math.ceil(generatedLabels.length / labelsPerSheet);
 
@@ -253,7 +253,7 @@ export default function AdminGenerate() {
           pdf.setFont("helvetica", "bold");
           pdf.setFontSize(7.5);
           pdf.setTextColor(110, 110, 110);
-          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  ${labelType === 'besar' ? 'Ukuran Besar 70x30 mm (Maks 56/lbr)' : 'Ukuran Kecil 30x20 mm (Maks 189/lbr)'}  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
+          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  ${labelType === 'besar' ? 'Ukuran Besar 50x20 mm / 5x2 cm (Maks 126/lbr)' : 'Ukuran Kecil 30x20 mm / 3x2 cm (Maks 189/lbr)'}  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
           pdf.text(headerText, marginLeft, Math.max(5, marginTop - 3.5));
 
           // 2. Optical Registration Crop Marks pada 4 sudut grid untuk kamera plotter / mesin potong
@@ -546,9 +546,9 @@ export default function AdminGenerate() {
                     labelType === 'besar' ? "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20" : "border-slate-200 text-slate-600 hover:bg-slate-50"
                   )}
                 >
-                  <div className="font-bold">Besar (7x3 cm)</div>
+                  <div className="font-bold">Besar (5x2 cm)</div>
                   {(mode === 'bulk' || generatedLabels.length > 1) && (
-                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">56 stiker / lembar A3+ (4x14)</div>
+                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">126 stiker / lembar A3+ (6x21)</div>
                   )}
                 </button>
               </div>
@@ -592,7 +592,7 @@ export default function AdminGenerate() {
                   >
                     <div className="font-bold text-xs">Satuan / Thermal Roll</div>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      1 stiker per halaman ({labelType === 'besar' ? '7x3 cm' : '3x2 cm'}), cocok untuk printer thermal gulungan.
+                      1 stiker per halaman ({labelType === 'besar' ? '5x2 cm' : '3x2 cm'}), cocok untuk printer thermal gulungan.
                     </p>
                   </button>
                 </div>
@@ -602,7 +602,7 @@ export default function AdminGenerate() {
                     <div className="font-bold text-slate-800 flex items-center justify-between">
                       <span>Rincian Lembar Cetak A3+ (320 × 480 mm):</span>
                       <span className="text-blue-700 font-mono">
-                        {Math.ceil(generatedLabels.length / (labelType === 'besar' ? 56 : 189))} Lembar A3+
+                        {Math.ceil(generatedLabels.length / (labelType === 'besar' ? 126 : 189))} Lembar A3+
                       </span>
                     </div>
                     <p className="text-slate-600">
@@ -610,25 +610,25 @@ export default function AdminGenerate() {
                     </p>
                     <ul className="list-disc list-inside text-slate-600 space-y-0.5 pl-1">
                       <li>
-                        Kapasitas per lembar: <strong>{labelType === 'besar' ? '56 stiker (4 kolom × 14 baris)' : '189 stiker (9 kolom × 21 baris)'}</strong>
+                        Kapasitas per lembar: <strong>{labelType === 'besar' ? '126 stiker (6 kolom × 21 baris)' : '189 stiker (9 kolom × 21 baris)'}</strong>
                       </li>
                       <li>
-                        Lembar 1: <strong>{Math.min(generatedLabels.length, labelType === 'besar' ? 56 : 189)} stiker</strong>
+                        Lembar 1: <strong>{Math.min(generatedLabels.length, labelType === 'besar' ? 126 : 189)} stiker</strong>
                       </li>
-                      {generatedLabels.length > (labelType === 'besar' ? 56 : 189) && (
+                      {generatedLabels.length > (labelType === 'besar' ? 126 : 189) && (
                         <li>
                           Lembar 2: <strong>
                             {Math.min(
-                              generatedLabels.length - (labelType === 'besar' ? 56 : 189),
-                              labelType === 'besar' ? 56 : 189
+                              generatedLabels.length - (labelType === 'besar' ? 126 : 189),
+                              labelType === 'besar' ? 126 : 189
                             )} stiker
                           </strong>
-                          {generatedLabels.length > (labelType === 'besar' ? 112 : 378) && ' (dan lembar selanjutnya)'}
+                          {generatedLabels.length > (labelType === 'besar' ? 252 : 378) && ' (dan lembar selanjutnya)'}
                         </li>
                       )}
                     </ul>
                     <p className="text-[11px] text-slate-500 pt-1">
-                      Tersedia margin keliling aman (17 mm) & jarak potong pisau / kiss-cut 2 mm antarlavel.
+                      Tersedia margin keliling aman ({labelType === 'besar' ? '5 mm' : '17 mm'}) & jarak potong pisau / kiss-cut 2 mm antarlavel.
                     </p>
                   </div>
                 )}
@@ -649,7 +649,7 @@ export default function AdminGenerate() {
                 {loading 
                   ? progressMsg 
                   : (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus'
-                    ? `Download PDF Lembar A3+ (${Math.ceil(generatedLabels.length / (labelType === 'besar' ? 56 : 189))} Lembar • ${generatedLabels.length} Stiker)`
+                    ? `Download PDF Lembar A3+ (${Math.ceil(generatedLabels.length / (labelType === 'besar' ? 126 : 189))} Lembar • ${generatedLabels.length} Stiker)`
                     : `Download Label PDF (${generatedLabels.length} Halaman)`
                 }
               </button>

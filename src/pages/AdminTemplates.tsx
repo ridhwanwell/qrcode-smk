@@ -138,7 +138,7 @@ export default function AdminTemplates() {
           onClick={() => setActiveTab('besar')}
           className={cn("px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors", activeTab === 'besar' ? "bg-amber-500 text-slate-900" : "text-slate-600 hover:bg-slate-100")}
         >
-          Template Besar (9x3 cm)
+          Template Besar (5x2 cm)
         </button>
       </div>
 
@@ -227,8 +227,8 @@ export default function AdminTemplates() {
             <div 
               className="relative shadow-2xl overflow-hidden" 
               style={{ 
-                width: activeTab === 'kecil' ? 450 : 700, 
-                height: activeTab === 'kecil' ? 300 : 300
+                width: activeTab === 'kecil' ? 450 : 750, 
+                height: 300
               }}
             >
               <img 
