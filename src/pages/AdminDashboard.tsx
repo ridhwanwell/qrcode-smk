@@ -26,7 +26,7 @@ export default function AdminDashboard() {
     projectId?: string;
   } | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlModal, setShowSqlModal] = useState(false);
 
@@ -118,13 +118,24 @@ CREATE POLICY "Service Role Full Access" ON public.labels
     }
   }, []);
 
-  useEffect(() => {
-    // Check Supabase connection status
-    fetch('/api/supabase/status')
-      .then((res) => res.json())
-      .then((data) => setSupabaseStatus(data))
-      .catch(() => setSupabaseStatus({ connected: false, message: 'Gagal menghubungi server API' }));
+  const checkSupabaseStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/supabase/status');
+      if (res.ok) {
+        const data = await res.json();
+        setSupabaseStatus(data);
+        return data;
+      } else {
+        setSupabaseStatus({ connected: false, tableReady: false, message: 'Server merespon dengan status error' });
+      }
+    } catch (_) {
+      setSupabaseStatus({ connected: false, tableReady: false, message: 'Gagal menghubungi server API' });
+    }
+    return null;
+  }, []);
 
+  useEffect(() => {
+    checkSupabaseStatus();
     fetchLabels();
 
     // Realtime Supabase updates
@@ -138,25 +149,41 @@ CREATE POLICY "Service Role Full Access" ON public.labels
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchLabels]);
+  }, [fetchLabels, checkSupabaseStatus]);
 
   const handleSyncSupabase = async () => {
     setSyncing(true);
-    setSyncMessage(null);
+    setSyncResult(null);
     try {
       const res = await fetch('/api/supabase/sync', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setSyncMessage(`Berhasil sinkron ${data.count} label ke Supabase!`);
-        // Refresh status & labels
-        const statusRes = await fetch('/api/supabase/status');
-        setSupabaseStatus(await statusRes.json());
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (_) {
+        throw new Error(text || `Server mengembalikan respon kosong (${res.status})`);
+      }
+
+      if (res.ok && data.success) {
+        setSyncResult({
+          type: 'success',
+          text: `Berhasil menyinkronkan ${data.count} label ke database Supabase!`
+        });
+        await checkSupabaseStatus();
         fetchLabels();
       } else {
-        setSyncMessage(`Gagal: ${data.error || 'Pastikan tabel labels sudah dibuat di Supabase SQL Editor'}`);
+        setSyncResult({
+          type: 'error',
+          text: `Gagal sinkron: ${data.error || data.message || 'Tabel labels belum siap di Supabase SQL Editor'}`
+        });
+        await checkSupabaseStatus();
       }
     } catch (err: any) {
-      setSyncMessage(`Terjadi kesalahan: ${err.message}`);
+      setSyncResult({
+        type: 'error',
+        text: `Terjadi kesalahan: ${err.message}`
+      });
+      await checkSupabaseStatus();
     } finally {
       setSyncing(false);
     }
@@ -230,13 +257,29 @@ CREATE POLICY "Service Role Full Access" ON public.labels
               {supabaseStatus && !supabaseStatus.tableReady && (
                 <div className="mt-2.5 flex items-center gap-2 text-xs bg-amber-500/10 border border-amber-500/30 text-amber-200 px-3 py-1.5 rounded-lg">
                   <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>Tabel <code>public.labels</code> belum diaktifkan di Supabase SQL Editor. Klik tombol <strong>Salin Skema SQL</strong> di samping untuk menjalankannya.</span>
+                  <span>Tabel <code>public.labels</code> belum diaktifkan di Supabase SQL Editor. Klik tombol <strong>Skema SQL Supabase</strong> untuk menyalin dan menjalankannya.</span>
                 </div>
               )}
-              {syncMessage && (
-                <p className="text-xs font-medium text-emerald-300 mt-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg inline-block">
-                  {syncMessage}
-                </p>
+              {supabaseStatus?.tableReady && (
+                <div className="mt-2.5 flex items-center gap-2 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 px-3 py-1.5 rounded-lg">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Tabel <code>public.labels</code> aktif dan siap di database Supabase.</span>
+                </div>
+              )}
+              {syncResult && (
+                <div className={cn(
+                  "mt-2.5 flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg",
+                  syncResult.type === 'success' 
+                    ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-200"
+                    : "bg-rose-500/15 border border-rose-500/40 text-rose-200"
+                )}>
+                  {syncResult.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>{syncResult.text}</span>
+                </div>
               )}
             </div>
           </div>

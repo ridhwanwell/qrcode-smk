@@ -204,23 +204,33 @@ export async function bulkSyncLabelsToSupabase(items: any[]) {
 
     if (payloads.length === 0) return { success: true, count: 0 };
 
-    const { error } = await supabase.from('labels').upsert(payloads, { onConflict: 'no_label' });
-    if (error) {
-      if (error.message?.includes('nama_rs')) {
-        // Fallback without nama_rs if column is not yet added in Supabase
-        const fallbackPayloads = payloads.map((p: any) => {
-          const { nama_rs, ...rest } = p;
-          return rest;
-        });
-        const retry = await supabase.from('labels').upsert(fallbackPayloads, { onConflict: 'no_label' });
-        if (retry.error) {
-          return { success: false, error: retry.error.message };
+    // Batch upsert in chunks of 100 to avoid payload size or timeout limits
+    const CHUNK_SIZE = 100;
+    let syncedCount = 0;
+
+    for (let i = 0; i < payloads.length; i += CHUNK_SIZE) {
+      const chunk = payloads.slice(i, i + CHUNK_SIZE);
+      const { error } = await supabase.from('labels').upsert(chunk, { onConflict: 'no_label' });
+
+      if (error) {
+        if (error.message?.includes('nama_rs')) {
+          // Fallback without nama_rs if column is not yet in Supabase
+          const fallbackChunk = chunk.map((p: any) => {
+            const { nama_rs, ...rest } = p;
+            return rest;
+          });
+          const retry = await supabase.from('labels').upsert(fallbackChunk, { onConflict: 'no_label' });
+          if (retry.error) {
+            return { success: false, error: retry.error.message, count: syncedCount };
+          }
+        } else {
+          return { success: false, error: error.message, count: syncedCount };
         }
-        return { success: true, count: fallbackPayloads.length };
       }
-      return { success: false, error: error.message };
+      syncedCount += chunk.length;
     }
-    return { success: true, count: payloads.length };
+
+    return { success: true, count: syncedCount };
   } catch (err: any) {
     return { success: false, error: err?.message };
   }
