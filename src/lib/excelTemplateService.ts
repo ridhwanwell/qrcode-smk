@@ -1,5 +1,4 @@
-import * as XLSXModule from 'xlsx';
-const XLSX = (XLSXModule as any).default || XLSXModule;
+import * as XLSX from 'xlsx';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { getLocalBlob } from './localBlobStorage';
 
