@@ -32,14 +32,18 @@ export const requireAuth = async (
 
     req.user = data.user;
 
-    // Fetch user profile/role
-    const { data: profile } = await supabaseAdmin
+    // Fetch user profile/role (Fail-closed security: deny access if profile or role is missing)
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('role')
       .eq('id', data.user.id)
       .maybeSingle();
 
-    req.userRole = profile?.role || 'admin_utama';
+    if (profileError || !profile || !profile.role) {
+      return res.status(403).json({ error: 'Forbidden: Profil pengguna atau role tidak ditemukan' });
+    }
+
+    req.userRole = profile.role;
     next();
   } catch (error) {
     console.error('Error verifying Supabase token in requireAuth:', error);

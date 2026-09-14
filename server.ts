@@ -317,35 +317,39 @@ async function startServer() {
       
       let targetPath = typeof filePath === 'string' ? filePath.trim().replace(/^\/+/, '') : '';
 
-      // 1. If documentId & documentType provided, verify ownership and fetch stored file path from database (Anti-IDOR)
+      // 1. Anti-IDOR validation: If documentId & documentType provided, query database to resolve stored path
       if (documentId && documentType) {
         let dbTable = '';
-        let urlColumn = 'pdf_url';
-
         if (documentType === 'sph') {
           dbTable = 'sph_documents';
         } else if (documentType === 'spk') {
-          dbTable = 'spk_documents';
+          dbTable = 'schedules';
         } else if (documentType === 'bap') {
           dbTable = 'bap_documents';
+        } else {
+          return res.status(400).json({ error: "documentType tidak valid (harus: 'sph', 'spk', atau 'bap')" });
         }
 
-        if (dbTable) {
-          const { data: docRecord, error: docError } = await supabaseAdmin
-            .from(dbTable)
-            .select('*')
-            .eq('id', documentId)
-            .maybeSingle();
+        const { data: docRecord, error: docError } = await supabaseAdmin
+          .from(dbTable)
+          .select('*')
+          .eq('id', documentId)
+          .maybeSingle();
 
-          if (docError || !docRecord) {
-            return res.status(404).json({ error: "Dokumen tidak ditemukan atau akses ditolak" });
-          }
-
-          const recordPdfPath = docRecord.pdf_url || docRecord.pdfUrl || docRecord.file_path;
-          if (recordPdfPath && typeof recordPdfPath === 'string') {
-            targetPath = recordPdfPath.replace(/^\/+/, '');
-          }
+        if (docError || !docRecord) {
+          return res.status(404).json({ error: "Dokumen tidak ditemukan di database" });
         }
+
+        // Check top-level column, JSONB data column, and alternate naming conventions
+        const recordPdfPath = docRecord.pdf_url || docRecord.pdfUrl 
+          || docRecord?.data?.pdfUrl || docRecord?.data?.pdf_url 
+          || docRecord.file_path;
+
+        if (!recordPdfPath || typeof recordPdfPath !== 'string') {
+          return res.status(404).json({ error: "Lampiran dokumen PDF belum diunggah untuk dokumen ini" });
+        }
+
+        targetPath = recordPdfPath.trim().replace(/^\/+/, '');
       }
 
       if (!targetPath) {

@@ -87,9 +87,9 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
       } else {
         setError('Gagal mendapatkan link akses dokumen. Pastikan Anda memiliki izin akses.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error accessing document:', err);
-      setError('Gagal membuka dokumen. Periksa otorisasi Anda.');
+      setError(err?.message || 'Gagal membuka dokumen. Periksa otorisasi Anda.');
     } finally {
       setOpeningDoc(false);
     }

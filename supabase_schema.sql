@@ -529,7 +529,7 @@ ON storage.objects FOR SELECT
 TO authenticated
 USING (
     bucket_id = 'internal-documents' 
-    AND public.get_current_user_role() IN ('admin_utama', 'admin_keuangan')
+    AND public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan')
 );
 
 DROP POLICY IF EXISTS "Internal confidential storage insert" ON storage.objects;
@@ -538,7 +538,7 @@ ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
     bucket_id = 'internal-documents' 
-    AND public.get_current_user_role() IN ('admin_utama', 'admin_keuangan')
+    AND public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan')
 );
 
 DROP POLICY IF EXISTS "Admin utama manage all storage" ON storage.objects;

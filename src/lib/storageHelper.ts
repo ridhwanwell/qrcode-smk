@@ -91,7 +91,8 @@ export const uploadFile = async (file: File, folderPath: string): Promise<string
  * Handles:
  * 1. Data URLs (data:application/pdf;base64,... or data:image/...) -> returned directly
  * 2. External HTTP/HTTPS links (e.g. Google Drive) -> returned directly
- * 3. File paths in internal-documents -> calls POST /api/storage/signed-url (or client SDK as backup)
+ * 3. File paths in internal-documents -> ONLY queries secure backend endpoint POST /api/storage/signed-url.
+ *    Client-side fallback is STRICTLY REMOVED to enforce server authorization and RLS.
  */
 export const getDocumentAccessUrl = async (
   pathOrUrl: string, 
@@ -102,59 +103,48 @@ export const getDocumentAccessUrl = async (
 
   const trimmed = pathOrUrl.trim();
 
-  // If already a Data URL or external link (like Google Drive), use as is
+  // If already a Data URL or external link (like Google Drive), return directly
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
     return trimmed;
   }
 
-  // If already an HTTP link, check if it's a Supabase storage URL or external drive
+  // If already an HTTP link, return directly
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    // If it's a direct link or external URL, return it
     return trimmed;
   }
 
-  // It is a private file path in 'internal-documents'
-  try {
-    // 1. Try backend authenticated API endpoint
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+  // File path in private 'internal-documents' bucket: MUST be requested via authenticated backend API
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
 
-    if (token) {
-      const response = await fetch('/api/storage/signed-url', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ 
-          filePath: trimmed, 
-          expiresIn,
-          documentId: documentContext?.documentId,
-          documentType: documentContext?.documentType
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.signedUrl) {
-          return result.signedUrl;
-        }
-      }
-    }
-
-    // 2. Client-side fallback if session exists
-    const { data: signedData, error: signError } = await supabase.storage
-      .from('internal-documents')
-      .createSignedUrl(trimmed, expiresIn);
-
-    if (signedData?.signedUrl && !signError) {
-      return signedData.signedUrl;
-    }
-  } catch (err) {
-    console.error('Error fetching fresh signed URL for document:', err);
+  if (!token) {
+    throw new Error('Autentikasi diperlukan: Silakan login terlebih dahulu untuk mengakses dokumen ini');
   }
 
-  // Return original as last resort
-  return trimmed;
+  const response = await fetch('/api/storage/signed-url', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ 
+      filePath: trimmed, 
+      expiresIn,
+      documentId: documentContext?.documentId,
+      documentType: documentContext?.documentType
+    })
+  });
+
+  if (!response.ok) {
+    const errJson = await response.json().catch(() => ({ error: 'Gagal mendapatkan izin akses dokumen' }));
+    throw new Error(errJson.error || `Akses dokumen gagal (Status ${response.status})`);
+  }
+
+  const result = await response.json();
+  if (!result.signedUrl) {
+    throw new Error('Server tidak mengembalikan URL bertanda tangan yang valid');
+  }
+
+  return result.signedUrl;
 };
 
