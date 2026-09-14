@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { uploadFile } from '../lib/storageHelper';
+import { uploadFile, getDocumentAccessUrl } from '../lib/storageHelper';
 import { UploadCloud, FileText, CheckCircle2, Loader2, X, Eye, Trash2, Image as ImageIcon, Link as LinkIcon, ExternalLink } from 'lucide-react';
 
 interface PdfUploaderProps {
@@ -23,6 +23,7 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'drive'>('upload');
   const [uploading, setUploading] = useState(false);
+  const [openingDoc, setOpeningDoc] = useState(false);
   const [driveUrlInput, setDriveUrlInput] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -41,8 +42,8 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
 
     try {
       const folderPath = `${folder}/${documentId}`;
-      const url = await uploadFile(file, folderPath);
-      onUploadSuccess(url);
+      const urlOrPath = await uploadFile(file, folderPath);
+      onUploadSuccess(urlOrPath);
     } catch (err) {
       console.error('Error uploading document file:', err);
       setError('Gagal mengunggah file. Silakan coba file lain atau gunakan opsi Link Google Drive.');
@@ -67,6 +68,27 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
     onUploadSuccess(formattedUrl);
     setDriveUrlInput('');
     setError(null);
+  };
+
+  const handleOpenDocument = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!existingPdfUrl) return;
+
+    setOpeningDoc(true);
+    setError(null);
+    try {
+      const targetUrl = await getDocumentAccessUrl(existingPdfUrl);
+      if (targetUrl) {
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setError('Gagal mendapatkan link akses dokumen. Pastikan Anda memiliki izin akses.');
+      }
+    } catch (err) {
+      console.error('Error accessing document:', err);
+      setError('Gagal membuka dokumen. Periksa otorisasi Anda.');
+    } finally {
+      setOpeningDoc(false);
+    }
   };
 
   const isImage = existingPdfUrl?.startsWith('data:image/') || 
@@ -112,21 +134,27 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
                 {isDriveOrCloudLink ? 'Tautan Google Drive / Cloud Terhubung' : 'Dokumen / Scan Terlampir'}
               </span>
               <span className="text-[10px] text-slate-400 font-mono block truncate">
-                {isDriveOrCloudLink ? existingPdfUrl : 'Format siap cetak / buka'}
+                {isDriveOrCloudLink ? existingPdfUrl : 'Tersimpan di Internal Document Storage'}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <a 
-              href={existingPdfUrl} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="px-2.5 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+            <button 
+              type="button"
+              onClick={handleOpenDocument}
+              disabled={openingDoc}
+              className="px-2.5 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
             >
-              {isDriveOrCloudLink ? <ExternalLink className="w-3.5 h-3.5 text-amber-300" /> : <Eye className="w-3.5 h-3.5" />}
-              <span>{isDriveOrCloudLink ? 'Buka Google Drive' : 'Buka File'}</span>
-            </a>
+              {openingDoc ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-300" />
+              ) : isDriveOrCloudLink ? (
+                <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" />
+              )}
+              <span>{openingDoc ? 'Membuka...' : isDriveOrCloudLink ? 'Buka Google Drive' : 'Buka File'}</span>
+            </button>
 
             <label className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold cursor-pointer transition-all">
               <span>Ganti</span>

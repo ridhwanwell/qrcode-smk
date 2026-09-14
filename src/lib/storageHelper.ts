@@ -44,8 +44,9 @@ export const uploadPublicAsset = async (file: File, folderPath: string): Promise
 };
 
 /**
- * Uploads a private confidential document (SPH, BAP, financial attachments) to private bucket 'internal-documents'.
- * Automatically falls back to base64 data URL if storage is unavailable.
+ * Uploads a private confidential document (SPH, SPK, BAP, financial attachments) to private bucket 'internal-documents'.
+ * Returns the stored filePath (e.g. "sph/sph-123/file.pdf") so it can be saved persistently.
+ * If storage upload fails, falls back ONLY to base64 data URL (NEVER uploaded to public bucket).
  */
 export const uploadPrivateDocument = async (file: File, folderPath: string): Promise<string> => {
   try {
@@ -60,20 +61,12 @@ export const uploadPrivateDocument = async (file: File, folderPath: string): Pro
       });
 
     if (error) {
-      console.warn('Supabase private storage upload failed, falling back to public bucket/base64:', error.message);
-      return await uploadPublicAsset(file, folderPath);
+      console.warn('Supabase private storage upload failed, falling back to base64 only (not public):', error.message);
+      return await fileToBase64(file);
     }
 
-    // For private documents, retrieve signed URL via backend endpoint or direct client signed URL
-    const { data: signedData, error: signError } = await supabase.storage
-      .from('internal-documents')
-      .createSignedUrl(filePath, 60 * 60); // 1 hour token
-
-    if (signedData?.signedUrl && !signError) {
-      return signedData.signedUrl;
-    }
-
-    return await fileToBase64(file);
+    // Return the relative filePath in internal-documents bucket for persistent storage
+    return filePath;
   } catch (err) {
     console.warn('Private document upload error, using Base64 data URL fallback:', err);
     return await fileToBase64(file);
@@ -82,12 +75,79 @@ export const uploadPrivateDocument = async (file: File, folderPath: string): Pro
 
 /**
  * Universal upload helper maintaining backwards compatibility.
- * Routes sensitive documents (sph, bap, invoices) to private bucket, and templates/logos to public bucket.
+ * Routes sensitive documents (sph, spk, bap, financial, invoices, contracts) to private bucket,
+ * and templates/logos/assets to public bucket.
  */
 export const uploadFile = async (file: File, folderPath: string): Promise<string> => {
-  const isSensitive = /^(sph|bap|financial|invoices|contracts)/i.test(folderPath);
+  const isSensitive = /^(sph|spk|bap|financial|invoices|contracts)/i.test(folderPath);
   if (isSensitive) {
     return uploadPrivateDocument(file, folderPath);
   }
   return uploadPublicAsset(file, folderPath);
 };
+
+/**
+ * Retrieves a fresh temporary signed URL for viewing/downloading private documents.
+ * Handles:
+ * 1. Data URLs (data:application/pdf;base64,... or data:image/...) -> returned directly
+ * 2. External HTTP/HTTPS links (e.g. Google Drive) -> returned directly
+ * 3. File paths in internal-documents -> calls POST /api/storage/signed-url (or client SDK as backup)
+ */
+export const getDocumentAccessUrl = async (pathOrUrl: string, expiresIn: number = 900): Promise<string> => {
+  if (!pathOrUrl) return '';
+
+  const trimmed = pathOrUrl.trim();
+
+  // If already a Data URL or external link (like Google Drive), use as is
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+
+  // If already an HTTP link, check if it's a Supabase storage URL or external drive
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    // If it is already a direct link or external URL, return it
+    // But if it's an expired signed URL containing token, we can still try to extract path if needed,
+    // or simply return the URL.
+    return trimmed;
+  }
+
+  // It is a private file path in 'internal-documents'
+  try {
+    // 1. Try backend authenticated API endpoint
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (token) {
+      const response = await fetch('/api/storage/signed-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ filePath: trimmed, expiresIn })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.signedUrl) {
+          return result.signedUrl;
+        }
+      }
+    }
+
+    // 2. Client-side fallback if session exists
+    const { data: signedData, error: signError } = await supabase.storage
+      .from('internal-documents')
+      .createSignedUrl(trimmed, expiresIn);
+
+    if (signedData?.signedUrl && !signError) {
+      return signedData.signedUrl;
+    }
+  } catch (err) {
+    console.error('Error fetching fresh signed URL for document:', err);
+  }
+
+  // Return original as last resort
+  return trimmed;
+};
+
