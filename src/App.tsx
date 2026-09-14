@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useSearchParams, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { extractLabelFromLocation } from './lib/labelParser';
 
@@ -17,8 +17,6 @@ import AdminGenerate from './pages/AdminGenerate';
 import AdminTemplates from './pages/AdminTemplates';
 import AdminLayout from './components/AdminLayout';
 import AsetPortalApp from './pages/AsetPortalApp';
-import { LoginPage as AsetLoginPage } from './pages/AsetLoginPage';
-import { AuthProvider as AsetAuthProvider } from './firebase/AuthContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -54,11 +52,7 @@ const ScanOrRedirect = () => {
     return <PublicScanPage />;
   }
 
-  return (
-    <AsetAuthProvider>
-      <AsetPortalApp />
-    </AsetAuthProvider>
-  );
+  return <AsetPortalApp />;
 };
 
 export default function App() {
@@ -94,19 +88,11 @@ export default function App() {
             <Route path="labels" element={<AdminLabels />} />
             <Route path="generate" element={<AdminGenerate />} />
             <Route path="templates" element={<AdminTemplates />} />
-            <Route path="aset" element={
-              <AsetAuthProvider>
-                <AsetPortalApp />
-              </AsetAuthProvider>
-            } />
+            <Route path="aset" element={<AsetPortalApp />} />
           </Route>
 
           {/* Direct route to Manajemen Aset standalone portal */}
-          <Route path="/portal-aset" element={
-            <AsetAuthProvider>
-              <AsetPortalApp />
-            </AsetAuthProvider>
-          } />
+          <Route path="/portal-aset" element={<AsetPortalApp />} />
 
           {/* Catch-all sends to PublicScanPage so custom or bare label paths (e.g. /002.0020) work */}
           <Route path="*" element={<PublicScanPage />} />

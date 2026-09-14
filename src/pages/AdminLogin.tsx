@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { 
   AlertCircle, 
-  Verified, 
   User, 
   Lock, 
   Eye, 
@@ -40,7 +39,7 @@ export default function AdminLogin() {
       if (result.success) {
         navigate('/admin/dashboard');
       } else {
-        setError(result.error || 'Username atau password salah.');
+        setError(result.error || 'Username atau password tidak sesuai.');
       }
     } catch (err: any) {
       setError(err.message || 'Terjadi kesalahan saat login.');
@@ -51,7 +50,6 @@ export default function AdminLogin() {
 
   const handleQuickSelect = (u: string) => {
     setUsername(u);
-    setPassword('smkjayajaya');
     setError('');
   };
 
@@ -90,7 +88,7 @@ export default function AdminLogin() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Username
+                Email / Username
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -101,7 +99,7 @@ export default function AdminLogin() {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="ridhwanwell / adminteknik"
+                  placeholder="admin.utama@smk.co.id"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
                 />
               </div>
@@ -121,7 +119,7 @@ export default function AdminLogin() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan password"
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all font-mono"
                 />
                 <button
                   type="button"
@@ -135,22 +133,22 @@ export default function AdminLogin() {
 
             {/* Quick account helper pills */}
             <div className="pt-1">
-              <p className="text-[11px] text-slate-500 mb-1.5 font-medium">Pilihan Akun Cepat:</p>
+              <p className="text-[11px] text-slate-500 mb-1.5 font-medium">Pilih Akun:</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleQuickSelect('ridhwanwell')}
+                  onClick={() => handleQuickSelect('admin.utama@smk.co.id')}
                   className="py-1.5 px-2.5 text-xs bg-slate-100 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border border-slate-200 rounded-lg text-slate-700 text-left transition-colors flex items-center justify-between"
                 >
-                  <span className="font-semibold truncate">ridhwanwell</span>
-                  <span className="text-[10px] text-slate-400">Admin</span>
+                  <span className="font-semibold truncate">admin.utama</span>
+                  <span className="text-[10px] text-slate-400">Utama</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleQuickSelect('adminteknik')}
+                  onClick={() => handleQuickSelect('admin.teknik@smk.co.id')}
                   className="py-1.5 px-2.5 text-xs bg-slate-100 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border border-slate-200 rounded-lg text-slate-700 text-left transition-colors flex items-center justify-between"
                 >
-                  <span className="font-semibold truncate">adminteknik</span>
+                  <span className="font-semibold truncate">admin.teknik</span>
                   <span className="text-[10px] text-slate-400">Teknik</span>
                 </button>
               </div>
@@ -176,5 +174,3 @@ export default function AdminLogin() {
     </div>
   );
 }
-
-

@@ -1,238 +1,88 @@
-import { supabase } from './supabase.ts';
-
-export interface SupabaseSyncResult {
-  connected: boolean;
-  tableReady: boolean;
-  message: string;
-}
+import { supabase } from './supabaseClient';
 
 /**
- * Check connection to Supabase and verify if the 'labels' table is accessible
- */
-export async function testSupabaseConnection(): Promise<SupabaseSyncResult> {
-  try {
-    const { data, error } = await supabase.from('labels').select('id').limit(1);
-    if (error) {
-      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
-        return {
-          connected: true,
-          tableReady: false,
-          message: "Terhubung ke Supabase, namun tabel 'labels' belum dibuat di Supabase SQL Editor."
-        };
-      }
-      return {
-        connected: false,
-        tableReady: false,
-        message: `Supabase Error: ${error.message}`
-      };
-    }
-    return {
-      connected: true,
-      tableReady: true,
-      message: "Supabase terhubung aktif dan tabel 'labels' siap digunakan!"
-    };
-  } catch (err: any) {
-    return {
-      connected: false,
-      tableReady: false,
-      message: err?.message || "Gagal menghubungkan ke Supabase"
-    };
-  }
-}
-
-/**
- * Fetch all labels from Supabase
- */
-export async function fetchAllLabelsFromSupabase(): Promise<any[]> {
-  try {
-    const { data, error } = await supabase
-      .from('labels')
-      .select('*')
-      .not('no_label', 'like', '__meta_%')
-      .not('no_label', 'like', '__aset_%')
-      .order('no_label', { ascending: true });
-    if (error) {
-      console.warn('fetchAllLabelsFromSupabase error:', error.message);
-      return [];
-    }
-    return (data || []).filter(item => !item.no_label?.startsWith('__meta_') && !item.no_label?.startsWith('__aset_'));
-  } catch (err) {
-    console.warn('fetchAllLabelsFromSupabase exception:', err);
-    return [];
-  }
-}
-
-/**
- * Save folder hospital name to Supabase
- */
-export async function saveFolderRsToSupabase(prefix: string, namaRs: string | null): Promise<boolean> {
-  try {
-    const metaKey = `__meta_folder_${prefix}`;
-    const trimmed = namaRs?.trim();
-    if (!trimmed) {
-      await supabase.from('labels').delete().eq('no_label', metaKey);
-      return true;
-    }
-    const { error } = await supabase.from('labels').upsert({
-      no_label: metaKey,
-      status: 'metadata',
-      pdf_source: 'folder_rs',
-      pdf_name: trimmed,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'no_label' });
-    if (error) {
-      console.warn('saveFolderRsToSupabase error:', error.message);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn('saveFolderRsToSupabase exception:', err);
-    return false;
-  }
-}
-
-/**
- * Fetch all folder hospital names stored in Supabase
+ * Fetches folder hospital names metadata from Supabase
  */
 export async function fetchFolderRsFromSupabase(): Promise<Record<string, string>> {
   try {
     const { data, error } = await supabase
       .from('labels')
-      .select('no_label, pdf_name')
+      .select('no_label, nama_rs')
       .like('no_label', '__meta_folder_%');
-    if (error || !data) {
-      return {};
-    }
+
+    if (error || !data) return {};
+
     const map: Record<string, string> = {};
-    for (const item of data) {
-      if (item.no_label && item.pdf_name) {
-        const prefix = item.no_label.replace('__meta_folder_', '');
-        map[prefix] = item.pdf_name;
+    data.forEach((row: any) => {
+      if (row.no_label && row.nama_rs) {
+        const prefix = row.no_label.replace('__meta_folder_', '');
+        map[prefix] = row.nama_rs;
       }
-    }
+    });
+
     return map;
   } catch (err) {
-    console.warn('fetchFolderRsFromSupabase exception:', err);
+    console.warn('Error fetching folder RS from Supabase:', err);
     return {};
   }
 }
 
 /**
- * Synchronize a single label to Supabase
+ * Saves folder hospital name metadata into Supabase
  */
-export async function syncLabelToSupabase(label: {
-  noLabel: string;
-  namaRs?: string | null;
-  status?: string;
-  pdfSource?: string | null;
-  pdfUrl?: string | null;
-  pdfDriveUrl?: string | null;
-  pdfOriginalUrl?: string | null;
-  pdfName?: string | null;
-  calibratedAt?: string | null;
-  validUntil?: string | null;
-}) {
+export async function saveFolderRsToSupabase(prefix: string, namaRs: string): Promise<void> {
   try {
-    const payload: any = {
-      no_label: label.noLabel,
-      status: label.status || 'Menunggu Sertifikat',
-      pdf_source: label.pdfSource || null,
-      pdf_url: label.pdfUrl || null,
-      pdf_drive_url: label.pdfDriveUrl || null,
-      pdforiginal_url: label.pdfOriginalUrl || null,
-      pdf_name: label.pdfName || null,
-      calibrated_at: label.calibratedAt || null,
-      valid_until: label.validUntil || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (label.namaRs !== undefined) {
-      payload.nama_rs = label.namaRs;
-    }
-
-    const { error } = await supabase.from('labels').upsert(payload, { onConflict: 'no_label' });
-    if (error) {
-      if (error.message?.includes('nama_rs')) {
-        // Column nama_rs might not exist yet in Supabase schema cache
-        delete payload.nama_rs;
-        await supabase.from('labels').upsert(payload, { onConflict: 'no_label' });
-      } else {
-        console.warn('Supabase sync label error:', error.message);
-      }
-    }
+    await supabase.from('labels').upsert({
+      no_label: `__meta_folder_${prefix}`,
+      nama_rs: namaRs,
+      status: '__meta_folder_info',
+      updated_at: new Date().toISOString()
+    });
   } catch (err) {
-    console.warn('Supabase sync label exception:', err);
+    console.warn('Error saving folder RS to Supabase:', err);
   }
 }
 
 /**
- * Delete a label from Supabase
+ * Deletes a label from Supabase
  */
-export async function deleteLabelFromSupabase(noLabel: string) {
+export async function deleteLabelFromSupabase(noLabel: string): Promise<void> {
   try {
-    const { error } = await supabase.from('labels').delete().eq('no_label', noLabel);
-    if (error) {
-      console.warn('Supabase delete label error:', error.message);
-    }
+    await supabase.from('labels').delete().eq('no_label', noLabel);
   } catch (err) {
-    console.warn('Supabase delete label exception:', err);
+    console.warn('Error deleting label from Supabase:', err);
   }
 }
 
 /**
  * Bulk sync labels to Supabase
  */
-export async function bulkSyncLabelsToSupabase(items: any[]) {
+export async function bulkSyncLabelsToSupabase(items: any[]): Promise<{ success: boolean; count: number }> {
   try {
-    const payloads = items.map((it) => {
-      const p: any = {
+    const records = items
+      .filter(it => it && (it.noLabel || it.no_label || it.id))
+      .map(it => ({
         no_label: it.noLabel || it.no_label || it.id,
+        nama_rs: it.namaRs || it.nama_rs || null,
         status: it.status || 'Menunggu Sertifikat',
         pdf_source: it.pdfSource || it.pdf_source || null,
         pdf_url: it.pdfUrl || it.pdf_url || null,
         pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
-        pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || it.pdf_original_url || null,
+        pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
         pdf_name: it.pdfName || it.pdf_name || null,
         calibrated_at: it.calibratedAt || it.calibrated_at || null,
         valid_until: it.validUntil || it.valid_until || null,
-        updated_at: new Date().toISOString(),
-      };
-      if (it.namaRs !== undefined || it.nama_rs !== undefined) {
-        p.nama_rs = it.namaRs || it.nama_rs || null;
-      }
-      return p;
-    });
+        updated_at: new Date().toISOString()
+      }));
 
-    if (payloads.length === 0) return { success: true, count: 0 };
+    if (records.length === 0) return { success: true, count: 0 };
 
-    // Batch upsert in chunks of 100 to avoid payload size or timeout limits
-    const CHUNK_SIZE = 100;
-    let syncedCount = 0;
+    const { error } = await supabase.from('labels').upsert(records);
+    if (error) throw error;
 
-    for (let i = 0; i < payloads.length; i += CHUNK_SIZE) {
-      const chunk = payloads.slice(i, i + CHUNK_SIZE);
-      const { error } = await supabase.from('labels').upsert(chunk, { onConflict: 'no_label' });
-
-      if (error) {
-        if (error.message?.includes('nama_rs')) {
-          // Fallback without nama_rs if column is not yet in Supabase
-          const fallbackChunk = chunk.map((p: any) => {
-            const { nama_rs, ...rest } = p;
-            return rest;
-          });
-          const retry = await supabase.from('labels').upsert(fallbackChunk, { onConflict: 'no_label' });
-          if (retry.error) {
-            return { success: false, error: retry.error.message, count: syncedCount };
-          }
-        } else {
-          return { success: false, error: error.message, count: syncedCount };
-        }
-      }
-      syncedCount += chunk.length;
-    }
-
-    return { success: true, count: syncedCount };
+    return { success: true, count: records.length };
   } catch (err: any) {
-    return { success: false, error: err?.message };
+    console.warn('Error bulk syncing to Supabase:', err);
+    return { success: false, count: 0 };
   }
 }

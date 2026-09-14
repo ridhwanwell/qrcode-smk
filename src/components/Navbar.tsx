@@ -16,7 +16,7 @@ import { CalibrationSchedule, CalibratorAsset } from '../types';
 import { getUrgencyInfo } from '../utils/helpers';
 import { CompanyLogo } from './CompanyLogo';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
-import { useAuth } from '../firebase/AuthContext';
+import { useAuth } from '../lib/AuthContext';
 
 export type AppTab = 'dashboard' | 'sph' | 'labels' | 'schedules' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates';
 

@@ -48,8 +48,8 @@ import {
 import { SPREADSHEET_CALIBRATORS, OFFICIAL_TABLETS } from '../data/spreadsheetCalibrators';
 import confetti from 'canvas-confetti';
 import { Check, Send, AlertCircle, ArrowLeft, LogOut } from 'lucide-react';
-import { useFirestoreData } from '../firebase/useFirestoreData';
-import { useAuth } from '../firebase/AuthContext';
+import { useSupabaseData } from '../lib/useSupabaseData';
+import { useAuth } from '../lib/AuthContext';
 import { LoginPage } from './AsetLoginPage';
 import { BapModal } from '../components/BapModal';
 import { createBapFromSph } from '../utils/bapHelpers';
@@ -83,18 +83,18 @@ export default function App() {
     setActiveTab(newTab);
   };
 
-  // Persistence State via Firestore
-  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules } = useFirestoreData<CalibrationSchedule>('schedules');
-  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph } = useFirestoreData<SphQuotation>('sphDocuments');
-  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators } = useFirestoreData<CalibratorAsset>('calibratorAssets');
-  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets } = useFirestoreData<FinancialAsset>('financialAssets');
-  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions } = useFirestoreData<FinancialTransaction>('financialTransactions');
-  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals } = useFirestoreData<Hospital>('hospitals');
-  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians } = useFirestoreData<Technician>('technicians');
-  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets } = useFirestoreData<TabletDevice>('tabletAssets');
-  const { data: tabletLoans, add: addTabletLoan, update: updateTabletLoanDb, remove: removeTabletLoanDb, clearAll: clearAllTabletLoans } = useFirestoreData<TabletLoan>('tabletLoans');
-  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing } = useFirestoreData<MarketingStaff>('marketingStaff');
-  const { data: bapDocuments, add: addBapDocument, update: updateBapDocument, remove: removeBapDocument, clearAll: clearAllBapDocuments } = useFirestoreData<BapDocument>('bapDocuments');
+  // Persistence State via Supabase
+  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules } = useSupabaseData<CalibrationSchedule>('schedules');
+  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph } = useSupabaseData<SphQuotation>('sphDocuments');
+  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets');
+  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets } = useSupabaseData<FinancialAsset>('financialAssets');
+  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions } = useSupabaseData<FinancialTransaction>('financialTransactions');
+  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals } = useSupabaseData<Hospital>('hospitals');
+  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians } = useSupabaseData<Technician>('technicians');
+  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets } = useSupabaseData<TabletDevice>('tabletAssets');
+  const { data: tabletLoans, add: addTabletLoan, update: updateTabletLoanDb, remove: removeTabletLoanDb, clearAll: clearAllTabletLoans } = useSupabaseData<TabletLoan>('tabletLoans');
+  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing } = useSupabaseData<MarketingStaff>('marketingStaff');
+  const { data: bapDocuments, add: addBapDocument, update: updateBapDocument, remove: removeBapDocument, clearAll: clearAllBapDocuments } = useSupabaseData<BapDocument>('bapDocuments');
 
   // Fallback to official 57 calibrators and 6 tablets if database collection is empty
   const effectiveCalibrators = calibrators.length > 0 ? calibrators : SPREADSHEET_CALIBRATORS;

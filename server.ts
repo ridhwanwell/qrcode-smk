@@ -1,134 +1,220 @@
-import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { 
-  getAllLabels, 
-  getLabelByNo, 
-  upsertLabel, 
-  deleteLabelByNo,
-  deleteLabelsByPrefix,
-  deleteBatchLabelsByNos,
-  updateLabelsNamaRsByPrefix,
-  getAllFolders,
-  upsertFolder,
-  deleteFolderById,
-  getSetting,
-  setSetting,
-  getAllFolderHospitalNames,
-  getFolderHospitalName,
-  setFolderHospitalName
-} from "./src/db/queries.ts";
-import { 
-  testSupabaseConnection, 
-  syncLabelToSupabase, 
-  deleteLabelFromSupabase, 
-  bulkSyncLabelsToSupabase,
-  fetchAllLabelsFromSupabase
-} from "./src/lib/supabaseSync.ts";
-import { supabase } from "./src/lib/supabase.ts";
+import rateLimit from "express-rate-limit";
+import { supabaseAdmin } from "./src/server/supabaseAdmin";
+import { requireAuth, AuthRequest } from "./src/middleware/auth";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Global Middlewares
   app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-  // Health check endpoint
+  // Global Rate Limiting: 200 requests per 15 minutes per IP
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Terlalu banyak permintaan dari IP ini, coba lagi dalam beberapa menit." }
+  });
+
+  // Strict Rate Limiting for Auth endpoints: 20 attempts per 15 minutes
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Terlalu banyak percobaan autentikasi, coba lagi dalam 15 menit." }
+  });
+
+  app.use("/api/", apiLimiter);
+  app.use("/api/auth/", authLimiter);
+
+  // --- API: HEALTH CHECK ---
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", engine: "PostgreSQL Cloud SQL" });
+    res.json({ status: "ok", timestamp: new Date().toISOString(), database: "supabase" });
   });
 
-  // --- API: LABELS ---
-  app.get("/api/labels", async (req, res) => {
-    try {
-      const all = await getAllLabels();
-      res.json(all);
-    } catch (err: any) {
-      console.error("API error in GET /api/labels:", err);
-      res.status(500).json({ error: "Failed to retrieve labels from database" });
-    }
-  });
-
+  // --- API: PUBLIC SCAN LOOKUP (For hospital staff scanning QR code on equipment stickers) ---
   app.get("/api/labels/:noLabel", async (req, res) => {
     try {
-      const item = await getLabelByNo(req.params.noLabel);
-      if (!item) {
-        return res.status(404).json({ error: "Label not found" });
+      const { noLabel } = req.params;
+      const { data, error } = await supabaseAdmin
+        .from('labels')
+        .select('*')
+        .eq('no_label', noLabel)
+        .maybeSingle();
+
+      if (error) {
+        return res.status(500).json({ error: "Gagal mengambil data label" });
       }
-      res.json(item);
+
+      if (!data) {
+        return res.status(404).json({ error: "Label tidak ditemukan" });
+      }
+
+      // Format for frontend response
+      res.json({
+        noLabel: data.no_label,
+        namaRs: data.nama_rs,
+        status: data.status,
+        pdfSource: data.pdf_source,
+        pdfUrl: data.pdf_url,
+        pdfDriveUrl: data.pdf_drive_url,
+        pdfOriginalUrl: data.pdforiginal_url,
+        pdfName: data.pdf_name,
+        calibratedAt: data.calibrated_at,
+        validUntil: data.valid_until,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      });
     } catch (err: any) {
       console.error("API error in GET /api/labels/:noLabel:", err);
-      res.status(500).json({ error: "Failed to retrieve label" });
+      res.status(500).json({ error: "Gagal memproses permintaan label" });
     }
   });
 
-  app.post("/api/labels", async (req, res) => {
+  // --- API: ADMIN LABELS (Protected by requireAuth) ---
+  app.get("/api/labels", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { noLabel, namaRs, status, pdfSource, pdfUrl, pdfDriveUrl, pdfOriginalUrl, pdfName, calibratedAt, validUntil } = req.body;
+      const { data, error } = await supabaseAdmin
+        .from('labels')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Supabase labels fetch error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      const formatted = (data || []).map((it: any) => ({
+        noLabel: it.no_label,
+        namaRs: it.nama_rs,
+        status: it.status,
+        pdfSource: it.pdf_source,
+        pdfUrl: it.pdf_url,
+        pdfDriveUrl: it.pdf_drive_url,
+        pdfOriginalUrl: it.pdforiginal_url,
+        pdfName: it.pdf_name,
+        calibratedAt: it.calibrated_at,
+        validUntil: it.valid_until,
+        createdAt: it.created_at,
+        updatedAt: it.updated_at
+      }));
+
+      res.json(formatted);
+    } catch (err: any) {
+      console.error("API error in GET /api/labels:", err);
+      res.status(500).json({ error: "Failed to retrieve labels" });
+    }
+  });
+
+  app.post("/api/labels", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { 
+        noLabel, 
+        namaRs, 
+        status, 
+        pdfSource, 
+        pdfUrl, 
+        pdfDriveUrl, 
+        pdfOriginalUrl, 
+        pdfName, 
+        calibratedAt, 
+        validUntil 
+      } = req.body;
+
       if (!noLabel) {
         return res.status(400).json({ error: "noLabel is required" });
       }
-      const saved = await upsertLabel({
-        noLabel,
-        namaRs,
-        status,
-        pdfSource,
-        pdfUrl,
-        pdfDriveUrl,
-        pdfOriginalUrl,
-        pdfName,
-        calibratedAt,
-        validUntil,
-      });
 
-      // Synchronize to Supabase asynchronously
-      syncLabelToSupabase(saved).catch(() => {});
+      const payload = {
+        no_label: noLabel,
+        nama_rs: namaRs || null,
+        status: status || 'Menunggu Sertifikat',
+        pdf_source: pdfSource || null,
+        pdf_url: pdfUrl || null,
+        pdf_drive_url: pdfDriveUrl || null,
+        pdforiginal_url: pdfOriginalUrl || null,
+        pdf_name: pdfName || null,
+        calibrated_at: calibratedAt || null,
+        valid_until: validUntil || null,
+        updated_at: new Date().toISOString()
+      };
 
-      res.json(saved);
+      const { data, error } = await supabaseAdmin
+        .from('labels')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Supabase label upsert error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true, label: data });
     } catch (err: any) {
       console.error("API error in POST /api/labels:", err);
-      res.status(500).json({ error: "Failed to save label to database" });
+      res.status(500).json({ error: "Failed to save label" });
     }
   });
 
-  app.post("/api/labels/bulk", async (req, res) => {
+  app.post("/api/labels/bulk", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { items } = req.body;
-      if (!Array.isArray(items)) {
-        return res.status(400).json({ error: "items array is required" });
-      }
-      for (const it of items) {
-        if (it && (it.noLabel || it.id)) {
-          await upsertLabel({
-            noLabel: it.noLabel || it.id,
-            namaRs: it.namaRs || it.nama_rs,
-            status: it.status,
-            pdfSource: it.pdfSource,
-            pdfUrl: it.pdfUrl,
-            pdfDriveUrl: it.pdfDriveUrl,
-            pdfOriginalUrl: it.pdfOriginalUrl,
-            pdfName: it.pdfName,
-            calibratedAt: it.calibratedAt,
-            validUntil: it.validUntil,
-          });
-        }
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.json({ success: true, count: 0 });
       }
 
-      // Synchronize to Supabase asynchronously
-      bulkSyncLabelsToSupabase(items).catch(() => {});
+      const records = items
+        .filter((it: any) => it && (it.noLabel || it.no_label || it.id))
+        .map((it: any) => ({
+          no_label: it.noLabel || it.no_label || it.id,
+          nama_rs: it.namaRs || it.nama_rs || null,
+          status: it.status || 'Menunggu Sertifikat',
+          pdf_source: it.pdfSource || it.pdf_source || null,
+          pdf_url: it.pdfUrl || it.pdf_url || null,
+          pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
+          pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
+          pdf_name: it.pdfName || it.pdf_name || null,
+          calibrated_at: it.calibratedAt || it.calibrated_at || null,
+          valid_until: it.validUntil || it.valid_until || null,
+          updated_at: new Date().toISOString()
+        }));
 
-      res.json({ success: true, count: items.length });
+      const { error } = await supabaseAdmin
+        .from('labels')
+        .upsert(records);
+
+      if (error) {
+        console.error("Supabase bulk label upsert error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true, count: records.length });
     } catch (err: any) {
       console.error("API error in POST /api/labels/bulk:", err);
       res.status(500).json({ error: "Failed to bulk save labels" });
     }
   });
 
-  app.delete("/api/labels/:noLabel", async (req, res) => {
+  app.delete("/api/labels/:noLabel", requireAuth, async (req: AuthRequest, res) => {
     try {
-      await deleteLabelByNo(req.params.noLabel);
-      deleteLabelFromSupabase(req.params.noLabel).catch(() => {});
+      const { noLabel } = req.params;
+      const { error } = await supabaseAdmin
+        .from('labels')
+        .delete()
+        .eq('no_label', noLabel);
+
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+
       res.json({ success: true });
     } catch (err: any) {
       console.error("API error in DELETE /api/labels/:noLabel:", err);
@@ -136,102 +222,67 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/folders/:prefix", async (req, res) => {
+  // --- API: FOLDERS (Protected by requireAuth) ---
+  app.get("/api/folders", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { prefix } = req.params;
-      const count = await deleteLabelsByPrefix(prefix);
-      
-      // Synchronize deletion to Supabase
-      try {
-        await supabase.from('labels').delete().like('no_label', `${prefix}.%`);
-        await supabase.from('labels').delete().eq('no_label', prefix);
-        await supabase.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
-      } catch (sbErr) {
-        console.warn('Supabase folder delete error:', sbErr);
+      const { data, error } = await supabaseAdmin
+        .from('label_folders')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        return res.status(500).json({ error: error.message });
       }
 
-      res.json({ success: true, count });
-    } catch (err: any) {
-      console.error("API error in DELETE /api/folders/:prefix:", err);
-      res.status(500).json({ error: "Failed to delete folder labels" });
-    }
-  });
-
-  app.get("/api/folders/nama-rs", async (req, res) => {
-    try {
-      const map = await getAllFolderHospitalNames();
-      res.json(map);
-    } catch (err: any) {
-      console.error("API error in GET /api/folders/nama-rs:", err);
-      res.status(500).json({ error: "Failed to retrieve folder hospital names" });
-    }
-  });
-
-  app.put("/api/folders/:prefix/nama-rs", async (req, res) => {
-    try {
-      const { prefix } = req.params;
-      const { namaRs } = req.body;
-      const trimmed = typeof namaRs === 'string' ? namaRs.trim() : null;
-      const count = await updateLabelsNamaRsByPrefix(prefix, trimmed);
-      res.json({ success: true, count, namaRs: trimmed, prefix });
-    } catch (err: any) {
-      console.error("API error in PUT /api/folders/:prefix/nama-rs:", err);
-      res.status(500).json({ error: "Failed to update hospital name for folder" });
-    }
-  });
-
-  // --- API: SUPABASE STATUS & SYNC ---
-  app.get("/api/supabase/status", async (req, res) => {
-    try {
-      const result = await testSupabaseConnection();
-      res.json({
-        ...result,
-        projectId: "auzpctxhltcdzdhcaetb",
-        url: "https://auzpctxhltcdzdhcaetb.supabase.co"
-      });
-    } catch (err: any) {
-      res.status(500).json({ connected: false, message: err?.message });
-    }
-  });
-
-  app.post("/api/supabase/sync", async (req, res) => {
-    try {
-      const all = await getAllLabels();
-      const result = await bulkSyncLabelsToSupabase(all);
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err?.message });
-    }
-  });
-
-  // --- API: FOLDERS ---
-  app.get("/api/folders", async (req, res) => {
-    try {
-      const all = await getAllFolders();
-      res.json(all);
+      res.json(data || []);
     } catch (err: any) {
       console.error("API error in GET /api/folders:", err);
       res.status(500).json({ error: "Failed to retrieve folders" });
     }
   });
 
-  app.post("/api/folders", async (req, res) => {
+  app.post("/api/folders", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id, name, color, labelIds } = req.body;
       if (!id || !name) {
         return res.status(400).json({ error: "id and name are required" });
       }
-      const saved = await upsertFolder(id, name, color || '#3b82f6', labelIds || []);
-      res.json(saved);
+
+      const { data, error } = await supabaseAdmin
+        .from('label_folders')
+        .upsert({
+          id,
+          name,
+          color: color || '#3b82f6',
+          label_ids: labelIds || [],
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json(data);
     } catch (err: any) {
       console.error("API error in POST /api/folders:", err);
       res.status(500).json({ error: "Failed to save folder" });
     }
   });
 
-  app.delete("/api/folders/:id", async (req, res) => {
+  app.delete("/api/folders/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
-      await deleteFolderById(req.params.id);
+      const { id } = req.params;
+      const { error } = await supabaseAdmin
+        .from('label_folders')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+
       res.json({ success: true });
     } catch (err: any) {
       console.error("API error in DELETE /api/folders/:id:", err);
@@ -239,24 +290,68 @@ async function startServer() {
     }
   });
 
-  // --- API: SETTINGS ---
-  app.get("/api/settings/:key", async (req, res) => {
+  app.delete("/api/folders/prefix/:prefix", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const val = await getSetting(req.params.key);
-      res.json({ key: req.params.key, value: val });
+      const { prefix } = req.params;
+      await supabaseAdmin.from('labels').delete().like('no_label', `${prefix}.%`);
+      await supabaseAdmin.from('labels').delete().eq('no_label', prefix);
+      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("API error in DELETE /api/folders/prefix/:prefix:", err);
+      res.status(500).json({ error: "Failed to delete folder prefix labels" });
+    }
+  });
+
+  // --- API: SETTINGS (Protected by requireAuth) ---
+  app.get("/api/settings/:key", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { key } = req.params;
+      const { data } = await supabaseAdmin
+        .from('settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+
+      res.json({ key, value: data ? data.value : null });
     } catch (err: any) {
       console.warn("API warning in GET /api/settings/:key:", err);
       res.json({ key: req.params.key, value: null });
     }
   });
 
-  app.post("/api/settings/:key", async (req, res) => {
+  app.post("/api/settings/:key", requireAuth, async (req: AuthRequest, res) => {
     try {
-      await setSetting(req.params.key, req.body.value);
+      const { key } = req.params;
+      const { value } = req.body;
+
+      await supabaseAdmin
+        .from('settings')
+        .upsert({
+          key,
+          value: typeof value === 'string' ? value : JSON.stringify(value),
+          updated_at: new Date().toISOString()
+        });
+
       res.json({ success: true });
     } catch (err: any) {
       console.warn("API warning in POST /api/settings/:key:", err);
       res.json({ success: true });
+    }
+  });
+
+  // --- API: SUPABASE STATUS CHECK ---
+  app.get("/api/supabase/status", async (req, res) => {
+    try {
+      const { data, error } = await supabaseAdmin.from('labels').select('count', { count: 'exact', head: true });
+      res.json({
+        connected: !error,
+        url: "https://auzpctxhltcdzdhcaetb.supabase.co",
+        error: error ? error.message : null
+      });
+    } catch (err: any) {
+      res.status(500).json({ connected: false, message: err?.message });
     }
   });
 
@@ -270,38 +365,13 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-    
-    // Background backfill: sync any existing labels from Supabase to Cloud SQL
-    fetchAllLabelsFromSupabase().then(async (supaLabels) => {
-      if (supaLabels && supaLabels.length > 0) {
-        for (const item of supaLabels) {
-          if (item && item.no_label) {
-            try {
-              await upsertLabel({
-                noLabel: item.no_label,
-                status: item.status || 'Menunggu Sertifikat',
-                pdfSource: item.pdf_source || null,
-                pdfUrl: item.pdf_url || null,
-                pdfDriveUrl: item.pdf_drive_url || null,
-                pdfOriginalUrl: item.pdforiginal_url || null,
-                pdfName: item.pdf_name || null,
-                calibratedAt: item.calibrated_at || null,
-                validUntil: item.valid_until || null,
-              });
-            } catch {
-              // non-fatal
-            }
-          }
-        }
-      }
-    }).catch(() => {});
+    console.log(`Server running on http://0.0.0.0:${PORT} with Supabase backend`);
   });
 }
 

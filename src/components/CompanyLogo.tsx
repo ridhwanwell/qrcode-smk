@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { supabase } from '../lib/supabaseClient';
 
 interface CompanyLogoProps {
   className?: string;
@@ -20,7 +19,7 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
   const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load custom logo from localStorage and Firestore
+  // Load custom logo from localStorage and Supabase settings table
   useEffect(() => {
     try {
       const saved = localStorage.getItem('smk_custom_logo_data');
@@ -31,23 +30,28 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
       // Ignore storage errors
     }
 
-    // Try fetching synced branding logo from Firestore
+    // Try fetching synced branding logo from Supabase settings
     const fetchCloudLogo = async () => {
       try {
-        const snap = await getDoc(doc(db, 'settings', 'branding'));
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data?.logoDataUrl) {
-            setCustomLogoUrl(data.logoDataUrl);
+        const { data } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'branding')
+          .maybeSingle();
+
+        if (data && data.value) {
+          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+          if (parsed?.logoDataUrl) {
+            setCustomLogoUrl(parsed.logoDataUrl);
             try {
-              localStorage.setItem('smk_custom_logo_data', data.logoDataUrl);
+              localStorage.setItem('smk_custom_logo_data', parsed.logoDataUrl);
             } catch {
               // Ignore localStorage quota
             }
           }
         }
       } catch {
-        // Silently fallback if not authenticated yet
+        // Silently fallback
       }
     };
     fetchCloudLogo();
@@ -64,7 +68,6 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Limit file size to 2MB to prevent Firestore doc limits
       if (file.size > 2 * 1024 * 1024) {
         alert('Ukuran file logo terlalu besar. Harap unggah file di bawah 2MB (disarankan format PNG atau SVG).');
         return;
@@ -81,14 +84,18 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
             // LocalStorage might be full
           }
 
-          // Persist to Firestore settings so all users and devices see it
+          // Persist to Supabase settings so all users and devices see it
           try {
-            await setDoc(doc(db, 'settings', 'branding'), {
-              logoDataUrl: result,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
+            await supabase.from('settings').upsert({
+              key: 'branding',
+              value: JSON.stringify({
+                logoDataUrl: result,
+                updatedAt: new Date().toISOString()
+              }),
+              updated_at: new Date().toISOString()
+            });
           } catch (err) {
-            console.warn('Could not sync logo to cloud:', err);
+            console.warn('Could not sync logo to Supabase:', err);
           }
         }
       };
@@ -133,7 +140,6 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
           className="h-full w-auto object-contain drop-shadow-sm transition-transform duration-150"
           referrerPolicy="no-referrer"
           onError={(e) => {
-            // Fallback gracefully to default vector if custom image fails
             if (e.currentTarget.src !== window.location.origin + defaultVectorLogo) {
               e.currentTarget.src = defaultVectorLogo;
             }
