@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 90 470 290" width="100%" height="100%">
+  <defs>
+    <!-- Silver Gradients for S & M -->
+    <linearGradient id="silverSMK" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#f8f9fa"/>
+      <stop offset="15%" stopColor="#e2e6ea"/>
+      <stop offset="45%" stopColor="#bdc3c7"/>
+      <stop offset="80%" stopColor="#95a5a6"/>
+      <stop offset="100%" stopColor="#7f8c8d"/>
+    </linearGradient>
+
+    <linearGradient id="silverBevelLight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95"/>
+      <stop offset="30%" stopColor="#ecf0f1" stopOpacity="0.7"/>
+      <stop offset="70%" stopColor="#bdc3c7" stopOpacity="0.2"/>
+      <stop offset="100%" stopColor="#7f8c8d" stopOpacity="0.1"/>
+    </linearGradient>
+
+    <!-- Vibrant Sky Blue / Cyan Gradients for K -->
+    <linearGradient id="cyanSMK" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#00d8ff"/>
+      <stop offset="20%" stopColor="#00c2ff"/>
+      <stop offset="60%" stopColor="#009ee3"/>
+      <stop offset="100%" stopColor="#0077b6"/>
+    </linearGradient>
+
+    <linearGradient id="cyanBevelLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#e0f7ff" stopOpacity="0.95"/>
+      <stop offset="40%" stopColor="#80e5ff" stopOpacity="0.6"/>
+      <stop offset="100%" stopColor="#0088cc" stopOpacity="0.1"/>
+    </linearGradient>
+
+    <!-- Top Silver Orbit Ring -->
+    <linearGradient id="topOrbitSilver" x1="20%" y1="100%" x2="80%" y2="0%">
+      <stop offset="0%" stopColor="#7f8c8d" stopOpacity="0.2"/>
+      <stop offset="25%" stopColor="#bdc3c7"/>
+      <stop offset="55%" stopColor="#ffffff"/>
+      <stop offset="85%" stopColor="#e2e6ea"/>
+      <stop offset="100%" stopColor="#95a5a6"/>
+    </linearGradient>
+
+    <!-- Bottom Blue Swirl Ring -->
+    <linearGradient id="bottomOrbitBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#0077b6"/>
+      <stop offset="30%" stopColor="#0096c7"/>
+      <stop offset="70%" stopColor="#00c2ff"/>
+      <stop offset="100%" stopColor="#0077b6"/>
+    </linearGradient>
+
+    <!-- Drop Shadow Filter for 3D realism -->
+    <filter id="stickerShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="2" dy="5" stdDeviation="4" floodColor="#000000" floodOpacity="0.28"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#stickerShadow)">
+    <!-- ========================================================= -->
+    <!-- LAYER 1: BACK ORBITS (behind letters)                      -->
+    <!-- ========================================================= -->
+    
+    <!-- Top Silver Orbit Horn (Arching over S and M with sharp peak) -->
+    <path 
+      d="M 140 185 C 152 135, 195 105, 252 108 C 285 110, 305 125, 308 145 C 310 152, 304 158, 295 152 C 285 136, 268 124, 240 122 C 196 118, 160 144, 150 185 Z" 
+      fill="url(#topOrbitSilver)" 
+      stroke="#7f8c8d" 
+      stroke-width="0.8"
+    />
+    <!-- Top Horn Sharp Tip Fin -->
+    <path 
+      d="M 195 110 C 230 106, 275 115, 305 142 C 300 130, 270 112, 228 108 Z" 
+      fill="#ffffff" 
+      fill-opacity="0.9"
+    />
+
+    <!-- Bottom Blue Orbit Swoosh (Loops under S and between M & K) -->
+    <path 
+      d="M 52 320 C 58 355, 120 382, 204 365 C 265 352, 306 318, 320 282 C 322 276, 316 272, 308 277 C 295 307, 258 335, 204 347 C 134 362, 82 344, 66 322 Z" 
+      fill="url(#bottomOrbitBlue)" 
+      stroke="#023e8a" 
+      stroke-width="0.8"
+    />
+    <!-- Silver Hook at the lower-left crescent tip -->
+    <path 
+      d="M 62 318 C 68 334, 90 350, 120 358 C 100 352, 80 338, 70 324 Z" 
+      fill="url(#topOrbitSilver)"
+    />
+
+    <!-- ========================================================= -->
+    <!-- LAYER 2: 3D METALLIC CHROME LETTER "S"                     -->
+    <!-- ========================================================= -->
+    <!-- Main S Body -->
+    <path 
+      d="M 18 215 C 18 198, 30 186, 52 186 L 115 186 C 135 186, 148 198, 148 215 C 148 230, 136 240, 116 245 L 82 252 C 68 255, 60 262, 60 274 C 60 287, 72 296, 92 296 L 132 296 C 146 296, 154 288, 154 276 L 122 276 C 122 281, 112 284, 100 284 L 76 284 C 64 284, 58 278, 58 272 C 58 264, 66 260, 78 257 L 110 250 C 136 244, 152 234, 152 214 C 152 192, 132 178, 106 178 L 48 178 C 20 178, 4 194, 4 215 Z" 
+      transform="translate(8, 6)"
+      fill="url(#silverSMK)" 
+      stroke="#495057" 
+      stroke-width="1.2"
+    />
+    <!-- S Top Bevel Sheen -->
+    <path 
+      d="M 48 180 L 106 180 C 130 180, 149 192, 149 212 C 149 222, 140 230, 124 235 C 114 223, 98 216, 78 216 L 46 216 C 36 216, 28 219, 26 222 C 28 200, 36 180, 48 180 Z" 
+      transform="translate(8, 6)"
+      fill="url(#silverBevelLight)"
+    />
+
+    <!-- ========================================================= -->
+    <!-- LAYER 3: 3D METALLIC CHROME LETTER "M"                     -->
+    <!-- ========================================================= -->
+    <!-- Solid Industrial Geometric M -->
+    <path 
+      d="M 174 184 L 202 184 L 238 254 L 274 184 L 302 184 L 302 302 L 274 302 L 274 228 L 246 284 L 230 284 L 202 228 L 202 302 L 174 302 Z" 
+      fill="url(#silverSMK)" 
+      stroke="#495057" 
+      stroke-width="1.2"
+    />
+    <!-- M Bevel Highlights -->
+    <polygon points="176,186 200,186 238,260 233,270 202,210 176,210" fill="url(#silverBevelLight)"/>
+    <polygon points="276,186 300,186 300,230 276,186" fill="url(#silverBevelLight)"/>
+
+    <!-- ========================================================= -->
+    <!-- LAYER 4: 3D ELECTRIC CYAN LETTER "K"                       -->
+    <!-- ========================================================= -->
+    <!-- Vertical Spine Bar -->
+    <path 
+      d="M 324 184 L 354 184 L 354 302 L 324 302 Z" 
+      fill="url(#cyanSMK)" 
+      stroke="#005f9e" 
+      stroke-width="1.2"
+    />
+    <polygon points="326,186 352,186 352,216 326,216" fill="url(#cyanBevelLight)"/>
+
+    <!-- Upper Right Diagonal Arm -->
+    <path 
+      d="M 348 244 L 406 184 L 444 184 L 378 252 Z" 
+      fill="url(#cyanSMK)" 
+      stroke="#005f9e" 
+      stroke-width="1.2"
+    />
+    <polygon points="350,242 404,186 440,186 380,250" fill="url(#cyanBevelLight)"/>
+
+    <!-- Lower Right Diagonal Leg -->
+    <path 
+      d="M 366 240 L 450 302 L 414 302 L 340 248 Z" 
+      fill="url(#cyanSMK)" 
+      stroke="#005f9e" 
+      stroke-width="1.2"
+    />
+    <polygon points="368,242 444,300 418,300 344,248" fill="url(#cyanBevelLight)"/>
+  </g>
+</svg>

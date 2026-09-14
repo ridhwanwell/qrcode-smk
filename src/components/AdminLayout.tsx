@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
-import { LayoutDashboard, Tags, FilePlus2, LogOut, Verified, UserCheck, Image as ImageIcon, Building2 } from 'lucide-react';
+import { LayoutDashboard, Tags, FilePlus2, LogOut, Verified, UserCheck, Image as ImageIcon, Building2, Layers } from 'lucide-react';
 import { cn } from '../lib/utils';
 import LogoManagerModal from './LogoManagerModal';
 import { useAppConfig } from '../lib/appConfig';
@@ -73,6 +73,18 @@ export default function AdminLayout() {
           >
             <Verified className={cn("w-5 h-5 mr-3 transition-colors", "group-hover:text-amber-400")} />
             Desain Template
+          </NavLink>
+          <NavLink
+            to="/admin/aset"
+            className={({ isActive }) => cn(
+              "flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 group mt-4 border-t border-slate-800 pt-4",
+              isActive 
+                ? "bg-cyan-500/10 text-cyan-400 font-bold" 
+                : "hover:bg-slate-800 text-cyan-300 hover:text-cyan-200"
+            )}
+          >
+            <Layers className={cn("w-5 h-5 mr-3 transition-colors", "group-hover:text-cyan-400")} />
+            Manajemen Aset PT SMK
           </NavLink>
         </nav>
 

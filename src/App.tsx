@@ -16,6 +16,9 @@ import AdminLabels from './pages/AdminLabels';
 import AdminGenerate from './pages/AdminGenerate';
 import AdminTemplates from './pages/AdminTemplates';
 import AdminLayout from './components/AdminLayout';
+import AsetPortalApp from './pages/AsetPortalApp';
+import { LoginPage as AsetLoginPage } from './pages/AsetLoginPage';
+import { AuthProvider as AsetAuthProvider } from './firebase/AuthContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -67,7 +70,19 @@ export default function App() {
             <Route path="labels" element={<AdminLabels />} />
             <Route path="generate" element={<AdminGenerate />} />
             <Route path="templates" element={<AdminTemplates />} />
+            <Route path="aset" element={
+              <AsetAuthProvider>
+                <AsetPortalApp />
+              </AsetAuthProvider>
+            } />
           </Route>
+
+          {/* Direct route to Manajemen Aset standalone portal */}
+          <Route path="/portal-aset" element={
+            <AsetAuthProvider>
+              <AsetPortalApp />
+            </AsetAuthProvider>
+          } />
 
           {/* Catch-all sends to PublicScanPage so custom or bare label paths (e.g. /002.0020) work */}
           <Route path="*" element={<PublicScanPage />} />
