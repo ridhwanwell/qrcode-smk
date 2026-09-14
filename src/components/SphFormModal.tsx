@@ -1093,6 +1093,21 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 </div>
               </div>
 
+              {/* Lampiran Dokumen Scan / PDF SPH */}
+              <div className="p-3.5 bg-slate-900 text-white rounded-xl border border-slate-700">
+                <span className="text-xs font-bold text-slate-200 block mb-2">
+                  Lampiran Berkas / Scan Persetujuan SPH (Internal & Privat):
+                </span>
+                <PdfUploader
+                  folder="sph"
+                  documentId={initialSph?.id || 'new-sph'}
+                  existingPdfUrl={pdfUrl}
+                  onUploadSuccess={setPdfUrl}
+                  onRemove={() => setPdfUrl(undefined)}
+                  label="Upload Berkas SPH (PDF / Scan Dokumen)"
+                />
+              </div>
+
             </div>
           </div>
 

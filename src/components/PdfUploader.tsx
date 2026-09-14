@@ -77,7 +77,11 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
     setOpeningDoc(true);
     setError(null);
     try {
-      const targetUrl = await getDocumentAccessUrl(existingPdfUrl);
+      const docType = (folder === 'sph' || folder === 'spk' || folder === 'bap') ? folder : undefined;
+      const targetUrl = await getDocumentAccessUrl(existingPdfUrl, 900, {
+        documentId,
+        documentType: docType
+      });
       if (targetUrl) {
         window.open(targetUrl, '_blank', 'noopener,noreferrer');
       } else {

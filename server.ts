@@ -304,29 +304,82 @@ async function startServer() {
     }
   });
 
-  // --- API: SIGNED URL GENERATION FOR PRIVATE DOCUMENTS (SPH, BAP, ETC.) ---
-  // Requires authentication & role verification (admin_utama or admin_keuangan)
-  app.post("/api/storage/signed-url", requireAuth, requireRole(['admin_utama', 'admin_keuangan']), async (req: AuthRequest, res) => {
+  // --- API: SIGNED URL GENERATION FOR PRIVATE DOCUMENTS (SPH, SPK, BAP, ETC.) ---
+  // Protected with Authentication, Role Check, Path Traversal Check, Prefix Whitelisting, and No-Cache Headers
+  app.post("/api/storage/signed-url", requireAuth, requireRole(['admin_utama', 'admin_keuangan', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
-      const { filePath, expiresIn = 900 } = req.body; // Default: 15 minutes (900 seconds)
+      // Set strict no-cache headers so temporary signed URLs are never cached by intermediaries
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      const { filePath, documentId, documentType, expiresIn = 900 } = req.body;
       
-      if (!filePath || typeof filePath !== 'string') {
-        return res.status(400).json({ error: "filePath is required" });
+      let targetPath = typeof filePath === 'string' ? filePath.trim().replace(/^\/+/, '') : '';
+
+      // 1. If documentId & documentType provided, verify ownership and fetch stored file path from database (Anti-IDOR)
+      if (documentId && documentType) {
+        let dbTable = '';
+        let urlColumn = 'pdf_url';
+
+        if (documentType === 'sph') {
+          dbTable = 'sph_documents';
+        } else if (documentType === 'spk') {
+          dbTable = 'spk_documents';
+        } else if (documentType === 'bap') {
+          dbTable = 'bap_documents';
+        }
+
+        if (dbTable) {
+          const { data: docRecord, error: docError } = await supabaseAdmin
+            .from(dbTable)
+            .select('*')
+            .eq('id', documentId)
+            .maybeSingle();
+
+          if (docError || !docRecord) {
+            return res.status(404).json({ error: "Dokumen tidak ditemukan atau akses ditolak" });
+          }
+
+          const recordPdfPath = docRecord.pdf_url || docRecord.pdfUrl || docRecord.file_path;
+          if (recordPdfPath && typeof recordPdfPath === 'string') {
+            targetPath = recordPdfPath.replace(/^\/+/, '');
+          }
+        }
       }
 
-      // Ensure path is sanitized and not escaping directory
-      const cleanPath = filePath.replace(/^\/+/, '');
-      
+      if (!targetPath) {
+        return res.status(400).json({ error: "Parameter filePath atau documentId & documentType diperlukan" });
+      }
+
+      // 2. Anti-Path-Traversal check
+      if (targetPath.includes('..') || targetPath.includes('\\') || targetPath.includes('\0')) {
+        return res.status(400).json({ error: "Path file tidak valid (deteksi path traversal)" });
+      }
+
+      // 3. Strict Folder Prefix Whitelist for internal-documents
+      const ALLOWED_PRIVATE_PREFIXES = /^(sph|spk|bap|financial|invoices|contracts)\//i;
+      if (!ALLOWED_PRIVATE_PREFIXES.test(targetPath)) {
+        return res.status(403).json({ error: "Akses ditolak: Folder bukan bagian dari dokumen privat yang diizinkan" });
+      }
+
+      // 4. Safe TTL (Default 15 minutes, maximum cap 900 seconds)
+      const safeTtl = Math.min(Math.max(Number(expiresIn) || 900, 60), 900);
+
       const { data, error } = await supabaseAdmin.storage
         .from('internal-documents')
-        .createSignedUrl(cleanPath, Math.min(expiresIn, 3600)); // Max 1 hour
+        .createSignedUrl(targetPath, safeTtl);
 
       if (error) {
-        console.error("Failed to generate signed URL:", error);
+        console.error("Failed to generate signed URL for path:", targetPath, error);
         return res.status(500).json({ error: "Gagal membuat URL akses dokumen privat" });
       }
 
-      res.json({ signedUrl: data.signedUrl, expiresIn });
+      res.json({ 
+        signedUrl: data.signedUrl, 
+        expiresIn: safeTtl,
+        filePath: targetPath
+      });
     } catch (err: any) {
       console.error("API error in /api/storage/signed-url:", err);
       res.status(500).json({ error: "Internal server error" });

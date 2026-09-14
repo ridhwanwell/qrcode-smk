@@ -25,8 +25,6 @@ import { CalibrationSchedule, MedicalDeviceToCalibrate } from '../types';
 import { formatRupiah, formatIndonesianDate, getUrgencyInfo, generateWhatsAppMessage, TODAY_STR, ensureDeviceSeliaItems } from '../utils/helpers';
 import confetti from 'canvas-confetti';
 
-import { PdfUploader } from './PdfUploader';
-
 interface WorkOrderDetailModalProps {
   schedule: CalibrationSchedule | null;
   onClose: () => void;

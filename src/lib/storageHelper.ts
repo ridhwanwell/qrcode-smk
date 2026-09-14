@@ -93,7 +93,11 @@ export const uploadFile = async (file: File, folderPath: string): Promise<string
  * 2. External HTTP/HTTPS links (e.g. Google Drive) -> returned directly
  * 3. File paths in internal-documents -> calls POST /api/storage/signed-url (or client SDK as backup)
  */
-export const getDocumentAccessUrl = async (pathOrUrl: string, expiresIn: number = 900): Promise<string> => {
+export const getDocumentAccessUrl = async (
+  pathOrUrl: string, 
+  expiresIn: number = 900,
+  documentContext?: { documentId?: string; documentType?: 'sph' | 'spk' | 'bap' }
+): Promise<string> => {
   if (!pathOrUrl) return '';
 
   const trimmed = pathOrUrl.trim();
@@ -105,9 +109,7 @@ export const getDocumentAccessUrl = async (pathOrUrl: string, expiresIn: number 
 
   // If already an HTTP link, check if it's a Supabase storage URL or external drive
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    // If it is already a direct link or external URL, return it
-    // But if it's an expired signed URL containing token, we can still try to extract path if needed,
-    // or simply return the URL.
+    // If it's a direct link or external URL, return it
     return trimmed;
   }
 
@@ -124,7 +126,12 @@ export const getDocumentAccessUrl = async (pathOrUrl: string, expiresIn: number 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ filePath: trimmed, expiresIn })
+        body: JSON.stringify({ 
+          filePath: trimmed, 
+          expiresIn,
+          documentId: documentContext?.documentId,
+          documentType: documentContext?.documentType
+        })
       });
 
       if (response.ok) {
