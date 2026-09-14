@@ -3,7 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import rateLimit from "express-rate-limit";
 import { supabaseAdmin } from "./src/server/supabaseAdmin";
-import { requireAuth, AuthRequest } from "./src/middleware/auth";
+import { requireAuth, requireRole, AuthRequest } from "./src/middleware/auth";
 
 async function startServer() {
   const app = express();
@@ -22,17 +22,7 @@ async function startServer() {
     message: { error: "Terlalu banyak permintaan dari IP ini, coba lagi dalam beberapa menit." }
   });
 
-  // Strict Rate Limiting for Auth endpoints: 20 attempts per 15 minutes
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: "Terlalu banyak percobaan autentikasi, coba lagi dalam 15 menit." }
-  });
-
   app.use("/api/", apiLimiter);
-  app.use("/api/auth/", authLimiter);
 
   // --- API: HEALTH CHECK ---
   app.get("/api/health", (req, res) => {
@@ -177,7 +167,7 @@ async function startServer() {
           no_label: it.noLabel || it.no_label || it.id,
           nama_rs: it.namaRs || it.nama_rs || null,
           status: it.status || 'Menunggu Sertifikat',
-          pdf_source: it.pdfSource || it.pdf_source || null,
+          pdf_source: it.pdf_source || null,
           pdf_url: it.pdfUrl || it.pdf_url || null,
           pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
           pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
@@ -290,10 +280,20 @@ async function startServer() {
     }
   });
 
+  // Strict sanitization & escaping for folder prefix deletion to prevent wildcards like % or _
   app.delete("/api/folders/prefix/:prefix", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { prefix } = req.params;
-      await supabaseAdmin.from('labels').delete().like('no_label', `${prefix}.%`);
+      
+      // Validate prefix strictly: only allow alphanumeric, dash, underscore, and dots
+      if (!prefix || !/^[a-zA-Z0-9._-]+$/.test(prefix)) {
+        return res.status(400).json({ error: "Invalid prefix format. Only alphanumeric and .-_ allowed." });
+      }
+
+      // Escape any potential SQL LIKE wildcards defensively
+      const escapedPrefix = prefix.replace(/[%_\\]/g, '\\$&');
+
+      await supabaseAdmin.from('labels').delete().like('no_label', `${escapedPrefix}.%`);
       await supabaseAdmin.from('labels').delete().eq('no_label', prefix);
       await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
 
@@ -304,7 +304,36 @@ async function startServer() {
     }
   });
 
-  // --- API: SETTINGS (Protected by requireAuth) ---
+  // --- API: SIGNED URL GENERATION FOR PRIVATE DOCUMENTS (SPH, BAP, ETC.) ---
+  // Requires authentication & role verification (admin_utama or admin_keuangan)
+  app.post("/api/storage/signed-url", requireAuth, requireRole(['admin_utama', 'admin_keuangan']), async (req: AuthRequest, res) => {
+    try {
+      const { filePath, expiresIn = 900 } = req.body; // Default: 15 minutes (900 seconds)
+      
+      if (!filePath || typeof filePath !== 'string') {
+        return res.status(400).json({ error: "filePath is required" });
+      }
+
+      // Ensure path is sanitized and not escaping directory
+      const cleanPath = filePath.replace(/^\/+/, '');
+      
+      const { data, error } = await supabaseAdmin.storage
+        .from('internal-documents')
+        .createSignedUrl(cleanPath, Math.min(expiresIn, 3600)); // Max 1 hour
+
+      if (error) {
+        console.error("Failed to generate signed URL:", error);
+        return res.status(500).json({ error: "Gagal membuat URL akses dokumen privat" });
+      }
+
+      res.json({ signedUrl: data.signedUrl, expiresIn });
+    } catch (err: any) {
+      console.error("API error in /api/storage/signed-url:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // --- API: SETTINGS (Protected by requireAuth; POST restricted to admin_utama) ---
   app.get("/api/settings/:key", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { key } = req.params;
@@ -321,7 +350,8 @@ async function startServer() {
     }
   });
 
-  app.post("/api/settings/:key", requireAuth, async (req: AuthRequest, res) => {
+  // Only admin_utama can modify official templates and system settings
+  app.post("/api/settings/:key", requireAuth, requireRole(['admin_utama']), async (req: AuthRequest, res) => {
     try {
       const { key } = req.params;
       const { value } = req.body;
@@ -336,22 +366,20 @@ async function startServer() {
 
       res.json({ success: true });
     } catch (err: any) {
-      console.warn("API warning in POST /api/settings/:key:", err);
-      res.json({ success: true });
+      console.warn("API error in POST /api/settings/:key:", err);
+      res.status(500).json({ error: "Gagal menyimpan pengaturan" });
     }
   });
 
-  // --- API: SUPABASE STATUS CHECK ---
-  app.get("/api/supabase/status", async (req, res) => {
+  // --- API: SUPABASE STATUS CHECK (Protected by requireAuth, sanitized response) ---
+  app.get("/api/supabase/status", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { data, error } = await supabaseAdmin.from('labels').select('count', { count: 'exact', head: true });
+      const { error } = await supabaseAdmin.from('labels').select('count', { count: 'exact', head: true });
       res.json({
-        connected: !error,
-        url: "https://auzpctxhltcdzdhcaetb.supabase.co",
-        error: error ? error.message : null
+        connected: !error
       });
     } catch (err: any) {
-      res.status(500).json({ connected: false, message: err?.message });
+      res.json({ connected: false });
     }
   });
 

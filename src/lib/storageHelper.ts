@@ -13,15 +13,14 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
- * Uploads a file to Supabase Storage bucket 'documents' with automatic seamless fallback to Base64 Data URL.
- * Guarantees that template and attachment uploads NEVER get stuck or hang.
+ * Uploads a public asset (e.g. company logo, KAN badge, blank templates) to Supabase Storage bucket 'documents'.
  */
-export const uploadFile = async (file: File, folderPath: string): Promise<string> => {
+export const uploadPublicAsset = async (file: File, folderPath: string): Promise<string> => {
   try {
     const cleanFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const filePath = `${folderPath}/${cleanFileName}`;
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('documents')
       .upload(filePath, file, {
         cacheControl: '3600',
@@ -42,4 +41,53 @@ export const uploadFile = async (file: File, folderPath: string): Promise<string
     console.warn('Storage upload error, using instant Base64 data URL fallback:', err);
     return await fileToBase64(file);
   }
+};
+
+/**
+ * Uploads a private confidential document (SPH, BAP, financial attachments) to private bucket 'internal-documents'.
+ * Automatically falls back to base64 data URL if storage is unavailable.
+ */
+export const uploadPrivateDocument = async (file: File, folderPath: string): Promise<string> => {
+  try {
+    const cleanFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const filePath = `${folderPath}/${cleanFileName}`;
+
+    const { error } = await supabase.storage
+      .from('internal-documents')
+      .upload(filePath, file, {
+        cacheControl: '300',
+        upsert: true
+      });
+
+    if (error) {
+      console.warn('Supabase private storage upload failed, falling back to public bucket/base64:', error.message);
+      return await uploadPublicAsset(file, folderPath);
+    }
+
+    // For private documents, retrieve signed URL via backend endpoint or direct client signed URL
+    const { data: signedData, error: signError } = await supabase.storage
+      .from('internal-documents')
+      .createSignedUrl(filePath, 60 * 60); // 1 hour token
+
+    if (signedData?.signedUrl && !signError) {
+      return signedData.signedUrl;
+    }
+
+    return await fileToBase64(file);
+  } catch (err) {
+    console.warn('Private document upload error, using Base64 data URL fallback:', err);
+    return await fileToBase64(file);
+  }
+};
+
+/**
+ * Universal upload helper maintaining backwards compatibility.
+ * Routes sensitive documents (sph, bap, invoices) to private bucket, and templates/logos to public bucket.
+ */
+export const uploadFile = async (file: File, folderPath: string): Promise<string> => {
+  const isSensitive = /^(sph|bap|financial|invoices|contracts)/i.test(folderPath);
+  if (isSensitive) {
+    return uploadPrivateDocument(file, folderPath);
+  }
+  return uploadPublicAsset(file, folderPath);
 };

@@ -138,7 +138,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   const allowedTabs: AppTab[] = role === 'admin_keuangan'
-    ? ['dashboard', 'sph', 'labels', 'schedules', 'financial', 'masters']
+    ? ['dashboard', 'sph', 'labels', 'financial', 'masters']
     : role === 'admin_teknik'
     ? ['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters']
     : ['dashboard', 'sph', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates'];

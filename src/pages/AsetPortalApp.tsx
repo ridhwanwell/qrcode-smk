@@ -68,7 +68,7 @@ export default function App() {
 
   // Auto-redirect to default permitted tab if current activeTab is restricted for the logged-in role
   useEffect(() => {
-    if (role === 'admin_keuangan' && !['dashboard', 'sph', 'labels', 'schedules', 'financial', 'masters'].includes(activeTab)) {
+    if (role === 'admin_keuangan' && !['dashboard', 'sph', 'labels', 'financial', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
     } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');

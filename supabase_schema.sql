@@ -1,6 +1,7 @@
 -- ==============================================================================
 -- SKEMA BASIS DATA UTAMA SUPABASE - PT. SARANA MULTI KALIBRASI (PT. SMK)
 -- Arsitektur: 100% Supabase PostgreSQL + Supabase Auth + Supabase Storage
+-- SINGLE SOURCE OF TRUTH (Idempotent: aman dijalankan dari nol maupun berulang)
 -- ==============================================================================
 
 -- 1. EXTENSIONS
@@ -236,7 +237,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
 );
 
 -- ==============================================================================
--- KEAMANAN: ROW LEVEL SECURITY (RLS) & KEBIJAKAN AKSES
+-- KEAMANAN: ROW LEVEL SECURITY (RLS) & TRIGGER PENCEGAHAN ESKALASI ROLE
 -- ==============================================================================
 
 -- Aktifkan RLS di seluruh tabel
@@ -257,7 +258,7 @@ ALTER TABLE public.financial_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.financial_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
--- Helper Function: Dapatkan peran pengguna saat ini
+-- Helper Function: Dapatkan peran pengguna saat ini (Security Definer untuk bypass RLS pada profiles)
 CREATE OR REPLACE FUNCTION public.get_current_user_role()
 RETURNS text
 LANGUAGE sql
@@ -268,57 +269,284 @@ AS $$
   SELECT role::text FROM public.profiles WHERE id = auth.uid();
 $$;
 
--- 1. Kebijakan untuk Labels:
--- Publik/Rumah sakit dapat membaca label (untuk scan QR kelaikan alat di stiker)
-CREATE POLICY "Public can view labels" 
-ON public.labels FOR SELECT 
-USING (true);
+-- Trigger Function: Mencegah eskalasi hak akses mandiri (Role Escalation Protection)
+CREATE OR REPLACE FUNCTION public.prevent_profile_role_escalation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    caller_role text;
+BEGIN
+    -- Jika kolom 'role' tidak mengalami perubahan, izinkan update (misal ubah nama, avatar)
+    IF NEW.role = OLD.role THEN
+        NEW.updated_at = NOW();
+        RETURN NEW;
+    END IF;
 
--- Hanya staf internal yang login yang dapat mengubah/menambah label
-CREATE POLICY "Authenticated users can manage labels" 
-ON public.labels FOR ALL 
-TO authenticated 
-USING (auth.uid() IS NOT NULL) 
-WITH CHECK (auth.uid() IS NOT NULL);
+    -- Jika kolom 'role' diubah, periksa peran dari pemanggil saat ini
+    caller_role := public.get_current_user_role();
 
--- 2. Kebijakan untuk Profiles:
+    IF caller_role = 'admin_utama' THEN
+        NEW.updated_at = NOW();
+        RETURN NEW;
+    ELSE
+        RAISE EXCEPTION 'Akses Ditolak: Hanya admin_utama yang berwenang mengubah peranan (role) pengguna.';
+    END IF;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_prevent_profile_role_escalation ON public.profiles;
+CREATE TRIGGER trg_prevent_profile_role_escalation
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.prevent_profile_role_escalation();
+
+-- ------------------------------------------------------------------------------
+-- 1. KEBIJAKAN UNTUK PROFILES
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can read all profiles" ON public.profiles;
 CREATE POLICY "Users can read all profiles" 
 ON public.profiles FOR SELECT 
 TO authenticated 
 USING (true);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile" 
 ON public.profiles FOR UPDATE 
 TO authenticated 
-USING (auth.uid() = id);
+USING (auth.uid() = id OR public.get_current_user_role() = 'admin_utama')
+WITH CHECK (auth.uid() = id OR public.get_current_user_role() = 'admin_utama');
 
--- 3. Kebijakan untuk Activity Log:
+DROP POLICY IF EXISTS "Admin utama can insert profiles" ON public.profiles;
+CREATE POLICY "Admin utama can insert profiles" 
+ON public.profiles FOR INSERT 
+TO authenticated 
+WITH CHECK (auth.uid() = id OR public.get_current_user_role() = 'admin_utama');
+
+DROP POLICY IF EXISTS "Admin utama can delete profiles" ON public.profiles;
+CREATE POLICY "Admin utama can delete profiles" 
+ON public.profiles FOR DELETE 
+TO authenticated 
+USING (public.get_current_user_role() = 'admin_utama');
+
+-- ------------------------------------------------------------------------------
+-- 2. KEBIJAKAN UNTUK LABELS & LABEL FOLDERS (Semua staf berhak kelola stiker)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Public can view labels" ON public.labels;
+CREATE POLICY "Public can view labels" 
+ON public.labels FOR SELECT 
+USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can manage labels" ON public.labels;
+CREATE POLICY "Authenticated users can manage labels" 
+ON public.labels FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+
+DROP POLICY IF EXISTS "Auth full access on label_folders" ON public.label_folders;
+DROP POLICY IF EXISTS "Authenticated manage label_folders" ON public.label_folders;
+CREATE POLICY "Authenticated manage label_folders" 
+ON public.label_folders FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+
+-- ------------------------------------------------------------------------------
+-- 3. KEBIJAKAN UNTUK ACTIVITY LOG
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Authenticated users can read activity log" ON public.activity_log;
 CREATE POLICY "Authenticated users can read activity log" 
 ON public.activity_log FOR SELECT 
 TO authenticated 
-USING (true);
+USING (public.get_current_user_role() = 'admin_utama');
 
+DROP POLICY IF EXISTS "Authenticated users can insert activity log" ON public.activity_log;
 CREATE POLICY "Authenticated users can insert activity log" 
 ON public.activity_log FOR INSERT 
 TO authenticated 
-WITH CHECK (true);
+WITH CHECK (auth.uid() IS NOT NULL);
 
--- 4. Kebijakan untuk Seluruh Modul Operasional Internal:
-DO $$ 
-DECLARE
-    tbl text;
-    tables text[] := ARRAY[
-        'label_folders', 'schedules', 'sph_documents', 'bap_documents', 
-        'calibrators', 'tablet_devices', 'tablet_loans', 'hospitals', 
-        'technicians', 'marketing_staff', 'financial_transactions', 
-        'financial_assets', 'settings'
-    ];
-BEGIN
-    FOREACH tbl IN ARRAY tables LOOP
-        EXECUTE format('DROP POLICY IF EXISTS "Auth full access on %I" ON public.%I;', tbl, tbl);
-        EXECUTE format('CREATE POLICY "Auth full access on %I" ON public.%I FOR ALL TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);', tbl, tbl);
-    END LOOP;
-END $$;
+-- ------------------------------------------------------------------------------
+-- 4. KEBIJAKAN PENJADWALAN RS (SCHEDULES)
+--    - admin_utama & admin_teknik: Akses Penuh (SELECT, INSERT, UPDATE, DELETE)
+--    - admin_keuangan: SELECT & INSERT saja (untuk auto-schedule saat SPH Deal)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Auth full access on schedules" ON public.schedules;
+DROP POLICY IF EXISTS "Teknik and Utama full access on schedules" ON public.schedules;
+CREATE POLICY "Teknik and Utama full access on schedules" 
+ON public.schedules FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'));
+
+DROP POLICY IF EXISTS "Keuangan view schedules" ON public.schedules;
+CREATE POLICY "Keuangan view schedules" 
+ON public.schedules FOR SELECT 
+TO authenticated 
+USING (public.get_current_user_role() = 'admin_keuangan');
+
+DROP POLICY IF EXISTS "Keuangan auto-insert schedules on SPH Deal" ON public.schedules;
+CREATE POLICY "Keuangan auto-insert schedules on SPH Deal" 
+ON public.schedules FOR INSERT 
+TO authenticated 
+WITH CHECK (public.get_current_user_role() = 'admin_keuangan');
+
+-- ------------------------------------------------------------------------------
+-- 5. KEBIJAKAN SPH & BAP (admin_utama & admin_keuangan)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Auth full access on sph_documents" ON public.sph_documents;
+DROP POLICY IF EXISTS "Utama and Keuangan manage sph_documents" ON public.sph_documents;
+CREATE POLICY "Utama and Keuangan manage sph_documents" 
+ON public.sph_documents FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'));
+
+DROP POLICY IF EXISTS "Auth full access on bap_documents" ON public.bap_documents;
+DROP POLICY IF EXISTS "Utama and Keuangan manage bap_documents" ON public.bap_documents;
+CREATE POLICY "Utama and Keuangan manage bap_documents" 
+ON public.bap_documents FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'));
+
+-- ------------------------------------------------------------------------------
+-- 6. KEBIJAKAN ASET TEKNIS: KALIBRATOR, TABLET, PEMINJAMAN (admin_utama & admin_teknik)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Auth full access on calibrators" ON public.calibrators;
+DROP POLICY IF EXISTS "Utama and Teknik manage calibrators" ON public.calibrators;
+CREATE POLICY "Utama and Teknik manage calibrators" 
+ON public.calibrators FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'));
+
+DROP POLICY IF EXISTS "Auth full access on tablet_devices" ON public.tablet_devices;
+DROP POLICY IF EXISTS "Utama and Teknik manage tablet_devices" ON public.tablet_devices;
+CREATE POLICY "Utama and Teknik manage tablet_devices" 
+ON public.tablet_devices FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'));
+
+DROP POLICY IF EXISTS "Auth full access on tablet_loans" ON public.tablet_loans;
+DROP POLICY IF EXISTS "Utama and Teknik manage tablet_loans" ON public.tablet_loans;
+CREATE POLICY "Utama and Teknik manage tablet_loans" 
+ON public.tablet_loans FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik'));
+
+-- ------------------------------------------------------------------------------
+-- 7. KEBIJAKAN KEUANGAN: TRANSAKSI & ASET KEUANGAN (admin_utama & admin_keuangan)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Auth full access on financial_transactions" ON public.financial_transactions;
+DROP POLICY IF EXISTS "Utama and Keuangan manage financial_transactions" ON public.financial_transactions;
+CREATE POLICY "Utama and Keuangan manage financial_transactions" 
+ON public.financial_transactions FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'));
+
+DROP POLICY IF EXISTS "Auth full access on financial_assets" ON public.financial_assets;
+DROP POLICY IF EXISTS "Utama and Keuangan manage financial_assets" ON public.financial_assets;
+CREATE POLICY "Utama and Keuangan manage financial_assets" 
+ON public.financial_assets FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_keuangan'));
+
+-- ------------------------------------------------------------------------------
+-- 8. KEBIJAKAN MASTER DATA: HOSPITALS, TECHNICIANS, MARKETING (Semua Role Internal)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Auth full access on hospitals" ON public.hospitals;
+DROP POLICY IF EXISTS "Authenticated manage hospitals" ON public.hospitals;
+CREATE POLICY "Authenticated manage hospitals" 
+ON public.hospitals FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+
+DROP POLICY IF EXISTS "Auth full access on technicians" ON public.technicians;
+DROP POLICY IF EXISTS "Authenticated manage technicians" ON public.technicians;
+CREATE POLICY "Authenticated manage technicians" 
+ON public.technicians FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+
+DROP POLICY IF EXISTS "Auth full access on marketing_staff" ON public.marketing_staff;
+DROP POLICY IF EXISTS "Authenticated manage marketing_staff" ON public.marketing_staff;
+CREATE POLICY "Authenticated manage marketing_staff" 
+ON public.marketing_staff FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'))
+WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+
+-- ------------------------------------------------------------------------------
+-- 9. KEBIJAKAN SETTINGS / TEMPLATES (Baca untuk semua internal, Tulis HANYA admin_utama)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Auth full access on settings" ON public.settings;
+DROP POLICY IF EXISTS "Authenticated read settings" ON public.settings;
+CREATE POLICY "Authenticated read settings" 
+ON public.settings FOR SELECT 
+TO authenticated 
+USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+
+DROP POLICY IF EXISTS "Admin utama write settings" ON public.settings;
+CREATE POLICY "Admin utama write settings" 
+ON public.settings FOR ALL 
+TO authenticated 
+USING (public.get_current_user_role() = 'admin_utama')
+WITH CHECK (public.get_current_user_role() = 'admin_utama');
+
+-- ------------------------------------------------------------------------------
+-- 10. KEBIJAKAN STORAGE OBJECTS (Supabase Storage RLS)
+-- ------------------------------------------------------------------------------
+-- Bucket 'documents' (Publik untuk aset logo, kop template)
+-- Bucket 'internal-documents' (Privat untuk SPH, BAP, data sensitif)
+
+-- Pastikan tabel storage.objects dilindungi RLS
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public read on documents bucket" ON storage.objects;
+CREATE POLICY "Public read on documents bucket"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'documents');
+
+DROP POLICY IF EXISTS "Authenticated upload on documents bucket" ON storage.objects;
+CREATE POLICY "Authenticated upload on documents bucket"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'documents' AND public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+
+DROP POLICY IF EXISTS "Internal confidential storage read" ON storage.objects;
+CREATE POLICY "Internal confidential storage read"
+ON storage.objects FOR SELECT
+TO authenticated
+USING (
+    bucket_id = 'internal-documents' 
+    AND public.get_current_user_role() IN ('admin_utama', 'admin_keuangan')
+);
+
+DROP POLICY IF EXISTS "Internal confidential storage insert" ON storage.objects;
+CREATE POLICY "Internal confidential storage insert"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+    bucket_id = 'internal-documents' 
+    AND public.get_current_user_role() IN ('admin_utama', 'admin_keuangan')
+);
+
+DROP POLICY IF EXISTS "Admin utama manage all storage" ON storage.objects;
+CREATE POLICY "Admin utama manage all storage"
+ON storage.objects FOR ALL
+TO authenticated
+USING (public.get_current_user_role() = 'admin_utama')
+WITH CHECK (public.get_current_user_role() = 'admin_utama');
 
 -- ==============================================================================
 -- REALTIME SUBSCRIPTIONS

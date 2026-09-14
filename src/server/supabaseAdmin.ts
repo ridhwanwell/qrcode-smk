@@ -1,11 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Backend server client: runs exclusively on server.ts with Node.js
-// Uses Service Role Key for administrative operations or Anon Key if not set
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://auzpctxhltcdzdhcaetb.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_8OiRZ-N5CqysP7etk1w0yA_P0L3geP9';
+// Requires SUPABASE_SERVICE_ROLE_KEY for server-side operations
+const rawUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-export const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
+if (!rawUrl) {
+  throw new Error('[Supabase Admin Error] SUPABASE_URL atau VITE_SUPABASE_URL harus disetel di environment variables server.');
+}
+
+if (!serviceRoleKey) {
+  console.error('[CRITICAL SECURITY WARNING] SUPABASE_SERVICE_ROLE_KEY tidak disetel di server! Operasi backend memerlukan Service Role Key.');
+  throw new Error('[Supabase Admin Error] SUPABASE_SERVICE_ROLE_KEY is required for server admin operations. Server cannot start without it.');
+}
+
+// Clean and normalize Supabase base URL (remove trailing /rest/v1 or trailing slashes)
+const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+
+export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false
