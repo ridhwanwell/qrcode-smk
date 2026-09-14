@@ -89,9 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       id: 'labels',
       label: 'Label & Cetak Stiker',
       sublabel: 'Generator, A3+ & Supabase',
-      icon: Tags,
-      badgeVal: '586 Label',
-      badgeColor: 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+      icon: Tags
     },
     {
       id: 'schedules',
@@ -140,9 +138,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   const allowedTabs: AppTab[] = role === 'admin_keuangan'
-    ? ['sph', 'labels', 'schedules', 'financial', 'masters']
+    ? ['dashboard', 'sph', 'labels', 'schedules', 'financial', 'masters']
     : role === 'admin_teknik'
-    ? ['labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters']
+    ? ['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters']
     : ['dashboard', 'sph', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates'];
 
   const visibleNavTabs = allNavTabs.filter(tab => allowedTabs.includes(tab.id));

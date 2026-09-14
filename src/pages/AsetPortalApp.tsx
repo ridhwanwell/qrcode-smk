@@ -50,11 +50,17 @@ import confetti from 'canvas-confetti';
 import { Check, Send, AlertCircle, ArrowLeft, LogOut } from 'lucide-react';
 import { useFirestoreData } from '../firebase/useFirestoreData';
 import { useAuth } from '../firebase/AuthContext';
+import { LoginPage } from './AsetLoginPage';
 import { BapModal } from '../components/BapModal';
 import { createBapFromSph } from '../utils/bapHelpers';
 
 export default function App() {
   const { user, isAdmin, role, logout } = useAuth();
+
+  // If user is not logged in, render LoginPage
+  if (!user) {
+    return <LoginPage />;
+  }
   
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'sph' | 'labels' | 'schedules' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates'>('dashboard');
@@ -62,10 +68,10 @@ export default function App() {
 
   // Auto-redirect to default permitted tab if current activeTab is restricted for the logged-in role
   useEffect(() => {
-    if (role === 'admin_keuangan' && !['sph', 'labels', 'schedules', 'financial', 'masters'].includes(activeTab)) {
-      setActiveTab('sph');
-    } else if (role === 'admin_teknik' && !['labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
-      setActiveTab('labels');
+    if (role === 'admin_keuangan' && !['dashboard', 'sph', 'labels', 'schedules', 'financial', 'masters'].includes(activeTab)) {
+      setActiveTab('dashboard');
+    } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
+      setActiveTab('dashboard');
     }
   }, [role, activeTab]);
 

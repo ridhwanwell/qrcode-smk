@@ -74,7 +74,8 @@ export default function AdminLabels() {
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Navigation & Search State
-  const activePrefix = searchParams.get('folder');
+  const [selectedFolderPrefix, setSelectedFolderPrefix] = useState<string | null>(searchParams.get('folder') || null);
+  const activePrefix = selectedFolderPrefix ?? searchParams.get('folder');
   const [searchQuery, setSearchQuery] = useState('');
   const [folderSearch, setFolderSearch] = useState('');
   
@@ -124,6 +125,7 @@ export default function AdminLabels() {
           .from('labels')
           .select('*')
           .not('no_label', 'like', '__meta_%')
+          .not('no_label', 'like', '__aset_%')
           .order('no_label', { ascending: true }),
         fetchFolderRsFromSupabase(),
         fetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => []),
@@ -132,7 +134,7 @@ export default function AdminLabels() {
 
       (apiLabelsRes || []).forEach((d: any) => {
         const key = d.noLabel || d.no_label;
-        if (key) apiMap[key] = d;
+        if (key && !key.startsWith('__meta_') && !key.startsWith('__aset_')) apiMap[key] = d;
       });
 
       const mergedFolderMap = {
@@ -145,7 +147,7 @@ export default function AdminLabels() {
         localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(mergedFolderMap));
       } catch (_) {}
 
-      const sbData = (sbLabelsRes.data || []).filter((d: any) => !d.no_label?.startsWith('__meta_'));
+      const sbData = (sbLabelsRes.data || []).filter((d: any) => !d.no_label?.startsWith('__meta_') && !d.no_label?.startsWith('__aset_'));
 
       if (sbData && sbData.length > 0) {
         const formatted = sbData.map((d: any) => {
@@ -318,12 +320,18 @@ export default function AdminLabels() {
   }, [activeFolder, folderSearch]);
 
   const openFolder = (prefix: string) => {
-    setSearchParams({ folder: prefix });
+    setSelectedFolderPrefix(prefix);
+    try {
+      setSearchParams({ folder: prefix }, { replace: true });
+    } catch (_) {}
     setFolderSearch('');
   };
 
   const closeFolder = () => {
-    setSearchParams({});
+    setSelectedFolderPrefix(null);
+    try {
+      setSearchParams({}, { replace: true });
+    } catch (_) {}
     setFolderSearch('');
   };
 

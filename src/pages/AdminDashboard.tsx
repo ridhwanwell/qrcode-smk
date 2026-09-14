@@ -85,7 +85,7 @@ CREATE POLICY "Service Role Full Access" ON public.labels
           }
         });
 
-        const actualLabels = data.filter((d: any) => !d.no_label?.startsWith('__meta_'));
+        const actualLabels = data.filter((d: any) => !d.no_label?.startsWith('__meta_') && !d.no_label?.startsWith('__aset_'));
 
         setLabels(actualLabels.map((d: any) => {
           const local = apiMap[d.no_label] || {};

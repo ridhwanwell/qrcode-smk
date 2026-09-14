@@ -29,12 +29,36 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 /**
  * Route handler for root or base scan paths:
- * If query parameter, hash, or pathname has a label (e.g. ?noLabel=002.0020, ?id=002.0020, ?q=002.0020),
- * or if query params exist, render PublicScanPage.
- * Otherwise, redirect to /admin/labels.
+ * If explicit scan route (/sertifikat, /scan, /verifikasi) or explicit label parameter is present,
+ * render PublicScanPage.
+ * Otherwise, render the main portal (Manajemen Aset & Penjadwalan Kalibrasi RS / Label Stiker).
  */
 const ScanOrRedirect = () => {
-  return <PublicScanPage />;
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const foundLabel = extractLabelFromLocation(location);
+
+  const isExplicitScanRoute = location.pathname.startsWith('/sertifikat') || 
+                              location.pathname.startsWith('/scan') || 
+                              location.pathname.startsWith('/verifikasi') || 
+                              location.pathname.startsWith('/cert') || 
+                              location.pathname.startsWith('/label');
+
+  const hasExplicitLabelParam = searchParams.has('noLabel') || 
+                                searchParams.has('nolabel') || 
+                                searchParams.has('label') || 
+                                searchParams.has('cert') || 
+                                searchParams.has('no_label');
+
+  if ((foundLabel && (isExplicitScanRoute || hasExplicitLabelParam)) || (foundLabel && location.pathname !== '/' && location.pathname !== '')) {
+    return <PublicScanPage />;
+  }
+
+  return (
+    <AsetAuthProvider>
+      <AsetPortalApp />
+    </AsetAuthProvider>
+  );
 };
 
 export default function App() {

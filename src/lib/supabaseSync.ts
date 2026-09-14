@@ -49,12 +49,13 @@ export async function fetchAllLabelsFromSupabase(): Promise<any[]> {
       .from('labels')
       .select('*')
       .not('no_label', 'like', '__meta_%')
+      .not('no_label', 'like', '__aset_%')
       .order('no_label', { ascending: true });
     if (error) {
       console.warn('fetchAllLabelsFromSupabase error:', error.message);
       return [];
     }
-    return (data || []).filter(item => !item.no_label?.startsWith('__meta_'));
+    return (data || []).filter(item => !item.no_label?.startsWith('__meta_') && !item.no_label?.startsWith('__aset_'));
   } catch (err) {
     console.warn('fetchAllLabelsFromSupabase exception:', err);
     return [];

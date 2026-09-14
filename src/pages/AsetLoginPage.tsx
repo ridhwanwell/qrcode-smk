@@ -113,6 +113,15 @@ export const LoginPage: React.FC = () => {
               <span>Admin Keuangan</span>
             </button>
           </div>
+
+          {/* Scope details for chosen role */}
+          <div className="mt-2.5 px-3 py-2 bg-blue-50/60 border border-blue-100 rounded-xl text-left">
+            <p className="text-[10px] font-bold text-[#1C658C] uppercase tracking-wide">
+              {selectedRole === 'admin_utama' && 'Hak Akses: Seluruh Modul & Konfigurasi (Super Admin)'}
+              {selectedRole === 'admin_teknik' && 'Hak Akses: Dashboard, Label Stiker, Penjadwalan RS, Selia, Aset Kalibrator, Tablet, Master Data'}
+              {selectedRole === 'admin_keuangan' && 'Hak Akses: Dashboard, Penawaran SPH, Label Stiker, Penjadwalan RS, Aset Keuangan, Master Data'}
+            </p>
+          </div>
         </div>
 
         {/* Error Notification */}

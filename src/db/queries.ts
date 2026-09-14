@@ -1,6 +1,6 @@
 import { db } from './index.ts';
 import { labels, labelFolders, templates, settings, users } from './schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, like, or, inArray } from 'drizzle-orm';
 
 // --- LABELS ---
 export async function getAllFolderHospitalNames(): Promise<Record<string, string>> {
@@ -170,12 +170,11 @@ export async function deleteLabelByNo(noLabel: string) {
 
 export async function deleteLabelsByPrefix(prefix: string) {
   try {
-    const all = await getAllLabels();
-    const matching = all.filter(l => l.noLabel.startsWith(prefix + '.') || l.noLabel === prefix);
-    for (const item of matching) {
-      await db.delete(labels).where(eq(labels.noLabel, item.noLabel));
-    }
-    return matching.length;
+    const deleted = await db
+      .delete(labels)
+      .where(or(like(labels.noLabel, `${prefix}.%`), eq(labels.noLabel, prefix)))
+      .returning();
+    return deleted.length;
   } catch (error) {
     console.error("Database query failed in deleteLabelsByPrefix:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
@@ -184,9 +183,8 @@ export async function deleteLabelsByPrefix(prefix: string) {
 
 export async function deleteBatchLabelsByNos(nos: string[]) {
   try {
-    for (const no of nos) {
-      await db.delete(labels).where(eq(labels.noLabel, no));
-    }
+    if (!nos || nos.length === 0) return true;
+    await db.delete(labels).where(inArray(labels.noLabel, nos));
     return true;
   } catch (error) {
     console.error("Database query failed in deleteBatchLabelsByNos:", error);

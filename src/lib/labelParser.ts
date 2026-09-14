@@ -45,7 +45,22 @@ const IGNORED_PARAMS = new Set([
   'c',
   's',
   'p',
-  'lang'
+  'lang',
+  'folder',
+  'id_folder',
+  'prefix',
+  'tab',
+  'subtab',
+  'view',
+  'action',
+  'search',
+  'filter',
+  'page',
+  'limit',
+  'sort',
+  'order',
+  'category',
+  'mode'
 ]);
 
 const RESERVED_PATHS = new Set([
@@ -222,13 +237,16 @@ export function extractLabelFromQueryString(queryString: string): string {
     const keyMatch = normalizeLabelFormat(key);
     if (keyMatch) return keyMatch;
 
-    // Check value only if it contains numbers
+    // Check value only if it contains numbers and matches calibration label format
     if (val && /\d/.test(val)) {
       const valMatch = normalizeLabelFormat(val);
       if (valMatch) return valMatch;
 
-      const cleanedVal = cleanLabelString(val);
-      if (cleanedVal && /\d{2,}/.test(cleanedVal)) return cleanedVal;
+      // Only match custom formatted strings if they contain both digits and separator (e.g. 001.0001, SMK-001)
+      if (/[.\-_/]/.test(val) && /\d{2,}/.test(val)) {
+        const cleanedVal = cleanLabelString(val);
+        if (cleanedVal && cleanedVal.length >= 4) return cleanedVal;
+      }
     }
   }
 

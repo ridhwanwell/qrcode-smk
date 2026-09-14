@@ -26,6 +26,7 @@ import {
   bulkSyncLabelsToSupabase,
   fetchAllLabelsFromSupabase
 } from "./src/lib/supabaseSync.ts";
+import { supabase } from "./src/lib/supabase.ts";
 
 async function startServer() {
   const app = express();
@@ -139,6 +140,16 @@ async function startServer() {
     try {
       const { prefix } = req.params;
       const count = await deleteLabelsByPrefix(prefix);
+      
+      // Synchronize deletion to Supabase
+      try {
+        await supabase.from('labels').delete().like('no_label', `${prefix}.%`);
+        await supabase.from('labels').delete().eq('no_label', prefix);
+        await supabase.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
+      } catch (sbErr) {
+        console.warn('Supabase folder delete error:', sbErr);
+      }
+
       res.json({ success: true, count });
     } catch (err: any) {
       console.error("API error in DELETE /api/folders/:prefix:", err);

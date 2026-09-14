@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from './config';
 import { useAuth } from './AuthContext';
+import { 
+  fetchAssetCollectionFromSupabase, 
+  saveAssetCollectionToSupabase, 
+  subscribeAssetCollectionFromSupabase 
+} from '../lib/supabaseAssetSync.ts';
 
 /**
  * Recursively strips keys with `undefined` values from an object or array.
- * Firestore setDoc / updateDoc rejects any object containing `undefined` with:
- * "Function setDoc() called with invalid data. Unsupported field value: undefined"
+ * Firestore setDoc / updateDoc rejects any object containing `undefined`.
  */
 export function sanitizeForFirestore<T>(val: T): T {
   if (val === undefined) {
@@ -33,77 +37,137 @@ export function sanitizeForFirestore<T>(val: T): T {
 }
 
 export function useFirestoreData<T extends { id: string }>(collectionName: string) {
-  const [data, setData] = useState<T[]>([]);
+  // 1. Initialize immediately from local cache so there is zero flash on refresh
+  const [data, setData] = useState<T[]>(() => {
+    try {
+      const cached = localStorage.getItem(`smk_aset_${collectionName}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed as T[];
+      }
+    } catch (_) {}
+    return [];
+  });
+
   const [loading, setLoading] = useState<boolean>(true);
   const { user } = useAuth();
+  const isSavingRef = useRef(false);
 
+  // 2. Fetch and synchronize from Supabase & Firestore
   useEffect(() => {
-    if (!user) {
-      setData([]);
-      setLoading(false);
-      return;
-    }
+    let isMounted = true;
 
-    const unsubscribe = onSnapshot(collection(db, collectionName), (snapshot) => {
-      // Strictly load existing documents. NEVER automatically re-seed!
-      // When empty or deleted, it stays completely empty (0 items).
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
-      setData(items);
-      setLoading(false);
-    }, (error) => {
-      console.error(`Error fetching ${collectionName}:`, error);
-      setLoading(false);
+    // A. Fetch from Supabase
+    fetchAssetCollectionFromSupabase<T>(collectionName).then((supaItems) => {
+      if (!isMounted) return;
+      if (supaItems !== null) {
+        setData(supaItems);
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
-  }, [user, collectionName]);
+    // B. Subscribe to real-time changes in Supabase
+    const unsubscribeSupabase = subscribeAssetCollectionFromSupabase<T>(collectionName, (newItems) => {
+      if (!isMounted) return;
+      setData(newItems);
+      try {
+        localStorage.setItem(`smk_aset_${collectionName}`, JSON.stringify(newItems));
+      } catch (_) {}
+    });
+
+    // C. If user is logged into Firebase, also sync with Firestore
+    let unsubscribeFirestore = () => {};
+    if (user && db) {
+      try {
+        unsubscribeFirestore = onSnapshot(collection(db, collectionName), (snapshot) => {
+          if (!isMounted) return;
+          if (!snapshot.empty) {
+            const fsItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as T));
+            setData(fsItems);
+            saveAssetCollectionToSupabase(collectionName, fsItems);
+          }
+          setLoading(false);
+        }, (err) => {
+          console.warn(`Firestore warning for ${collectionName}:`, err?.message);
+          setLoading(false);
+        });
+      } catch (err) {
+        console.warn(`Firestore setup error for ${collectionName}:`, err);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+      unsubscribeSupabase();
+      unsubscribeFirestore();
+    };
+  }, [collectionName, user]);
+
+  // Helper to persist changes to Supabase & Firestore
+  const persistChanges = async (nextItems: T[]) => {
+    setData(nextItems);
+    saveAssetCollectionToSupabase(collectionName, nextItems);
+  };
 
   const add = async (item: T) => {
-    // Optimistic addition
-    setData(prev => [item, ...prev.filter(i => i.id !== item.id)]);
-    if (!user) return;
-    try {
-      const sanitized = sanitizeForFirestore(item);
-      await setDoc(doc(db, collectionName, item.id), sanitized);
-    } catch (e) {
-      console.error(`Error adding to ${collectionName}:`, e);
+    const next = [item, ...data.filter(i => i.id !== item.id)];
+    await persistChanges(next);
+
+    // Also persist to Firestore if available
+    if (user && db) {
+      try {
+        const sanitized = sanitizeForFirestore(item);
+        await setDoc(doc(db, collectionName, item.id), sanitized);
+      } catch (e) {
+        console.warn(`Firestore add error (${collectionName}):`, e);
+      }
     }
   };
 
   const update = async (item: T) => {
-    // Optimistic update
-    setData(prev => prev.map(i => i.id === item.id ? item : i));
-    if (!user) return;
-    try {
-      const sanitized = sanitizeForFirestore(item);
-      await setDoc(doc(db, collectionName, item.id), sanitized, { merge: true });
-    } catch (e) {
-      console.error(`Error updating ${collectionName}:`, e);
+    const next = data.map(i => i.id === item.id ? item : i);
+    await persistChanges(next);
+
+    // Also persist to Firestore if available
+    if (user && db) {
+      try {
+        const sanitized = sanitizeForFirestore(item);
+        await setDoc(doc(db, collectionName, item.id), sanitized, { merge: true });
+      } catch (e) {
+        console.warn(`Firestore update error (${collectionName}):`, e);
+      }
     }
   };
 
   const remove = async (id: string) => {
-    // Optimistic instant removal - disappear immediately from UI
-    setData(prev => prev.filter(item => item.id !== id));
-    if (!user) return;
-    try {
-      await deleteDoc(doc(db, collectionName, id));
-    } catch (e) {
-      console.error(`Error removing from ${collectionName}:`, e);
+    const next = data.filter(item => item.id !== id);
+    await persistChanges(next);
+
+    // Also persist to Firestore if available
+    if (user && db) {
+      try {
+        await deleteDoc(doc(db, collectionName, id));
+      } catch (e) {
+        console.warn(`Firestore remove error (${collectionName}):`, e);
+      }
     }
   };
 
   const clearAll = async () => {
-    setData([]);
-    if (!user) return;
-    try {
-      const snap = await getDocs(collection(db, collectionName));
-      if (snap.empty) return;
-      const batch = writeBatch(db);
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    } catch (e) {
-      console.error(`Error clearing ${collectionName}:`, e);
+    await persistChanges([]);
+
+    // Also persist to Firestore if available
+    if (user && db) {
+      try {
+        const snap = await getDocs(collection(db, collectionName));
+        if (!snap.empty) {
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (e) {
+        console.warn(`Firestore clearAll error (${collectionName}):`, e);
+      }
     }
   };
 

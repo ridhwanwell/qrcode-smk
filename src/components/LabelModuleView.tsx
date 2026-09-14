@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase';
 
 export const LabelModuleView: React.FC = () => {
   const [subTab, setSubTab] = useState<'labels' | 'generate' | 'templates' | 'dashboard'>('labels');
-  const [dbStatus, setDbStatus] = useState<{ connected: boolean; count: number }>({ connected: true, count: 586 });
+  const [dbStatus, setDbStatus] = useState<{ connected: boolean; count: number }>({ connected: true, count: 0 });
 
   useEffect(() => {
     const checkCount = async () => {
