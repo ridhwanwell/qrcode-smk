@@ -11,7 +11,8 @@ import {
   updateLabelDates,
   extractGoogleDriveFileId
 } from '../lib/pdfStorage';
-import { fetchFolderRsFromSupabase } from '../lib/supabaseSync';
+import { fetchFolderRsFromSupabase, saveFolderRsToSupabase } from '../lib/supabaseSync';
+import { INITIAL_HOSPITALS } from '../data/mockData';
 import { 
   Search, 
   FileText, 
@@ -34,7 +35,8 @@ import {
   Layers,
   FileCheck,
   Camera,
-  Building2
+  Building2,
+  Pencil
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -106,7 +108,12 @@ export default function AdminLabels() {
   const [modalError, setModalError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  // Folder Hospital Name Map (read-only for existing records)
+  // State for Editing Folder Hospital Name
+  const [editingFolderRs, setEditingFolderRs] = useState<{ prefix: string; currentNamaRs: string } | null>(null);
+  const [folderRsInput, setFolderRsInput] = useState('');
+  const [savingFolderRs, setSavingFolderRs] = useState(false);
+
+  // Folder Hospital Name Map
   const [folderRsMap, setFolderRsMap] = useState<Record<string, string>>(() => {
     try {
       return JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
@@ -114,6 +121,58 @@ export default function AdminLabels() {
       return {};
     }
   });
+
+  const handleSaveFolderRs = async () => {
+    if (!editingFolderRs) return;
+    setSavingFolderRs(true);
+    const prefix = editingFolderRs.prefix;
+    const val = folderRsInput.trim();
+
+    try {
+      await saveFolderRsToSupabase(prefix, val);
+
+      // Update labels in Supabase that match this prefix
+      const labelsInPrefix = labels.filter(l => extractLabelPrefix(l.noLabel) === prefix);
+      if (labelsInPrefix.length > 0) {
+        const supaRows = labelsInPrefix.map(l => ({
+          no_label: l.noLabel,
+          nama_rs: val || null,
+          status: l.status || 'Menunggu Sertifikat',
+          updated_at: new Date().toISOString()
+        }));
+        await supabase.from('labels').upsert(supaRows, { onConflict: 'no_label' });
+      }
+
+      const map = { ...folderRsMap };
+      if (val) {
+        map[prefix] = val;
+      } else {
+        delete map[prefix];
+      }
+      setFolderRsMap(map);
+      localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
+
+      fetch('/api/folders/nama-rs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefix, namaRs: val || null })
+      }).catch(() => {});
+
+      setLabels(prev => prev.map(lbl => {
+        if (extractLabelPrefix(lbl.noLabel) === prefix) {
+          return { ...lbl, namaRs: val || null };
+        }
+        return lbl;
+      }));
+
+      setEditingFolderRs(null);
+    } catch (err) {
+      console.error(err);
+      setError('Gagal memperbarui nama Rumah Sakit.');
+    } finally {
+      setSavingFolderRs(false);
+    }
+  };
 
   const fetchLabels = useCallback(async () => {
     try {
@@ -229,16 +288,26 @@ export default function AdminLabels() {
   useEffect(() => {
     fetchLabels();
 
-    // Realtime Supabase updates
-    const channel = supabase
-      .channel('admin-labels-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
-        fetchLabels();
-      })
-      .subscribe();
+    // Realtime Supabase updates with unique channel ID
+    const channelId = `admin_labels_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel(channelId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+          fetchLabels();
+        })
+        .subscribe();
+    } catch (err) {
+      console.warn('[AdminLabels] Realtime error:', err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (_) {}
+      }
     };
   }, [fetchLabels]);
 
@@ -761,8 +830,35 @@ export default function AdminLabels() {
                         Folder {folder.prefix}
                       </h3>
 
+                      {/* Hospital Name (if set) */}
+                      <div className="mt-1 flex items-center justify-between text-xs">
+                        {folder.namaRs ? (
+                          <span className="font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md truncate max-w-[170px]" title={folder.namaRs}>
+                            <Building2 className="w-3 h-3 inline mr-1 text-amber-600" />
+                            {folder.namaRs}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic text-[11px] flex items-center gap-1">
+                            <Building2 className="w-3 h-3 text-slate-300" />
+                            Tanpa RS
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingFolderRs({ prefix: folder.prefix, currentNamaRs: folder.namaRs || '' });
+                            setFolderRsInput(folder.namaRs || '');
+                          }}
+                          className="text-slate-400 hover:text-amber-600 p-1 rounded hover:bg-amber-50 transition-colors ml-1"
+                          title="Ubah / Set Nama Rumah Sakit"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
                       {/* Label Range */}
-                      <p className="text-xs text-slate-500 font-mono mt-2 flex items-center">
+                      <p className="text-xs text-slate-500 font-mono mt-1.5 flex items-center">
                         <span className="truncate">{folder.minLabel}</span>
                         <span className="mx-1 text-slate-300">&rarr;</span>
                         <span className="truncate">{folder.maxLabel}</span>
@@ -835,7 +931,24 @@ export default function AdminLabels() {
                     {activeFolder.totalCount} File
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 font-mono mt-1">
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-slate-600 font-medium flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                    RS / Instansi: <strong className="text-slate-900">{activeFolder.namaRs || 'Belum diatur (Tanpa RS)'}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingFolderRs({ prefix: activeFolder.prefix, currentNamaRs: activeFolder.namaRs || '' });
+                      setFolderRsInput(activeFolder.namaRs || '');
+                    }}
+                    className="text-xs text-amber-600 hover:text-amber-800 font-semibold underline flex items-center gap-1 ml-1"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Ubah RS
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                   Rentang Nomor: <span className="font-bold text-slate-700">{activeFolder.minLabel}</span> sampai <span className="font-bold text-slate-700">{activeFolder.maxLabel}</span>
                 </p>
               </div>
@@ -1238,6 +1351,93 @@ export default function AdminLabels() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit Nama Rumah Sakit / Instansi Folder */}
+      {editingFolderRs && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-amber-500" />
+                <h3 className="font-bold text-slate-900 text-base">
+                  Edit Nama RS - Folder {editingFolderRs.prefix}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingFolderRs(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nama Rumah Sakit / Instansi
+                </label>
+                <input
+                  type="text"
+                  list="hospitals-modal-list"
+                  value={folderRsInput}
+                  onChange={(e) => setFolderRsInput(e.target.value)}
+                  placeholder="Ketik atau pilih nama RS (contoh: RSUD Dr. Moewardi)"
+                  className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-slate-50 text-slate-900"
+                />
+                <datalist id="hospitals-modal-list">
+                  {INITIAL_HOSPITALS.map(h => (
+                    <option key={h.id} value={h.name} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Nama RS ini akan diasosiasikan dengan seluruh label di Folder {editingFolderRs.prefix}. Kosongkan jika ingin menghapus asosiasi RS.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+              {editingFolderRs.currentNamaRs ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFolderRsInput('');
+                  }}
+                  className="text-xs font-semibold text-rose-600 hover:underline"
+                >
+                  Kosongkan RS
+                </button>
+              ) : <div />}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingFolderRs(null)}
+                  disabled={savingFolderRs}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveFolderRs}
+                  disabled={savingFolderRs}
+                  className="px-4 py-2 text-xs font-bold text-slate-900 bg-amber-500 hover:bg-amber-400 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  {savingFolderRs ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    'Simpan'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

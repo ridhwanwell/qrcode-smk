@@ -25,7 +25,11 @@ export default function AdminLogin() {
 
   useEffect(() => {
     if (user) {
-      navigate('/admin/dashboard', { replace: true });
+      if (user.role === 'admin_teknik' || user.role === 'admin_keuangan') {
+        navigate('/admin/aset', { replace: true });
+      } else {
+        navigate('/admin/dashboard', { replace: true });
+      }
     }
   }, [user, navigate]);
 
@@ -37,7 +41,13 @@ export default function AdminLogin() {
     try {
       const result = await loginWithCredentials(username, password);
       if (result.success) {
-        navigate('/admin/dashboard');
+        // Redirect based on role
+        const targetEmail = username.toLowerCase();
+        if (targetEmail.includes('teknik') || targetEmail.includes('keuangan')) {
+          navigate('/admin/aset');
+        } else {
+          navigate('/admin/dashboard');
+        }
       } else {
         setError(result.error || 'Username atau password tidak sesuai.');
       }
@@ -133,23 +143,31 @@ export default function AdminLogin() {
 
             {/* Quick account helper pills */}
             <div className="pt-1">
-              <p className="text-[11px] text-slate-500 mb-1.5 font-medium">Pilih Akun:</p>
-              <div className="grid grid-cols-2 gap-2">
+              <p className="text-[11px] text-slate-500 mb-1.5 font-medium">Pilih Akun Cepat:</p>
+              <div className="grid grid-cols-3 gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleQuickSelect('admin.utama@smk.co.id')}
-                  className="py-1.5 px-2.5 text-xs bg-slate-100 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border border-slate-200 rounded-lg text-slate-700 text-left transition-colors flex items-center justify-between"
+                  className="py-1.5 px-2 text-xs bg-slate-100 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border border-slate-200 rounded-lg text-slate-700 text-center transition-colors font-medium cursor-pointer"
                 >
-                  <span className="font-semibold truncate">admin.utama</span>
-                  <span className="text-[10px] text-slate-400">Utama</span>
+                  <span className="font-semibold block truncate">Utama</span>
+                  <span className="text-[9px] text-slate-400 block truncate">admin.utama</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleQuickSelect('admin.teknik@smk.co.id')}
-                  className="py-1.5 px-2.5 text-xs bg-slate-100 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border border-slate-200 rounded-lg text-slate-700 text-left transition-colors flex items-center justify-between"
+                  className="py-1.5 px-2 text-xs bg-slate-100 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border border-slate-200 rounded-lg text-slate-700 text-center transition-colors font-medium cursor-pointer"
                 >
-                  <span className="font-semibold truncate">admin.teknik</span>
-                  <span className="text-[10px] text-slate-400">Teknik</span>
+                  <span className="font-semibold block truncate">Teknik</span>
+                  <span className="text-[9px] text-slate-400 block truncate">admin.teknik</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickSelect('admin.keuangan@smk.co.id')}
+                  className="py-1.5 px-2 text-xs bg-slate-100 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border border-slate-200 rounded-lg text-slate-700 text-center transition-colors font-medium cursor-pointer"
+                >
+                  <span className="font-semibold block truncate">Keuangan</span>
+                  <span className="text-[9px] text-slate-400 block truncate">admin.keuangan</span>
                 </button>
               </div>
             </div>

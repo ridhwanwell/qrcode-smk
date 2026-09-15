@@ -312,7 +312,7 @@ export interface SphQuotation {
   termsAndConditions: string[];
   status: 'Draft' | 'Terkirim ke RS' | 'Negosiasi' | 'Disetujui (Deal)' | 'Ditolak';
   negotiationTarget?: number;
-  negotiationType?: 'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'MANUAL';
+  negotiationType?: 'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'DISCOUNT_PERCENT' | 'NONE' | 'MANUAL';
   discountAmount?: number;
   discountPercent?: number;
   pdfUrl?: string;             // Link to uploaded SPH PDF

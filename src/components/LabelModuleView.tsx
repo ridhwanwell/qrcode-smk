@@ -15,7 +15,9 @@ export const LabelModuleView: React.FC = () => {
       try {
         const { count, error } = await supabase
           .from('labels')
-          .select('*', { count: 'exact', head: true });
+          .select('*', { count: 'exact', head: true })
+          .not('no_label', 'like', '__meta_%')
+          .not('no_label', 'like', '__aset_%');
         if (!error && count !== null) {
           setDbStatus({ connected: true, count });
         }

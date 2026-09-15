@@ -46,6 +46,17 @@ import {
   generateBapNumberFromSph 
 } from '../utils/helpers';
 import { SPREADSHEET_CALIBRATORS, OFFICIAL_TABLETS } from '../data/spreadsheetCalibrators';
+import { 
+  INITIAL_CALIBRATORS, 
+  INITIAL_SCHEDULES, 
+  INITIAL_FINANCIAL_ASSETS, 
+  INITIAL_TRANSACTIONS, 
+  INITIAL_HOSPITALS, 
+  INITIAL_TECHNICIANS, 
+  INITIAL_MARKETING, 
+  INITIAL_TABLETS,
+  INITIAL_SPH_LIST
+} from '../data/mockData';
 import confetti from 'canvas-confetti';
 import { Check, Send, AlertCircle, ArrowLeft, LogOut } from 'lucide-react';
 import { useSupabaseData } from '../lib/useSupabaseData';
@@ -55,12 +66,17 @@ import { BapModal } from '../components/BapModal';
 import { createBapFromSph } from '../utils/bapHelpers';
 
 export default function App() {
-  const { user, isAdmin, role, logout } = useAuth();
+  const { user } = useAuth();
 
-  // If user is not logged in, render LoginPage
   if (!user) {
     return <LoginPage />;
   }
+
+  return <AsetPortalMain />;
+}
+
+function AsetPortalMain() {
+  const { user, isAdmin, role, logout } = useAuth();
   
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'sph' | 'labels' | 'schedules' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates'>('dashboard');
@@ -83,22 +99,29 @@ export default function App() {
     setActiveTab(newTab);
   };
 
-  // Persistence State via Supabase
-  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules } = useSupabaseData<CalibrationSchedule>('schedules');
-  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph } = useSupabaseData<SphQuotation>('sphDocuments');
-  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets');
-  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets } = useSupabaseData<FinancialAsset>('financialAssets');
-  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions } = useSupabaseData<FinancialTransaction>('financialTransactions');
-  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals } = useSupabaseData<Hospital>('hospitals');
-  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians } = useSupabaseData<Technician>('technicians');
-  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets } = useSupabaseData<TabletDevice>('tabletAssets');
+  // Persistence State via Supabase with rich initial fallbacks
+  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules } = useSupabaseData<CalibrationSchedule>('schedules', INITIAL_SCHEDULES);
+  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph } = useSupabaseData<SphQuotation>('sphDocuments', INITIAL_SPH_LIST);
+  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets', SPREADSHEET_CALIBRATORS);
+  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets } = useSupabaseData<FinancialAsset>('financialAssets', []);
+  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions } = useSupabaseData<FinancialTransaction>('financialTransactions', []);
+  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals } = useSupabaseData<Hospital>('hospitals', INITIAL_HOSPITALS);
+  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians } = useSupabaseData<Technician>('technicians', INITIAL_TECHNICIANS);
+  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets } = useSupabaseData<TabletDevice>('tabletAssets', OFFICIAL_TABLETS);
   const { data: tabletLoans, add: addTabletLoan, update: updateTabletLoanDb, remove: removeTabletLoanDb, clearAll: clearAllTabletLoans } = useSupabaseData<TabletLoan>('tabletLoans');
-  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing } = useSupabaseData<MarketingStaff>('marketingStaff');
+  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing } = useSupabaseData<MarketingStaff>('marketingStaff', INITIAL_MARKETING);
   const { data: bapDocuments, add: addBapDocument, update: updateBapDocument, remove: removeBapDocument, clearAll: clearAllBapDocuments } = useSupabaseData<BapDocument>('bapDocuments');
 
-  // Fallback to official 57 calibrators and 6 tablets if database collection is empty
-  const effectiveCalibrators = calibrators.length > 0 ? calibrators : SPREADSHEET_CALIBRATORS;
-  const effectiveTablets = tablets.length > 0 ? tablets : OFFICIAL_TABLETS;
+  // Authentic data collections (Filter out any legacy mock financial records so empty financial state is respected)
+  const effectiveSchedules = schedules;
+  const effectiveSphList = sphList;
+  const effectiveCalibrators = calibrators;
+  const effectiveFinancialAssets = financialAssets.filter(a => !a.id?.startsWith('FIN-00'));
+  const effectiveTransactions = transactions.filter(t => !t.id?.startsWith('TRX-2026-10'));
+  const effectiveHospitals = hospitals;
+  const effectiveTechnicians = technicians;
+  const effectiveTablets = tablets;
+  const effectiveMarketing = marketingList;
 
   const handleSyncOfficialCalibrators = async () => {
     try {
@@ -142,6 +165,24 @@ export default function App() {
     } catch (e) {
       console.error('Error purging data:', e);
       showToast('Terjadi kesalahan saat mengosongkan data.');
+    }
+  };
+
+  const handleResetDefaultData = () => {
+    try {
+      // Clear localStorage cache for supabase data
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('smk_supa_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      showToast('Memulihkan data operasional standar PT SMK...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 400);
+    } catch (e) {
+      console.error('Error resetting default data:', e);
+      window.location.reload();
     }
   };
 
@@ -254,13 +295,15 @@ export default function App() {
       hospitalCity: sph.city || 'Surakarta',
       hospitalPic: sph.hospitalPic || 'Ka. IPSRS',
       hospitalPhone: sph.hospitalPhone || '0812-3456-7890',
-      scheduledDate: '',
-      endDate: '',
+      scheduledDate: TODAY_STR,
+      endDate: TODAY_STR,
       leadTechnicianId: '',
       leadTechnicianName: '',
       supportTechnicianIds: [],
       supportTechnicianNames: [],
       marketingName: sph.marketingStaffName || '',
+      approvedByName: 'Hafizh Pasifianto Utomo S.Tr,T',
+      approvedByRole: 'Manajer Teknik',
       labelStart: labelRange.startLabel,
       labelEnd: labelRange.endLabel,
       labelRange: labelRange.displayRange,
@@ -323,7 +366,10 @@ export default function App() {
 
   const handleDeleteSph = (sphId: string) => {
     removeSph(sphId);
-    showToast('Surat Penawaran Harga telah dihapus.');
+    if (editingSph?.id === sphId) setEditingSph(null);
+    if (printSph?.id === sphId) setPrintSph(null);
+    if (selectedSphForBap?.id === sphId) setSelectedSphForBap(null);
+    showToast('Surat Penawaran Harga (SPH) telah dihapus permanen.');
   };
 
   // Convert Approved SPH directly into a SPK (Work Order)
@@ -343,12 +389,14 @@ export default function App() {
       hospitalCity: sph.city || 'Surakarta',
       hospitalPic: sph.hospitalPic || 'Ka. IPSRS',
       hospitalPhone: sph.hospitalPhone || '0812-3456-7890',
-      scheduledDate: '',
-      endDate: '',
+      scheduledDate: TODAY_STR,
+      endDate: TODAY_STR,
       leadTechnicianId: '',
       leadTechnicianName: '',
       supportTechnicianIds: [],
       supportTechnicianNames: [],
+      approvedByName: 'Hafizh Pasifianto Utomo S.Tr,T',
+      approvedByRole: 'Manajer Teknik',
       labelStart: labelRange.startLabel,
       labelEnd: labelRange.endLabel,
       labelRange: labelRange.displayRange,
@@ -427,7 +475,11 @@ export default function App() {
 
   const handleDeleteSchedule = (scheduleId: string) => {
     removeSchedule(scheduleId);
-    showToast('Jadwal kalibrasi telah dihapus.');
+    if (selectedSchedule?.id === scheduleId) setSelectedSchedule(null);
+    if (editingSchedule?.id === scheduleId) setEditingSchedule(null);
+    if (printSchedule?.id === scheduleId) setPrintSchedule(null);
+    if (spkEditingSchedule?.id === scheduleId) setSpkEditingSchedule(null);
+    showToast('Jadwal kalibrasi RS telah dihapus permanen.');
   };
 
   // Automated Reminder Trigger Handler
@@ -640,9 +692,9 @@ export default function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        schedules={schedules}
+        schedules={effectiveSchedules}
         calibrators={effectiveCalibrators}
-        sphCount={sphList.length}
+        sphCount={effectiveSphList.length}
         borrowedTabletsCount={effectiveTablets.filter(t => !t.isAvailable).length}
         onOpenNewSchedule={() => {
           setEditingSchedule(null);
@@ -653,6 +705,7 @@ export default function App() {
           setShowSphModal(true);
         }}
         onPurgeAllData={handlePurgeAllData}
+        onResetDefaultData={handleResetDefaultData}
       />
 
       {/* Main Container */}
@@ -668,11 +721,11 @@ export default function App() {
               transition={{ duration: 0.2, ease: 'easeOut' }}
             >
               <DashboardOverview
-                schedules={schedules}
+                schedules={effectiveSchedules}
                 calibrators={effectiveCalibrators}
-                financialAssets={financialAssets}
-                transactions={transactions}
-                technicians={technicians}
+                financialAssets={effectiveFinancialAssets}
+                transactions={effectiveTransactions}
+                technicians={effectiveTechnicians}
                 tablets={effectiveTablets}
                 tabletLoans={tabletLoans}
                 onSelectSchedule={(sch) => setSelectedSchedule(sch)}
@@ -697,7 +750,7 @@ export default function App() {
               transition={{ duration: 0.22, ease: 'easeOut' }}
             >
               <SphManager
-                sphList={sphList}
+                sphList={effectiveSphList}
                 onOpenNewSph={() => {
                   setEditingSph(null);
                   setShowSphModal(true);
@@ -714,7 +767,7 @@ export default function App() {
                 onConvertToSpk={handleConvertToSpkFromSph}
                 onUpdateStatus={handleUpdateSphStatus}
                 onNavigateToSchedules={() => setActiveTab('schedules')}
-                hospitals={hospitals}
+                hospitals={effectiveHospitals}
                 bapDocuments={bapDocuments}
                 onOpenBap={handleOpenBap}
               />
@@ -742,9 +795,9 @@ export default function App() {
               transition={{ duration: 0.22, ease: 'easeOut' }}
             >
               <ScheduleManager
-                schedules={schedules}
-                hospitals={hospitals}
-                technicians={technicians}
+                schedules={effectiveSchedules}
+                hospitals={effectiveHospitals}
+                technicians={effectiveTechnicians}
                 calibrators={effectiveCalibrators}
                 onSelectSchedule={(sch) => setSelectedSchedule(sch)}
                 onOpenNewScheduleModal={() => {
@@ -773,7 +826,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               <SeliaDashboard
-                schedules={schedules}
+                schedules={effectiveSchedules}
                 onUpdateSchedule={updateSchedule}
               />
             </motion.div>
@@ -789,7 +842,7 @@ export default function App() {
             >
               <CalibratorAssetManager
                 calibrators={effectiveCalibrators}
-                technicians={technicians}
+                technicians={effectiveTechnicians}
                 onAddCalibrator={(newCal) => {
                   addCalibrator(newCal);
                   showToast(`Alat kalibrator ${newCal.code} berhasil ditambahkan!`);
@@ -818,7 +871,7 @@ export default function App() {
               <TabletLoanManager
                 tablets={effectiveTablets}
                 loans={tabletLoans}
-                technicians={technicians}
+                technicians={effectiveTechnicians}
                 onAddLoan={handleAddTabletLoan}
                 onUpdateLoan={handleUpdateTabletLoan}
                 onDeleteLoan={handleDeleteTabletLoan}
@@ -840,10 +893,10 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               <FinancialAssetManager
-                financialAssets={financialAssets}
-                transactions={transactions}
-                hospitals={hospitals}
-                marketingList={marketingList}
+                financialAssets={effectiveFinancialAssets}
+                transactions={effectiveTransactions}
+                hospitals={effectiveHospitals}
+                marketingList={effectiveMarketing}
                 onAddTransaction={(newTrx) => {
                   addTransaction(newTrx);
                   showToast(`Transaksi ${newTrx.category} berhasil dicatat!`);
@@ -877,14 +930,14 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               <MasterHospitalAndTech
-                schedules={schedules}
+                schedules={effectiveSchedules}
                 onUpdateSchedule={(sch) => {
                   updateSchedule(sch);
                   showToast('Update perkembangan selia berhasil disimpan!');
                 }}
-                hospitals={hospitals}
-                technicians={technicians}
-                marketingList={marketingList}
+                hospitals={effectiveHospitals}
+                technicians={effectiveTechnicians}
+                marketingList={effectiveMarketing}
                 onAddHospital={(h) => {
                   addHospital(h);
                   showToast(`Rumah sakit ${h.name} berhasil ditambahkan.`);
@@ -982,9 +1035,9 @@ export default function App() {
             setEditingSchedule(null);
           }}
           onSave={handleSaveSchedule}
-          hospitals={hospitals}
-          technicians={technicians}
-          calibrators={calibrators}
+          hospitals={effectiveHospitals}
+          technicians={effectiveTechnicians}
+          calibrators={effectiveCalibrators}
           initialData={editingSchedule}
         />
       )}
@@ -997,9 +1050,9 @@ export default function App() {
             setSpkEditingSchedule(null);
           }}
           onSave={handleSaveSpk}
-          hospitals={hospitals}
-          technicians={technicians}
-          calibrators={calibrators}
+          hospitals={effectiveHospitals}
+          technicians={effectiveTechnicians}
+          calibrators={effectiveCalibrators}
           initialData={spkEditingSchedule}
         />
       )}
@@ -1021,9 +1074,9 @@ export default function App() {
             setEditingSph(null);
           }}
           onSave={handleSaveSph}
-          hospitals={hospitals}
+          hospitals={effectiveHospitals}
           initialSph={editingSph}
-          existingSphCount={sphList.length}
+          existingSphCount={effectiveSphList.length}
         />
       )}
 

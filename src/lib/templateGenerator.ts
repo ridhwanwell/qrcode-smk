@@ -903,12 +903,58 @@ export async function createAuthenticSphPdf(
       const it = pageItems[r];
       const rowY = tableY;
 
+      const itemNo = safePdfText(it.no || chunk.startIndex + r + 1);
+      const fullDesc = safePdfText(it.description || it.namaAlat || '-');
+      const itemQty = safePdfText(it.quantity || '1');
+      const itemUnit = safePdfText(it.unit || 'Unit');
+      const priceNumStr = formatNumberOnly(it.unitPrice || '0');
+      const totalNumStr = formatNumberOnly(it.totalPrice || '0');
+
+      // Calculate line wrapping for Diskripsi (col width: 205, printable text width: ~193)
+      const maxDescWidth = 193;
+      const descFormatted = fullDesc.replace(/([\/])(?=[^\s])/g, '$1 ');
+      const descWords = descFormatted.split(/\s+/).filter(Boolean);
+      const descLines: string[] = [];
+      let currentDescLine = '';
+
+      for (const w of descWords) {
+        const testLine = currentDescLine ? `${currentDescLine} ${w}` : w;
+        const testWidth = fontRegular.widthOfTextAtSize(testLine, 11);
+        if (testWidth > maxDescWidth && currentDescLine) {
+          descLines.push(currentDescLine);
+          currentDescLine = w;
+        } else {
+          currentDescLine = testLine;
+        }
+      }
+      if (currentDescLine) {
+        if (fontRegular.widthOfTextAtSize(currentDescLine, 11) > maxDescWidth) {
+          let chunk = '';
+          for (const c of currentDescLine) {
+            if (fontRegular.widthOfTextAtSize(chunk + c, 11) > maxDescWidth) {
+              descLines.push(chunk);
+              chunk = c;
+            } else {
+              chunk += c;
+            }
+          }
+          if (chunk) descLines.push(chunk);
+        } else {
+          descLines.push(currentDescLine);
+        }
+      }
+      if (descLines.length === 0) descLines.push('-');
+
+      // Dynamic row height based on number of lines (min 21pt)
+      const numLines = descLines.length;
+      const curRowH = Math.max(21, 13 + numLines * 12);
+
       // Outer row border
       pageN.drawRectangle({
         x: colX.no,
-        y: rowY - rowH,
+        y: rowY - curRowH,
         width: tableWidth,
-        height: rowH,
+        height: curRowH,
         borderColor: COLOR_BORDER,
         borderWidth: 0.5,
         color: COLOR_WHITE
@@ -918,45 +964,43 @@ export async function createAuthenticSphPdf(
       [colX.desc, colX.qty, colX.unit, colX.price, colX.total].forEach((vx) => {
         pageN.drawLine({
           start: { x: vx, y: rowY },
-          end: { x: vx, y: rowY - rowH },
+          end: { x: vx, y: rowY - curRowH },
           thickness: 0.5,
           color: COLOR_BORDER
         });
       });
 
-      const itemNo = safePdfText(it.no || chunk.startIndex + r + 1);
-      const itemDesc = safePdfText(it.description || it.namaAlat || '-').substring(0, 42);
-      const itemQty = safePdfText(it.quantity || '1');
-      const itemUnit = safePdfText(it.unit || 'Unit');
-      const priceNumStr = formatNumberOnly(it.unitPrice || '0');
-      const totalNumStr = formatNumberOnly(it.totalPrice || '0');
+      // Position text vertically aligned nicely
+      const firstLineY = rowY - 14;
 
       // Center No. (12pt font)
       const noW = fontRegular.widthOfTextAtSize(itemNo, 12);
-      pageN.drawText(itemNo, { x: colX.no + (30 - noW) / 2, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      pageN.drawText(itemNo, { x: colX.no + (30 - noW) / 2, y: firstLineY, size: 12, font: fontRegular, color: COLOR_BLACK });
 
-      // Left Diskripsi (RATA KIRI KONSISTEN dengan 6pt padding, 12pt font)
-      pageN.drawText(itemDesc, { x: colX.desc + 6, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      // Left Diskripsi (Wrapped multi-line, 11pt font)
+      descLines.forEach((dLine, dIdx) => {
+        pageN.drawText(dLine, { x: colX.desc + 6, y: firstLineY - (dIdx * 12), size: 11, font: fontRegular, color: COLOR_BLACK });
+      });
 
       // Center Qty (12pt font)
       const qtyW = fontRegular.widthOfTextAtSize(itemQty, 12);
-      pageN.drawText(itemQty, { x: colX.qty + (38 - qtyW) / 2, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      pageN.drawText(itemQty, { x: colX.qty + (38 - qtyW) / 2, y: firstLineY, size: 12, font: fontRegular, color: COLOR_BLACK });
 
       // Center Unit (12pt font)
       const unitW = fontRegular.widthOfTextAtSize(itemUnit, 12);
-      pageN.drawText(itemUnit, { x: colX.unit + (48 - unitW) / 2, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      pageN.drawText(itemUnit, { x: colX.unit + (48 - unitW) / 2, y: firstLineY, size: 12, font: fontRegular, color: COLOR_BLACK });
 
       // Satuan Harga: "Rp" on left, number right-aligned (12pt font)
-      pageN.drawText('Rp', { x: colX.price + 5, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      pageN.drawText('Rp', { x: colX.price + 5, y: firstLineY, size: 12, font: fontRegular, color: COLOR_BLACK });
       const priceW = fontRegular.widthOfTextAtSize(priceNumStr, 12);
-      pageN.drawText(priceNumStr, { x: colX.total - priceW - 5, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      pageN.drawText(priceNumStr, { x: colX.total - priceW - 5, y: firstLineY, size: 12, font: fontRegular, color: COLOR_BLACK });
 
       // Total Harga: "Rp" on left, number right-aligned (12pt font)
-      pageN.drawText('Rp', { x: colX.total + 5, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      pageN.drawText('Rp', { x: colX.total + 5, y: firstLineY, size: 12, font: fontRegular, color: COLOR_BLACK });
       const totalW = fontRegular.widthOfTextAtSize(totalNumStr, 12);
-      pageN.drawText(totalNumStr, { x: colX.end - totalW - 5, y: rowY - 15, size: 12, font: fontRegular, color: COLOR_BLACK });
+      pageN.drawText(totalNumStr, { x: colX.end - totalW - 5, y: firstLineY, size: 12, font: fontRegular, color: COLOR_BLACK });
 
-      tableY -= rowH;
+      tableY -= curRowH;
     }
 
     // IF CHUNK HAS SUMMARY: Draw Summary Block (Jumlah + Breakdown) & Terbilang Box & Footnotes

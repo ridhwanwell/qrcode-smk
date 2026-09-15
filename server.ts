@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import rateLimit from "express-rate-limit";
 import { supabaseAdmin } from "./src/server/supabaseAdmin";
@@ -8,6 +9,9 @@ import { requireAuth, requireRole, AuthRequest } from "./src/middleware/auth";
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Trust reverse proxy (Cloud Run / Nginx) for rate limiter and client IP resolution
+  app.set("trust proxy", 1);
 
   // Global Middlewares
   app.use(express.json({ limit: '10mb' }));
@@ -74,6 +78,8 @@ async function startServer() {
       const { data, error } = await supabaseAdmin
         .from('labels')
         .select('*')
+        .not('no_label', 'like', '__meta_%')
+        .not('no_label', 'like', '__aset_%')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -83,7 +89,7 @@ async function startServer() {
 
       const formatted = (data || []).map((it: any) => ({
         noLabel: it.no_label,
-        namaRs: it.nama_rs,
+        namaRs: it.nama_rs || null,
         status: it.status,
         pdfSource: it.pdf_source,
         pdfUrl: it.pdf_url,
@@ -122,9 +128,8 @@ async function startServer() {
         return res.status(400).json({ error: "noLabel is required" });
       }
 
-      const payload = {
+      const payload: any = {
         no_label: noLabel,
-        nama_rs: namaRs || null,
         status: status || 'Menunggu Sertifikat',
         pdf_source: pdfSource || null,
         pdf_url: pdfUrl || null,
@@ -135,6 +140,21 @@ async function startServer() {
         valid_until: validUntil || null,
         updated_at: new Date().toISOString()
       };
+
+      // If namaRs is provided, save folder mapping in metadata so it is preserved
+      if (namaRs && typeof namaRs === 'string' && namaRs.trim()) {
+        const dotIdx = noLabel.indexOf('.');
+        const prefix = dotIdx > 0 ? noLabel.substring(0, dotIdx) : (noLabel.length >= 3 ? noLabel.substring(0, 3) : noLabel);
+        try {
+          await supabaseAdmin.from('labels').upsert({
+            no_label: `__meta_folder_rs_${prefix}`,
+            status: 'metadata',
+            pdf_source: 'folder_rs_name',
+            pdforiginal_url: namaRs.trim(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'no_label' });
+        } catch (_) {}
+      }
 
       const { data, error } = await supabaseAdmin
         .from('labels')
@@ -165,7 +185,6 @@ async function startServer() {
         .filter((it: any) => it && (it.noLabel || it.no_label || it.id))
         .map((it: any) => ({
           no_label: it.noLabel || it.no_label || it.id,
-          nama_rs: it.namaRs || it.nama_rs || null,
           status: it.status || 'Menunggu Sertifikat',
           pdf_source: it.pdf_source || null,
           pdf_url: it.pdfUrl || it.pdf_url || null,
@@ -176,6 +195,30 @@ async function startServer() {
           valid_until: it.validUntil || it.valid_until || null,
           updated_at: new Date().toISOString()
         }));
+
+      // Extract unique folder RS names if any and save to metadata
+      const folderRsMap: Record<string, string> = {};
+      items.forEach((it: any) => {
+        const no = it.noLabel || it.no_label || it.id;
+        const rs = it.namaRs || it.nama_rs;
+        if (no && rs && typeof rs === 'string' && rs.trim()) {
+          const dotIdx = no.indexOf('.');
+          const prefix = dotIdx > 0 ? no.substring(0, dotIdx) : (no.length >= 3 ? no.substring(0, 3) : no);
+          folderRsMap[prefix] = rs.trim();
+        }
+      });
+
+      for (const [prefix, rsName] of Object.entries(folderRsMap)) {
+        try {
+          await supabaseAdmin.from('labels').upsert({
+            no_label: `__meta_folder_rs_${prefix}`,
+            status: 'metadata',
+            pdf_source: 'folder_rs_name',
+            pdforiginal_url: rsName,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'no_label' });
+        } catch (_) {}
+      }
 
       const { error } = await supabaseAdmin
         .from('labels')
@@ -196,12 +239,14 @@ async function startServer() {
   app.delete("/api/labels/:noLabel", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { noLabel } = req.params;
+      console.log(`[API] Deleting label: ${noLabel}`);
       const { error } = await supabaseAdmin
         .from('labels')
         .delete()
         .eq('no_label', noLabel);
 
       if (error) {
+        console.error("Supabase delete label error:", error);
         return res.status(500).json({ error: error.message });
       }
 
@@ -209,6 +254,32 @@ async function startServer() {
     } catch (err: any) {
       console.error("API error in DELETE /api/labels/:noLabel:", err);
       res.status(500).json({ error: "Failed to delete label" });
+    }
+  });
+
+  // Batch delete labels endpoint
+  app.post("/api/labels/batch-delete", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { noLabels } = req.body;
+      if (!Array.isArray(noLabels) || noLabels.length === 0) {
+        return res.json({ success: true, count: 0 });
+      }
+
+      console.log(`[API] Batch deleting ${noLabels.length} labels:`, noLabels);
+      const { error } = await supabaseAdmin
+        .from('labels')
+        .delete()
+        .in('no_label', noLabels);
+
+      if (error) {
+        console.error("Supabase batch delete error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true, count: noLabels.length });
+    } catch (err: any) {
+      console.error("API error in POST /api/labels/batch-delete:", err);
+      res.status(500).json({ error: "Failed to batch delete labels" });
     }
   });
 
@@ -264,14 +335,19 @@ async function startServer() {
   app.delete("/api/folders/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id } = req.params;
-      const { error } = await supabaseAdmin
-        .from('label_folders')
-        .delete()
-        .eq('id', id);
+      console.log(`[API] Deleting folder or prefix: ${id}`);
 
-      if (error) {
-        return res.status(500).json({ error: error.message });
-      }
+      // 1. If this id is a 3-digit prefix or contains alphanumeric prefix, delete all related labels
+      const escapedPrefix = id.replace(/[%_\\]/g, '\\$&');
+      await supabaseAdmin.from('labels').delete().like('no_label', `${escapedPrefix}.%`);
+      await supabaseAdmin.from('labels').delete().eq('no_label', id);
+      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_${id}`);
+      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_rs_${id}`);
+
+      // 2. Also attempt deletion from label_folders if table exists
+      try {
+        await supabaseAdmin.from('label_folders').delete().eq('id', id);
+      } catch (_) {}
 
       res.json({ success: true });
     } catch (err: any) {
@@ -290,17 +366,155 @@ async function startServer() {
         return res.status(400).json({ error: "Invalid prefix format. Only alphanumeric and .-_ allowed." });
       }
 
-      // Escape any potential SQL LIKE wildcards defensively
       const escapedPrefix = prefix.replace(/[%_\\]/g, '\\$&');
 
       await supabaseAdmin.from('labels').delete().like('no_label', `${escapedPrefix}.%`);
       await supabaseAdmin.from('labels').delete().eq('no_label', prefix);
       await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
+      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_rs_${prefix}`);
 
       res.json({ success: true });
     } catch (err: any) {
       console.error("API error in DELETE /api/folders/prefix/:prefix:", err);
       res.status(500).json({ error: "Failed to delete folder prefix labels" });
+    }
+  });
+
+  // --- API: DURABLE ASSET COLLECTIONS (SPH, Schedules, Calibrators, etc.) ---
+  // Stores and synchronizes asset portal collections in Supabase labels table with 100% durability
+  app.get("/api/collections/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+      const metaKey = `__aset_coll_${name}`;
+      const { data, error } = await supabaseAdmin
+        .from('labels')
+        .select('pdf_url')
+        .eq('no_label', metaKey)
+        .maybeSingle();
+
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+
+      if (!data || !data.pdf_url) {
+        return res.json({ found: false, items: null });
+      }
+
+      try {
+        const items = JSON.parse(data.pdf_url);
+        return res.json({ found: true, items: Array.isArray(items) ? items : [] });
+      } catch {
+        return res.json({ found: true, items: [] });
+      }
+    } catch (err: any) {
+      console.error(`API error in GET /api/collections/${req.params.name}:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/collections/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+      const { items } = req.body;
+      if (!Array.isArray(items)) {
+        return res.status(400).json({ error: "items array is required" });
+      }
+
+      const metaKey = `__aset_coll_${name}`;
+      const jsonStr = JSON.stringify(items);
+
+      const { error } = await supabaseAdmin
+        .from('labels')
+        .upsert({
+          no_label: metaKey,
+          status: 'asset_data',
+          pdf_source: name,
+          pdf_name: `Collection: ${name} (${items.length} items)`,
+          pdf_url: jsonStr,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'no_label' });
+
+      if (error) {
+        console.error(`Supabase error saving collection ${name}:`, error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true, count: items.length });
+    } catch (err: any) {
+      console.error(`API error in POST /api/collections/${req.params.name}:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/collections/:name/:id", async (req, res) => {
+    try {
+      const { name, id } = req.params;
+      const metaKey = `__aset_coll_${name}`;
+      console.log(`[API] Deleting item ${id} from collection ${name}`);
+
+      const { data } = await supabaseAdmin
+        .from('labels')
+        .select('pdf_url')
+        .eq('no_label', metaKey)
+        .maybeSingle();
+
+      let items: any[] = [];
+      if (data?.pdf_url) {
+        try {
+          const parsed = JSON.parse(data.pdf_url);
+          if (Array.isArray(parsed)) items = parsed;
+        } catch (_) {}
+      }
+
+      const filtered = items.filter((it: any) => 
+        it.id !== id && 
+        it.noLabel !== id && 
+        it.no_label !== id && 
+        it.sphNumber !== id && 
+        it.workOrderNumber !== id
+      );
+
+      const jsonStr = JSON.stringify(filtered);
+
+      await supabaseAdmin
+        .from('labels')
+        .upsert({
+          no_label: metaKey,
+          status: 'asset_data',
+          pdf_source: name,
+          pdf_name: `Collection: ${name} (${filtered.length} items)`,
+          pdf_url: jsonStr,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'no_label' });
+
+      res.json({ success: true, remaining: filtered.length });
+    } catch (err: any) {
+      console.error(`API error in DELETE /api/collections/${req.params.name}/${req.params.id}:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/collections/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+      const metaKey = `__aset_coll_${name}`;
+      console.log(`[API] Clearing entire collection ${name}`);
+
+      await supabaseAdmin
+        .from('labels')
+        .upsert({
+          no_label: metaKey,
+          status: 'asset_data',
+          pdf_source: name,
+          pdf_name: `Collection: ${name} (0 items)`,
+          pdf_url: JSON.stringify([]),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'no_label' });
+
+      res.json({ success: true, remaining: 0 });
+    } catch (err: any) {
+      console.error(`API error in DELETE /api/collections/${req.params.name}:`, err);
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -440,17 +654,28 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
+  // Vite middleware for development & SPA catch-all fallback
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
+    app.use('*', async (req, res, next) => {
+      const url = req.originalUrl;
+      try {
+        let template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

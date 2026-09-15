@@ -138,16 +138,26 @@ CREATE POLICY "Service Role Full Access" ON public.labels
     checkSupabaseStatus();
     fetchLabels();
 
-    // Realtime Supabase updates
-    const channel = supabase
-      .channel('dashboard-labels-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
-        fetchLabels();
-      })
-      .subscribe();
+    // Realtime Supabase updates with unique channel ID
+    const channelId = `dashboard_labels_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel(channelId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+          fetchLabels();
+        })
+        .subscribe();
+    } catch (err) {
+      console.warn('[AdminDashboard] Realtime error:', err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (_) {}
+      }
     };
   }, [fetchLabels, checkSupabaseStatus]);
 

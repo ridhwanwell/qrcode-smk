@@ -902,10 +902,10 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                           return (
                             <tr key={item.id || index} className="border-b border-black/40 hover:bg-slate-50/50 bg-white">
                               <td className="border border-black px-2 py-1.5 text-center font-medium">{globalIndex}</td>
-                              <td className="border border-black px-3 py-1.5 text-left">
-                                <div className="font-semibold text-slate-950 text-left">{item.description}</div>
+                              <td className="border border-black px-3 py-1.5 text-left whitespace-normal break-words max-w-xs">
+                                <div className="font-semibold text-slate-950 text-left whitespace-normal break-words leading-tight">{item.description}</div>
                                 {item.notes && (
-                                   <div className="text-[11px] text-slate-700 italic text-left">{item.notes}</div>
+                                   <div className="text-[11px] text-slate-700 italic text-left whitespace-normal break-words leading-tight mt-0.5">{item.notes}</div>
                                 )}
                               </td>
                               <td className="border border-black px-2 py-1.5 text-center font-medium">{item.quantity}</td>

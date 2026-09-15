@@ -40,8 +40,6 @@ import { createAuthenticSphPdf } from '../lib/templateGenerator';
 import { getFullTemplatesConfig } from '../lib/templateService';
 import { getLocalBlob } from '../lib/localBlobStorage';
 
-import { PdfUploader } from './PdfUploader';
-
 const OFFICIAL_SAMPLE_ITEMS: SphItem[] = [
   { id: 'sample-1', description: 'Anaesthesia Unit (Mesin Anesthesi)', quantity: 1, unit: 'Unit', standardPrice: 362400, unitPrice: 362400, totalPrice: 362400 },
   { id: 'sample-2', description: 'Baby Incubator', quantity: 4, unit: 'Unit', standardPrice: 362400, unitPrice: 362400, totalPrice: 1449600 },
@@ -104,7 +102,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
   const [accommodationFee, setAccommodationFee] = useState(0);
   const [isPpnIncluded, setIsPpnIncluded] = useState(true);
   const [negotiationTarget, setNegotiationTarget] = useState<string>('');
-  const [negotiationType, setNegotiationType] = useState<'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'DISCOUNT_PERCENT' | 'MANUAL'>('INCLUDE_PPN');
+  const [negotiationType, setNegotiationType] = useState<'NONE' | 'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'DISCOUNT_PERCENT' | 'MANUAL'>('INCLUDE_PPN');
   const [status, setStatus] = useState<SphQuotation['status']>('Draft');
   const [pdfUrl, setPdfUrl] = useState<string | undefined>(undefined);
 
@@ -308,11 +306,12 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       }
 
       const calculatedTerbilang = angkaTerbilang(grandTotal);
+      const dynamicAttachmentPages = items.length > 0 ? (items.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
 
       const sphData = {
         sphNumber: sphNumber || generateSphNumber(existingSphCount),
         subject,
-        attachmentPages,
+        attachmentPages: dynamicAttachmentPages,
         date,
         city,
         formattedDate: formattedDateStr,
@@ -381,11 +380,13 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       accommodationFee: Number(accommodationFee) || 0
     });
 
+    const dynamicAttachmentPages = items.length > 0 ? (items.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
+
     const newSph: SphQuotation = {
       id: initialSph?.id || `SPH-${Date.now()}`,
       sphNumber: sphNumber || generateSphNumber(existingSphCount),
       subject,
-      attachmentPages,
+      attachmentPages: dynamicAttachmentPages,
       date,
       city,
       formattedDate: formattedDateStr,
@@ -563,7 +564,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
                     Nomor SPH Resmi <span className="text-rose-500">*</span>
@@ -578,45 +579,32 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Lampiran
-                  </label>
-                  <input
-                    type="text"
-                    value={attachmentPages}
-                    onChange={(e) => setAttachmentPages(e.target.value)}
-                    className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
-                    placeholder="1 Lembar"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Perihal
+                    </label>
+                    <input
+                      type="text"
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                      placeholder="Surat Penawaran Harga Kalibrasi"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Perihal
-                  </label>
-                  <input
-                    type="text"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
-                    placeholder="Surat Penawaran Harga Kalibrasi"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Tembusan
-                  </label>
-                  <input
-                    type="text"
-                    value={tembusan}
-                    onChange={(e) => setTembusan(e.target.value)}
-                    className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
-                    placeholder="Direktur / Kabid Penunjang / -"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Tembusan
+                    </label>
+                    <input
+                      type="text"
+                      value={tembusan}
+                      onChange={(e) => setTembusan(e.target.value)}
+                      className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                      placeholder="Direktur / Kabid Penunjang / -"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -955,12 +943,12 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
 
                       {/* Deskripsi */}
                       <td className="px-2.5 py-2 border-r border-[#D8D2CB]/40">
-                        <input
-                          type="text"
+                        <textarea
+                          rows={Math.max(1, Math.ceil((item.description || '').length / 28))}
                           value={item.description}
                           onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
                           placeholder="Nama alat kesehatan..."
-                          className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-2 py-1 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-medium"
+                          className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-2 py-1 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-medium resize-y min-h-[30px] leading-snug"
                           required
                         />
                       </td>
@@ -1091,21 +1079,6 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     Rp {formatNumber(grandTotal)}
                   </span>
                 </div>
-              </div>
-
-              {/* Lampiran Dokumen Scan / PDF SPH */}
-              <div className="p-3.5 bg-slate-900 text-white rounded-xl border border-slate-700">
-                <span className="text-xs font-bold text-slate-200 block mb-2">
-                  Lampiran Berkas / Scan Persetujuan SPH (Internal & Privat):
-                </span>
-                <PdfUploader
-                  folder="sph"
-                  documentId={initialSph?.id || 'new-sph'}
-                  existingPdfUrl={pdfUrl}
-                  onUploadSuccess={setPdfUrl}
-                  onRemove={() => setPdfUrl(undefined)}
-                  label="Upload Berkas SPH (PDF / Scan Dokumen)"
-                />
               </div>
 
             </div>

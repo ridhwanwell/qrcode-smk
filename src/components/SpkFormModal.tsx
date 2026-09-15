@@ -128,8 +128,8 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
   );
 
   // MT Sign-off
-  const [approvedByName, setApprovedByName] = useState(initialData?.approvedByName || 'Hafizh Pasifianto, S.Tr.T.');
-  const [approvedByRole, setApprovedByRole] = useState(initialData?.approvedByRole || 'Manajer Teknik PT. Sarana Multi Kalibrasi');
+  const [approvedByName, setApprovedByName] = useState(initialData?.approvedByName || 'Hafizh Pasifianto Utomo S.Tr,T');
+  const [approvedByRole, setApprovedByRole] = useState(initialData?.approvedByRole || 'Manajer Teknik');
 
   // Calibrators
   const [selectedCalibratorIds, setSelectedCalibratorIds] = useState<string[]>(

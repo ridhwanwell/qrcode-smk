@@ -85,8 +85,8 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   const [hospitalAddress, setHospitalAddress] = useState(initialData?.hospitalAddress || '');
   const [hospitalCity, setHospitalCity] = useState(initialData?.hospitalCity || '');
   
-  const [scheduledDate, setScheduledDate] = useState(initialData?.scheduledDate || '');
-  const [endDate, setEndDate] = useState(initialData?.endDate || '');
+  const [scheduledDate, setScheduledDate] = useState(initialData?.scheduledDate || TODAY_STR);
+  const [endDate, setEndDate] = useState(initialData?.endDate || initialData?.scheduledDate || TODAY_STR);
   
   const [leadTechId, setLeadTechId] = useState(initialData?.leadTechnicianId || '');
   const [selectedSupportIds, setSelectedSupportIds] = useState<string[]>(initialData?.supportTechnicianIds || []);
@@ -98,8 +98,8 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   const [notes, setNotes] = useState(initialData?.notes || '');
   
   const [marketingName, setMarketingName] = useState(initialData?.marketingName || '');
-  const [approvedByName, setApprovedByName] = useState(initialData?.approvedByName || '');
-  const [approvedByRole, setApprovedByRole] = useState(initialData?.approvedByRole || '');
+  const [approvedByName, setApprovedByName] = useState(initialData?.approvedByName || 'Hafizh Pasifianto Utomo S.Tr,T');
+  const [approvedByRole, setApprovedByRole] = useState(initialData?.approvedByRole || 'Manajer Teknik');
   
   const [workOrderNumber, setWorkOrderNumber] = useState(initialData?.workOrderNumber || '');
   const [bapNumber, setBapNumber] = useState(initialData?.bapNumber || '');
@@ -200,32 +200,35 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
       .filter(c => selectedCalibratorIds.includes(c.id))
       .map(c => `${c.code} - ${c.name.slice(0, 24)}`);
 
+    const safeBap = bapNumber || initialData?.bapNumber || '021/SMK/BAP/VIII/2026';
+    const safeBastp = initialData?.bastpNumber || safeBap.replace('BAP', 'BASTP');
+
     const savedSchedule: CalibrationSchedule = {
       id: initialData?.id || `SCH-${Date.now().toString().slice(-6)}`,
-      workOrderNumber,
-      bapNumber: bapNumber || '021/SMK/BAP/VIII/2026',
-      bastpNumber: bapNumber.replace('BAP', 'BASTP'),
-      poContractNumber,
-      poDate,
-      hospitalId: hospitalId || selectedHospitalObj.id,
-      hospitalCode: hospitalCode || '100',
-      hospitalName: hospitalName || selectedHospitalObj.name,
-      hospitalAddress: hospitalAddress || selectedHospitalObj.address,
-      hospitalCity: hospitalCity || selectedHospitalObj.city,
-      hospitalPic: selectedHospitalObj.picName,
+      workOrderNumber: workOrderNumber || initialData?.workOrderNumber || `WO/KAL/2026/${Math.floor(100 + Math.random() * 900)}`,
+      bapNumber: safeBap,
+      bastpNumber: safeBastp,
+      poContractNumber: poContractNumber || initialData?.poContractNumber || '',
+      poDate: poDate || initialData?.poDate || '',
+      hospitalId: hospitalId || selectedHospitalObj?.id || initialData?.hospitalId || `HOSP-${Date.now()}`,
+      hospitalCode: hospitalCode || initialData?.hospitalCode || '100',
+      hospitalName: hospitalName || selectedHospitalObj?.name || initialData?.hospitalName || 'Rumah Sakit',
+      hospitalAddress: hospitalAddress || selectedHospitalObj?.address || initialData?.hospitalAddress || '',
+      hospitalCity: hospitalCity || selectedHospitalObj?.city || initialData?.hospitalCity || 'Surakarta',
+      hospitalPic: selectedHospitalObj?.picName || initialData?.hospitalPic || 'Kepala IPSRS / ATEM',
       hospitalPicRole: 'Kepala IPSRS / ATEM',
-      hospitalPhone: selectedHospitalObj.picPhone,
-      marketingName: marketingName,
+      hospitalPhone: selectedHospitalObj?.picPhone || initialData?.hospitalPhone || '-',
+      marketingName: marketingName || initialData?.marketingName || '',
       labelStart: labelRangeInfo.startLabel,
       labelEnd: labelRangeInfo.endLabel,
       labelRange: labelRangeInfo.displayRange,
       labelSequenceStart: startSequence,
-      approvedByName: approvedByName,
-      approvedByRole: approvedByRole,
-      scheduledDate,
-      endDate,
-      leadTechnicianId: selectedLeadTech.id,
-      leadTechnicianName: selectedLeadTech.name,
+      approvedByName: (approvedByName && approvedByName.trim()) ? approvedByName.trim() : 'Hafizh Pasifianto Utomo S.Tr,T',
+      approvedByRole: (approvedByRole && approvedByRole.trim()) ? approvedByRole.trim() : 'Manajer Teknik',
+      scheduledDate: scheduledDate || TODAY_STR,
+      endDate: endDate || scheduledDate || TODAY_STR,
+      leadTechnicianId: selectedLeadTech?.id || 'TECH-001',
+      leadTechnicianName: selectedLeadTech?.name || 'Shifa Zalza Billa',
       supportTechnicianIds: selectedSupportIds,
       supportTechnicianNames: supportTechNames,
       targetDevices: labeledDevices,
@@ -234,7 +237,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
       priority: initialData?.priority || 'Tinggi',
       status: (initialData?.status as any) || 'Dijadwalkan',
       estimatedHours: totalDeviceUnits * 2,
-      contractValue: Number(contractValue.replace(/\./g, '')) || 35000000,
+      contractValue: Number(contractValue.replace(/\./g, '')) || (initialData?.contractValue) || 35000000,
       notes,
       progressPercent: initialData?.progressPercent || 0,
       createdAt: initialData?.createdAt || TODAY_STR,
@@ -404,11 +407,10 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
             {/* ALAMAT LENGKAP RUMAH SAKIT */}
             <div className="pt-2 border-t border-[#D8D2CB]/60">
               <label className="font-semibold text-slate-700 block mb-1">
-                ALAMAT LENGKAP RUMAH SAKIT (Wajib untuk Dokumen Resmi) *
+                ALAMAT LENGKAP RUMAH SAKIT (Wajib untuk Dokumen Resmi)
               </label>
               <textarea
                 rows={2}
-                required
                 placeholder="Jl. Kolonel Sutarto No.132, Jebres, Surakarta"
                 value={hospitalAddress}
                 onChange={(e) => setHospitalAddress(e.target.value)}
@@ -426,10 +428,9 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Tanggal Mulai Pelaksanaan *</label>
+                <label className="font-semibold text-slate-700 block mb-1">Tanggal Mulai Pelaksanaan</label>
                 <input
                   type="date"
-                  required
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
                   className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-mono focus:outline-none focus:border-[#1C658C]"
@@ -447,10 +448,9 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Nilai Kontrak Jasa Kalibrasi (Rp) *</label>
+                <label className="font-semibold text-slate-700 block mb-1">Nilai Kontrak Jasa Kalibrasi (Rp)</label>
                 <input
-                  type="number"
-                  required
+                  type="text"
                   placeholder="35000000"
                   value={contractValue}
                   onChange={(e) => setContractValue(e.target.value)}

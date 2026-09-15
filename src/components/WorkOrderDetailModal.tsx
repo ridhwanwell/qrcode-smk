@@ -230,7 +230,7 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
             <div className="bg-[#EEEEEE]/50 p-3 rounded-xl border border-[#D8D2CB]">
               <span className="text-slate-500 block text-[10px]">Otoritas Persetujuan</span>
               <span className="font-bold text-slate-800 text-xs truncate block">
-                {schedule.approvedByName || 'Hafizh Pasifianto, S.Tr.T.'}
+                {schedule.approvedByName || 'Hafizh Pasifianto Utomo S.Tr,T'}
               </span>
               <span className="text-[10px] text-slate-500 block truncate">
                 {schedule.approvedByRole || 'Manajer Teknik'}
@@ -285,7 +285,7 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
             </div>
 
             {/* Banner info for Selia & Certificate Status */}
-            {(schedule.status === 'Sudah Selesai Kalibrasi' || schedule.progressPercent === 100) && (
+            {(schedule.status === 'Selesai Kalibrasi' || schedule.progressPercent === 100) && (
               <div className="mt-3 p-3 bg-gradient-to-r from-teal-900/90 to-cyan-950/90 text-white rounded-xl border border-teal-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-md">
                 <div>
                   <div className="flex items-center gap-1.5 font-bold text-teal-300 text-xs">

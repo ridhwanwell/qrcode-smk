@@ -202,16 +202,26 @@ export default function PublicScanPage() {
   useEffect(() => {
     fetchLabelData();
 
-    // Realtime Supabase updates
-    const channel = supabase
-      .channel('public-scan-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
-        fetchLabelData();
-      })
-      .subscribe();
+    // Realtime Supabase updates with unique channel ID
+    const channelId = `public_scan_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel(channelId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+          fetchLabelData();
+        })
+        .subscribe();
+    } catch (err) {
+      console.warn('[PublicScan] Realtime error:', err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (_) {}
+      }
     };
   }, [fetchLabelData]);
 

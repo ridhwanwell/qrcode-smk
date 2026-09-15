@@ -10,6 +10,9 @@ export interface AppUser {
   role: UserRole;
   fullName?: string;
   avatarUrl?: string;
+  displayName?: string;
+  username?: string;
+  avatarLetter?: string;
 }
 
 interface AuthContextType {
@@ -110,11 +113,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Could not fetch user profile from Supabase:', err);
     }
 
+    const emailStr = sbUser.email || '';
+    const username = emailStr.split('@')[0] || 'admin';
+    const displayName = fullName || (username.charAt(0).toUpperCase() + username.slice(1));
+    const avatarLetter = (displayName.charAt(0) || 'A').toUpperCase();
+
     const appUser: AppUser = {
       id: sbUser.id,
-      email: sbUser.email || '',
+      email: emailStr,
       role,
-      fullName
+      fullName,
+      displayName,
+      username,
+      avatarLetter
     };
 
     try {

@@ -10,7 +10,8 @@ import {
   LogOut,
   Award,
   FileCheck,
-  Tags
+  Tags,
+  RotateCcw
 } from 'lucide-react';
 import { CalibrationSchedule, CalibratorAsset } from '../types';
 import { getUrgencyInfo } from '../utils/helpers';
@@ -30,6 +31,7 @@ interface NavbarProps {
   onOpenNewSchedule: () => void;
   onOpenNewSph?: () => void;
   onPurgeAllData?: () => void;
+  onResetDefaultData?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -41,7 +43,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   borrowedTabletsCount = 0,
   onOpenNewSchedule,
   onOpenNewSph,
-  onPurgeAllData
+  onPurgeAllData,
+  onResetDefaultData
 }) => {
   const { user, role, logout } = useAuth();
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);

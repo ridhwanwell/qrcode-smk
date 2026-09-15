@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen } from 'lucide-react';
+import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen, Building2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
 import { fetchTemplateConfigs } from '../lib/templateStorage';
+import { saveFolderRsToSupabase } from '../lib/supabaseSync';
+import { INITIAL_HOSPITALS } from '../data/mockData';
 
 export default function AdminGenerate() {
   const navigate = useNavigate();
@@ -17,6 +19,9 @@ export default function AdminGenerate() {
   // Bulk mode state
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
+
+  // Hospital Name state (Optional)
+  const [namaRs, setNamaRs] = useState('');
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -126,21 +131,43 @@ export default function AdminGenerate() {
     setProgressMsg('Menyimpan ke database...');
     
     try {
+      const cleanNamaRs = namaRs.trim() || null;
+
       const itemsToSave = labelsToGenerate.map(lbl => ({
         noLabel: lbl,
-        status: 'Menunggu Sertifikat'
+        status: 'Menunggu Sertifikat',
+        namaRs: cleanNamaRs
       }));
 
       // 1. Direct save to Supabase (primary)
       const supabaseRows = labelsToGenerate.map(lbl => ({
         no_label: lbl,
         status: 'Menunggu Sertifikat',
+        nama_rs: cleanNamaRs,
         updated_at: new Date().toISOString()
       }));
 
       const supaRes = await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
       if (supaRes.error) {
         console.warn('Supabase bulk save warning:', supaRes.error.message);
+      }
+
+      // If hospital name is provided, update folder metadata map as well
+      if (cleanNamaRs && labelsToGenerate.length > 0) {
+        const prefix = labelsToGenerate[0].split('.')[0];
+        if (prefix) {
+          await saveFolderRsToSupabase(prefix, cleanNamaRs);
+          try {
+            const currentFolderMap = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
+            currentFolderMap[prefix] = cleanNamaRs;
+            localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(currentFolderMap));
+          } catch (_) {}
+          fetch('/api/folders/nama-rs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prefix, namaRs: cleanNamaRs })
+          }).catch(() => {});
+        }
       }
 
       // 2. Sync to API backend (Cloud SQL) in parallel / background
@@ -158,6 +185,7 @@ export default function AdminGenerate() {
           existingMap.set(it.noLabel, {
             id: it.noLabel,
             noLabel: it.noLabel,
+            namaRs: cleanNamaRs,
             status: it.status,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -171,6 +199,7 @@ export default function AdminGenerate() {
       setNoLabel('');
       setStartLabel('');
       setEndLabel('');
+      setNamaRs('');
     } catch (err: any) {
       setError(err.message || 'Gagal menyimpan label.');
     } finally {
@@ -475,6 +504,31 @@ export default function AdminGenerate() {
                   </div>
                 </div>
               )}
+
+              {/* Hospital Name (Optional) */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-amber-600" />
+                  <span>Nama Rumah Sakit / Instansi</span>
+                  <span className="text-xs text-slate-400 font-normal">(Opsional)</span>
+                </label>
+                <input
+                  type="text"
+                  list="hospitals-generate-list"
+                  value={namaRs}
+                  onChange={(e) => setNamaRs(e.target.value)}
+                  className="block w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none text-sm"
+                  placeholder="Pilih atau tulis nama RS (Contoh: RSUD Dr. Moewardi)"
+                />
+                <datalist id="hospitals-generate-list">
+                  {INITIAL_HOSPITALS.map(h => (
+                    <option key={h.id} value={h.name} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Jika diisi, nama RS akan tersimpan di label & folder metadata. Jika dikosongi, label tidak akan memiliki asosiasi nama RS bawaan.
+                </p>
+              </div>
 
               {error && (
                 <p className="text-sm text-rose-600 flex items-center">

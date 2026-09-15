@@ -74,6 +74,9 @@ export const TabletLoanManager: React.FC<TabletLoanManagerProps> = ({
   const [returnDate, setReturnDate] = useState<string>(TODAY_STR);
   const [returnCondition, setReturnCondition] = useState<string>('Sangat Baik, Bersih & Lengkap di Rak');
 
+  // Delete loan confirm modal state
+  const [deletingLoanTarget, setDeletingLoanTarget] = useState<TabletLoan | null>(null);
+
   // Counts
   const availableCount = tablets.filter(t => t.isAvailable).length;
   const borrowedCount = tablets.filter(t => !t.isAvailable).length;
@@ -194,21 +197,6 @@ export const TabletLoanManager: React.FC<TabletLoanManagerProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {onClearAllLoans && (
-              <button
-                onClick={() => {
-                  if (confirm('Anda yakin ingin mengosongkan SELURUH riwayat peminjaman tablet? (Aksi ini tidak dapat dibatalkan)')) {
-                    onClearAllLoans();
-                  }
-                }}
-                className="px-4 py-3 rounded-xl font-bold text-xs bg-rose-600/20 hover:bg-rose-600/40 text-rose-200 shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer border border-rose-500/30"
-                title="Hapus semua data riwayat peminjaman"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Kosongkan Riwayat</span>
-              </button>
-            )}
-
             {onSyncOfficialTablets && (
               <button
                 onClick={() => {
@@ -661,16 +649,7 @@ export const TabletLoanManager: React.FC<TabletLoanManagerProps> = ({
 
                       {/* AKSI */}
                       <td className="px-3.5 py-3.5 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
-                          {/* Cetak Formulir Peminjaman */}
-                          <button
-                            onClick={() => handleOpenPrint(loan)}
-                            className="p-1.5 rounded-lg text-sky-600 hover:bg-sky-50 hover:text-sky-800 transition-colors"
-                            title="Cetak Formulir Bukti Peminjaman (Kop Resmi PT. SMK)"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
-
+                        <div className="flex items-center justify-center gap-1.5">
                           {/* Tombol Kembalikan Tablet jika status Dipinjam */}
                           {loan.status === 'Dipinjam' && (
                             <button
@@ -691,15 +670,11 @@ export const TabletLoanManager: React.FC<TabletLoanManagerProps> = ({
                             <Edit3 className="w-4 h-4" />
                           </button>
 
-                          {/* Delete */}
+                          {/* Hapus Riwayat Item */}
                           <button
-                            onClick={() => {
-                              if (confirm(`Hapus data peminjaman ${loan.tabletName} oleh ${loan.borrowerName}?`)) {
-                                onDeleteLoan(loan.id);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                            title="Hapus Data"
+                            onClick={() => setDeletingLoanTarget(loan)}
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors"
+                            title="Hapus Catatan Riwayat Ini"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -798,6 +773,48 @@ export const TabletLoanManager: React.FC<TabletLoanManagerProps> = ({
                 className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"
               >
                 Konfirmasi Kembali
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirm Hapus Riwayat Peminjaman */}
+      {deletingLoanTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 text-rose-600 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Hapus Riwayat Peminjaman</h3>
+                <p className="text-xs text-slate-500">Tindakan ini tidak dapat dibatalkan</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 mb-6 bg-slate-50 p-3.5 rounded-xl border border-slate-100 leading-relaxed">
+              Apakah Anda yakin ingin menghapus catatan riwayat peminjaman oleh <strong className="text-slate-900 font-semibold">"{deletingLoanTarget.borrowerName}"</strong> untuk unit <strong className="text-slate-900 font-semibold">{deletingLoanTarget.tabletName}</strong>?
+            </p>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeletingLoanTarget(null)}
+                className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteLoan(deletingLoanTarget.id);
+                  setDeletingLoanTarget(null);
+                }}
+                className="px-4 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                Ya, Hapus Sekarang
               </button>
             </div>
           </div>

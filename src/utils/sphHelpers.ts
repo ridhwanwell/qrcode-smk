@@ -92,14 +92,14 @@ export interface NegotiationResult {
 export function calculateNegotiation({
   items,
   targetAmount,
-  targetType = 'INCLUDE_PPN', // 'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'DISCOUNT_PERCENT' | 'NONE'
+  targetType = 'INCLUDE_PPN', // 'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'DISCOUNT_PERCENT' | 'NONE' | 'MANUAL'
   includePpn = true,
   ppnRate = 0.11,
   accommodationFee = 0
 }: {
   items: SphItem[];
   targetAmount?: number;
-  targetType?: 'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'DISCOUNT_PERCENT' | 'NONE';
+  targetType?: 'INCLUDE_PPN' | 'EXCLUDE_PPN' | 'DISCOUNT_PERCENT' | 'NONE' | 'MANUAL';
   includePpn?: boolean;
   ppnRate?: number;
   accommodationFee?: number;

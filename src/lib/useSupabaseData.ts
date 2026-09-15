@@ -1,43 +1,34 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from './supabaseClient';
 import { useAuth } from './AuthContext';
 
 /**
- * Maps frontend collection names to their respective native Supabase SQL table names
+ * Universal React Hook for durable data persistence.
+ * Uses backend API proxying to Supabase via service role for 100% reliable persistence,
+ * preventing deleted records from ever reappearing.
  */
-const TABLE_MAPPING: Record<string, string> = {
-  schedules: 'schedules',
-  sphDocuments: 'sph_documents',
-  calibratorAssets: 'calibrators',
-  financialAssets: 'financial_assets',
-  financialTransactions: 'financial_transactions',
-  hospitals: 'hospitals',
-  technicians: 'technicians',
-  tabletAssets: 'tablet_devices',
-  tabletLoans: 'tablet_loans',
-  marketingStaff: 'marketing_staff',
-  bapDocuments: 'bap_documents'
-};
-
-/**
- * Universal React Hook for Supabase real-time data persistence,
- * replacing Firestore with 100% native Supabase Postgres operations, RLS security,
- * and zero-flash offline local caching.
- */
-export function useSupabaseData<T extends { id: string }>(collectionName: string) {
-  const tableName = TABLE_MAPPING[collectionName] || collectionName;
+export function useSupabaseData<T extends { id: string }>(
+  collectionName: string,
+  initialFallback: T[] = []
+) {
   const storageKey = `smk_supa_${collectionName}`;
+  const initKey = `smk_inited_${collectionName}`;
 
-  // 1. Instant load from local cache for 0ms initial render
+  // 1. Instant load from local cache or initialFallback
   const [data, setData] = useState<T[]>(() => {
     try {
+      const isInited = localStorage.getItem(initKey) === 'true';
       const cached = localStorage.getItem(storageKey);
-      if (cached) {
+      if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed as T[];
+        if (Array.isArray(parsed)) {
+          // If already initialized, respect whatever is cached (including empty array [])
+          if (isInited || parsed.length > 0) {
+            return parsed as T[];
+          }
+        }
       }
     } catch (_) {}
-    return [];
+    return initialFallback;
   });
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -47,54 +38,46 @@ export function useSupabaseData<T extends { id: string }>(collectionName: string
 
   const updateCache = useCallback((nextItems: T[]) => {
     setData(nextItems);
+    dataRef.current = nextItems;
     try {
       localStorage.setItem(storageKey, JSON.stringify(nextItems));
+      localStorage.setItem(initKey, 'true');
     } catch (_) {}
-  }, [storageKey]);
+  }, [storageKey, initKey]);
 
-  // 2. Fetch and Subscribe from Supabase
+  const initialFallbackRef = useRef(initialFallback);
+  initialFallbackRef.current = initialFallback;
+
+  // 2. Fetch from Backend / Supabase
   useEffect(() => {
     let isMounted = true;
 
     const loadData = async () => {
       try {
-        // Try querying native table first
-        const { data: records, error } = await supabase
-          .from(tableName)
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!error && records) {
-          if (isMounted) {
-            // Transform snake_case columns to camelCase if needed, or use as is
-            const formatted = records.map((r: any) => {
-              if (r.data && typeof r.data === 'object' && !Array.isArray(r.data)) {
-                return { id: r.id, ...r.data, ...r };
-              }
-              return r as T;
-            });
-            updateCache(formatted);
-            setLoading(false);
+        const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.found === true && Array.isArray(json.items)) {
+            if (isMounted) {
+              updateCache(json.items as T[]);
+              setLoading(false);
+            }
+            return;
           }
-          return;
         }
 
-        // Fallback: If specific table is not found, check generic collection backup in settings
-        if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) {
-          const { data: settingData } = await supabase
-            .from('settings')
-            .select('value')
-            .eq('key', `coll_${collectionName}`)
-            .maybeSingle();
-
-          if (settingData?.value) {
-            try {
-              const parsed = JSON.parse(settingData.value);
-              if (Array.isArray(parsed) && isMounted) {
-                updateCache(parsed);
-              }
-            } catch (_) {}
+        // If not found in database yet, check if initialized locally
+        const isInited = localStorage.getItem(initKey) === 'true';
+        if (!isInited && initialFallbackRef.current.length > 0) {
+          // First time launch: save initial fallback to database
+          if (isMounted) {
+            updateCache(initialFallbackRef.current);
           }
+          fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: initialFallbackRef.current })
+          }).catch(() => {});
         }
       } catch (err) {
         console.warn(`[useSupabaseData] Error loading ${collectionName}:`, err);
@@ -105,115 +88,93 @@ export function useSupabaseData<T extends { id: string }>(collectionName: string
 
     loadData();
 
-    // Setup Supabase Realtime Channel
-    const channel = supabase
-      .channel(`realtime_${tableName}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: tableName },
-        () => {
-          loadData();
-        }
-      )
-      .subscribe();
-
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
     };
-  }, [collectionName, tableName, updateCache]);
+  }, [collectionName, updateCache, initKey]);
 
-  // Log activity to audit log table
-  const logAudit = async (action: string, recordId: string) => {
-    if (!user) return;
-    try {
-      await supabase.from('activity_log').insert({
-        user_id: user.id,
-        user_email: user.email,
-        user_role: user.role,
-        action,
-        table_name: tableName,
-        record_id: recordId,
-        created_at: new Date().toISOString()
-      });
-    } catch (_) {
-      // Non-fatal audit log failure
-    }
-  };
-
+  // Add an item
   const add = async (item: T) => {
-    const next = [item, ...dataRef.current.filter(i => i.id !== item.id)];
+    const current = dataRef.current;
+    const next = [item, ...current.filter(i => {
+      const curId = i.id || (i as any).noLabel || (i as any).sphNumber;
+      const targetId = item.id || (item as any).noLabel || (item as any).sphNumber;
+      return curId !== targetId;
+    })];
     updateCache(next);
 
     try {
-      const { error } = await supabase
-        .from(tableName)
-        .upsert(item as any);
-
-      if (error) {
-        // Fallback to settings collection backup if table doesn't exist
-        await supabase
-          .from('settings')
-          .upsert({ key: `coll_${collectionName}`, value: JSON.stringify(next) });
-      } else {
-        await logAudit('INSERT', item.id);
-      }
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: next })
+      });
     } catch (e) {
-      console.warn(`[useSupabaseData] Add error on ${tableName}:`, e);
+      console.warn(`[useSupabaseData] Add error on ${collectionName}:`, e);
     }
   };
 
+  // Update an item
   const update = async (item: T) => {
-    const next = dataRef.current.map(i => i.id === item.id ? item : i);
+    const current = dataRef.current;
+    const targetId = item.id || (item as any).noLabel || (item as any).sphNumber;
+    const next = current.map(i => {
+      const curId = i.id || (i as any).noLabel || (i as any).sphNumber;
+      return curId === targetId ? item : i;
+    });
     updateCache(next);
 
     try {
-      const { error } = await supabase
-        .from(tableName)
-        .upsert(item as any);
-
-      if (error) {
-        await supabase
-          .from('settings')
-          .upsert({ key: `coll_${collectionName}`, value: JSON.stringify(next) });
-      } else {
-        await logAudit('UPDATE', item.id);
-      }
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: next })
+      });
     } catch (e) {
-      console.warn(`[useSupabaseData] Update error on ${tableName}:`, e);
+      console.warn(`[useSupabaseData] Update error on ${collectionName}:`, e);
     }
   };
 
+  // Remove an item
   const remove = async (id: string) => {
-    const next = dataRef.current.filter(i => i.id !== id);
+    console.log(`[useSupabaseData] Deleting item ${id} from ${collectionName}`);
+    const current = dataRef.current;
+    const next = current.filter(i => {
+      const itemKey = i.id || (i as any).noLabel || (i as any).no_label || (i as any).sphNumber || (i as any).workOrderNumber;
+      return itemKey !== id;
+    });
+    
+    // Update local state and cache immediately
     updateCache(next);
 
     try {
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('id', id);
+      // Direct deletion endpoint
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
 
-      if (error) {
-        await supabase
-          .from('settings')
-          .upsert({ key: `coll_${collectionName}`, value: JSON.stringify(next) });
-      } else {
-        await logAudit('DELETE', id);
-      }
+      // Synchronize exact state to prevent any stale reads
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: next })
+      });
     } catch (e) {
-      console.warn(`[useSupabaseData] Delete error on ${tableName}:`, e);
+      console.warn(`[useSupabaseData] Delete error on ${collectionName}:`, e);
     }
   };
 
+  // Clear all items in collection
   const clearAll = async () => {
+    console.log(`[useSupabaseData] Clearing all items from ${collectionName}`);
     updateCache([]);
+
     try {
-      await supabase.from(tableName).delete().neq('id', '___non_existent___');
-      await supabase.from('settings').delete().eq('key', `coll_${collectionName}`);
-      await logAudit('CLEAR_ALL', '*');
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'DELETE'
+      });
     } catch (e) {
-      console.warn(`[useSupabaseData] ClearAll error on ${tableName}:`, e);
+      console.warn(`[useSupabaseData] ClearAll error on ${collectionName}:`, e);
     }
   };
 

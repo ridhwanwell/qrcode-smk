@@ -31,7 +31,7 @@ export const CalibratorLoanModal: React.FC<CalibratorLoanModalProps> = ({
   const [expectedReturnDate, setExpectedReturnDate] = useState<string>(TODAY_STR);
   const [notes, setNotes] = useState<string>('Lengkap unit alat master, kabel power, test lead/probe, modul sensor, dan rugged case.');
   const [status, setStatus] = useState<'Dipinjam' | 'Dikembalikan'>('Dipinjam');
-  const [approverName, setApproverName] = useState<string>('Hafizh Pasifianto, S.Tr.T. (Manajer Teknik)');
+  const [approverName, setApproverName] = useState<string>('Hafizh Pasifianto Utomo S.Tr,T (Manajer Teknik)');
 
   // Quick purpose suggestions for calibrators
   const purposePresets = [
@@ -57,7 +57,7 @@ export const CalibratorLoanModal: React.FC<CalibratorLoanModalProps> = ({
       setExpectedReturnDate(initialLoan.expectedReturnDate || initialLoan.borrowDate);
       setNotes(initialLoan.notes || '');
       setStatus(initialLoan.status);
-      setApproverName(initialLoan.approverName || 'Hafizh Pasifianto, S.Tr.T. (Manajer Teknik)');
+      setApproverName(initialLoan.approverName || 'Hafizh Pasifianto Utomo S.Tr,T (Manajer Teknik)');
     } else {
       // New loan defaults
       const targetCal = defaultCalibratorId || calibrators.find(c => c.isAvailable !== false)?.id || calibrators[0]?.id || '';
@@ -70,7 +70,7 @@ export const CalibratorLoanModal: React.FC<CalibratorLoanModalProps> = ({
       setExpectedReturnDate(TODAY_STR);
       setNotes('Lengkap unit alat master, kabel power, test lead/probe, modul sensor, dan rugged case.');
       setStatus('Dipinjam');
-      setApproverName('Hafizh Pasifianto, S.Tr.T. (Manajer Teknik)');
+      setApproverName('Hafizh Pasifianto Utomo S.Tr,T (Manajer Teknik)');
     }
   }, [initialLoan, defaultCalibratorId, isOpen, technicians, calibrators]);
 

@@ -7,7 +7,8 @@ import {
   Technician,
   MarketingStaff,
   TabletDevice,
-  TabletLoan
+  TabletLoan,
+  SphQuotation
 } from '../types';
 import { SPREADSHEET_CALIBRATORS, OFFICIAL_TABLETS } from './spreadsheetCalibrators';
 
@@ -603,213 +604,168 @@ export const INITIAL_SCHEDULES: CalibrationSchedule[] = [
   }
 ];
 
-export const INITIAL_FINANCIAL_ASSETS: FinancialAsset[] = [
-  {
-    id: 'FIN-001',
-    name: 'Rekening Utama Operasional (Bank Mandiri Giro PT SMK)',
-    category: 'Kas & Rekening Operasional',
-    amount: 542850000,
-    lastUpdated: '2026-08-30',
-    accountNumber: '123-00-9876543-1',
-    bankName: 'Bank Mandiri (Persero) Tbk',
-    status: 'Aktif',
-    notes: 'Kas likuid operasional harian perusahaan, gaji teknisi & mobilitas.'
-  },
-  {
-    id: 'FIN-002',
-    name: 'Rekening Penampung Kontrak Kalibrasi (BCA Bisnis PT SMK)',
-    category: 'Kas & Rekening Operasional',
-    amount: 388500000,
-    lastUpdated: '2026-08-29',
-    accountNumber: '880-123-4567',
-    bankName: 'Bank Central Asia (BCA)',
-    status: 'Aktif',
-    notes: 'Penampung termin pembayaran invoice RS & klien kesehatan.'
-  },
-  {
-    id: 'FIN-003',
-    name: 'Piutang Invoice Jasa Kalibrasi RS (Termin Berjalan)',
-    category: 'Piutang Kontrak RS',
-    amount: 215400000,
-    lastUpdated: '2026-08-30',
-    status: 'Pending Cair',
-    notes: 'Termasuk tagihan RSUP Hasan Sadikin, RS Hermina & RSCM tahap 2.'
-  },
-  {
-    id: 'FIN-004',
-    name: 'Total Nilai Buku Aset Alat Kalibrator Medis PT SMK (6 Unit)',
-    category: 'Investasi Alat Kalibrator',
-    amount: 1018000000,
-    lastUpdated: '2026-08-30',
-    status: 'Aktif',
-    notes: 'Nilai wajar buku alat metrologi setelah akumulasi penyusutan tahun berjalan.'
-  },
-  {
-    id: 'FIN-005',
-    name: 'Deposito Cadangan Re-Sertifikasi KAN & BPFK (BNI PT SMK)',
-    category: 'Deposito & Cadangan',
-    amount: 250000000,
-    lastUpdated: '2026-08-15',
-    accountNumber: '009-8765-4321',
-    bankName: 'Bank Negara Indonesia (BNI)',
-    status: 'Dicadangkan',
-    notes: 'Dana cadangan tahunan untuk re-kalibrasi wajib BPFK & akreditasi ISO 17025.'
-  },
-  {
-    id: 'FIN-006',
-    name: 'Kas Kecil Petty Cash Lapangan (Operasional BBM & Tol)',
-    category: 'Kas & Rekening Operasional',
-    amount: 18500000,
-    lastUpdated: '2026-08-30',
-    status: 'Aktif',
-    notes: 'Dipegang bendahara operasional untuk logistik tim teknisi lapangan.'
-  }
-];
+export const INITIAL_FINANCIAL_ASSETS: FinancialAsset[] = [];
 
-export const INITIAL_TRANSACTIONS: FinancialTransaction[] = [
-  {
-    id: 'TRX-2026-101',
-    date: '2026-08-28',
-    type: 'Pemasukan (Revenue Kalibrasi)',
-    category: 'Pelunasan Invoice RS Siloam Kebon Jeruk',
-    amount: 42000000,
-    referenceNo: 'INV/SMK/2026/08/041',
-    description: 'Pelunasan 100% jasa kalibrasi 10 unit alat Hemodialisa & Defibrillator.',
-    pic: 'Dimas Raditya',
-    paymentMethod: 'Transfer',
-    relatedHospitalName: 'RS Siloam Hospitals Kebon Jeruk',
-    relatedWorkOrder: 'WO/KAL/2026/08/085',
-    marketingName: 'Dimas Raditya, S.E.',
-    recordedBy: 'Finance Dept (Sari Handayani)',
-    auditStatus: 'Lolos Audit',
-    auditorName: 'KAP Hendra & Rekan',
-    auditedAt: '2026-08-29',
-    auditNotes: 'Kesesuaian bukti transfer rekening koran BCA & Berita Acara Pekerjaan 100% valid.'
-  },
-  {
-    id: 'TRX-2026-102',
-    date: '2026-08-27',
-    type: 'Pemasukan (Revenue Kalibrasi)',
-    category: 'Uang Muka (DP 50%) Kontrak RSCM',
-    amount: 24250000,
-    referenceNo: 'INV/SMK/2026/08/042-DP',
-    description: 'Penerimaan termin 1 pekerjaan kalibrasi ruang ICU & IGD RSCM (Total Kontrak 48.5jt).',
-    pic: 'Sari Handayani',
-    paymentMethod: 'Transfer',
-    relatedHospitalName: 'RSUP Nasional Dr. Cipto Mangunkusumo (RSCM)',
-    relatedWorkOrder: 'WO/KAL/2026/08/088',
-    marketingName: 'Dimas Raditya, S.E.',
-    recordedBy: 'Finance Dept (Sari Handayani)',
-    auditStatus: 'Diverifikasi Auditor',
-    auditorName: 'Internal Auditor SMK',
-    auditedAt: '2026-08-28',
-    auditNotes: 'Faktur pajak dan bukti potong PPh 23 terverifikasi.'
-  },
-  {
-    id: 'TRX-2026-103',
-    date: '2026-08-25',
-    type: 'Pengeluaran (Operasional Lapangan)',
-    category: 'Akomodasi & Transportasi Tim Lapangan Bandung',
-    amount: 3850000,
-    referenceNo: 'EXP/SMK/2026/08/089',
-    description: 'BBM armada operasional, tol Cipularang, & hotel persiapan tim RSHS Bandung.',
-    pic: 'Ahmad Fajar Ariyanto',
-    paymentMethod: 'Cash',
-    relatedHospitalName: 'RSUP Dr. Hasan Sadikin (RSHS)',
-    relatedWorkOrder: 'WO/KAL/2026/09/090',
-    marketingName: 'Anggita Larasati, S.I.Kom',
-    recordedBy: 'Admin Lapangan (Ahmad Fajar Ariyanto)',
-    auditStatus: 'Lolos Audit',
-    auditorName: 'Internal Auditor SMK',
-    auditedAt: '2026-08-26',
-    auditNotes: 'Struk bensin dan invoice hotel terlampir lengkap.'
-  },
-  {
-    id: 'TRX-2026-104',
-    date: '2026-08-20',
-    type: 'Pengeluaran (Re-Kalibrasi BPFK/Alat)',
-    category: 'Biaya Kalibrasi Ulang Standar BPFK Jakarta',
-    amount: 8500000,
-    referenceNo: 'EXP-BPFK-2026-092',
-    description: 'Biaya sertifikasi ketertelusuran TSI Flow Analyzer 5200 ke standar primer metrologi.',
-    pic: 'Hafizh Pasifianto',
-    paymentMethod: 'Transfer',
-    recordedBy: 'Chief Metrologi (Hafizh Pasifianto, S.Tr.T.)',
-    auditStatus: 'Lolos Audit',
-    auditorName: 'KAP Hendra & Rekan',
-    auditedAt: '2026-08-22',
-    auditNotes: 'Kwitansi resmi PNBP BPFK Kemenkes RI terverifikasi.'
-  },
-  {
-    id: 'TRX-2026-105',
-    date: '2026-08-15',
-    type: 'Pemasukan (Revenue Kalibrasi)',
-    category: 'Pelunasan Kontrak RSUD Pasar Minggu Tahap 1',
-    amount: 35000000,
-    referenceNo: 'INV/SMK/2026/08/038',
-    description: 'Pekerjaan kalibrasi 15 unit Infant Warmer & Syringe Pump.',
-    pic: 'Dimas Raditya',
-    paymentMethod: 'Transfer',
-    relatedHospitalName: 'RSUD Pasar Minggu',
-    marketingName: 'Dimas Raditya, S.E.',
-    recordedBy: 'Finance Dept (Sari Handayani)',
-    auditStatus: 'Lolos Audit',
-    auditorName: 'Internal Auditor SMK',
-    auditedAt: '2026-08-17',
-    auditNotes: 'Berita acara serah terima sertifikat dan tanda terima RS lengkap.'
-  },
-  {
-    id: 'TRX-2026-106',
-    date: '2026-08-10',
-    type: 'Pengeluaran (Operasional Lapangan)',
-    category: 'Pembelian APD Steril & Kit Label Kalibrasi Kemenkes',
-    amount: 2450000,
-    referenceNo: 'EXP/SMK/2026/08/077',
-    description: 'Pengadaan stiker lulus uji kalibrasi barcode 1000 pcs & APD ruang ICU.',
-    pic: 'An - Nisa Fitri',
-    paymentMethod: 'Cash',
-    recordedBy: 'Admin Logistik (An - Nisa Fitri)',
-    auditStatus: 'Tidak Lolos Audit',
-    auditorName: 'Admin Utama',
-    auditedAt: '2026-08-12',
-    auditNotes: 'Kwitansi pembelian belum disertai stempel toko resmi dan tanggal transaksi tidak sesuai nota fisik.'
-  },
-  {
-    id: 'TRX-2026-107',
-    date: '2026-07-28',
-    type: 'Pemasukan (Revenue Kalibrasi)',
-    category: 'Kontrak Kalibrasi Tahunan RS Hermina Kemayoran',
-    amount: 32000000,
-    referenceNo: 'INV/SMK/2026/07/029',
-    description: 'Termin pembayaran kalibrasi alkes rawat inap & poli gigi.',
-    pic: 'Sari Handayani',
-    paymentMethod: 'Transfer',
-    relatedHospitalName: 'RS Hermina Kemayoran',
-    marketingName: 'Anggita Larasati, S.I.Kom',
-    recordedBy: 'Finance Dept (Sari Handayani)',
-    auditStatus: 'Lolos Audit',
-    auditorName: 'KAP Hendra & Rekan',
-    auditedAt: '2026-08-05',
-    auditNotes: 'Audit bulanan Juli selesai tanpa temuan.'
-  },
-  {
-    id: 'TRX-2026-108',
-    date: '2026-07-15',
-    type: 'Pengeluaran (Operasional Lapangan)',
-    category: 'Maintenance & Service Armada Mobil Lab Unit 1',
-    amount: 4120000,
-    referenceNo: 'EXP/SMK/2026/07/045',
-    description: 'Servis rutin berkala bengkel resmi Toyota & ganti oli kendaraan operasional.',
-    recordedBy: 'Admin Lapangan (Junior Yudha Pamungkas)',
-    auditStatus: 'Lolos Audit',
-    auditorName: 'Internal Auditor SMK',
-    auditedAt: '2026-07-20',
-    auditNotes: 'Invoice resmi bengkel Toyota Auto2000 terverifikasi.'
-  }
-];
+export const INITIAL_TRANSACTIONS: FinancialTransaction[] = [];
 
 export const INITIAL_TABLETS: TabletDevice[] = OFFICIAL_TABLETS;
 
 export const INITIAL_TABLET_LOANS: TabletLoan[] = [];
+
+export const INITIAL_SPH_LIST: SphQuotation[] = [
+  {
+    id: 'SPH-2026-045',
+    sphNumber: '045/SMK-SPH/VII-2026',
+    subject: 'Surat Penawaran Harga Jasa Kalibrasi & Uji Keselamatan Alat Kesehatan',
+    attachmentPages: '2 lembar',
+    date: '2026-07-28',
+    city: 'Surakarta',
+    hospitalId: 'RS-000',
+    hospitalName: 'RSUD Dr. Moewardi Surakarta',
+    hospitalAddress: 'Jl. Kolonel Sutarto No.132, Jebres, Kec. Jebres, Kota Surakarta',
+    hospitalPic: 'H. Bambang Setiawan, S.ST., M.Kes.',
+    hospitalPhone: '0812-2980-4567',
+    recipientRole: 'Direktur Utama',
+    tembusan: 'Ka. Instalasi IPSRS, Bagian Pengadaan & Keuangan',
+    notes: 'Penawaran berlaku 30 hari kalender sejak tanggal penerbitan.',
+    formattedDate: 'Surakarta, 28 Juli 2026',
+    items: [
+      { id: 'sph-item-1', catalogNumber: 1, description: 'Autoclave Sterilizer Sentral', quantity: 1, unit: 'Unit', standardPrice: 3500000, unitPrice: 3200000, totalPrice: 3200000, notes: 'Suhu 121°C/134°C & Tekanan' },
+      { id: 'sph-item-2', catalogNumber: 2, description: 'Bedside Patient Monitor', quantity: 9, unit: 'Unit', standardPrice: 1200000, unitPrice: 1000000, totalPrice: 9000000, notes: 'ECG, NIBP, SpO2, Temp' },
+      { id: 'sph-item-3', catalogNumber: 3, description: 'EKG / ECG 12 Channel', quantity: 1, unit: 'Unit', standardPrice: 1500000, unitPrice: 1300000, totalPrice: 1300000, notes: 'Akurasi Kertas & Amplitudo' },
+      { id: 'sph-item-4', catalogNumber: 4, description: 'High-Flow Nasal Cannula (HNFC)', quantity: 2, unit: 'Unit', standardPrice: 2000000, unitPrice: 1800000, totalPrice: 3600000, notes: 'Uji Aliran Oksigen' },
+      { id: 'sph-item-5', catalogNumber: 5, description: 'Centrifuge Laboratorium', quantity: 1, unit: 'Unit', standardPrice: 1200000, unitPrice: 1100000, totalPrice: 1100000, notes: 'RPM & Timer' },
+      { id: 'sph-item-6', catalogNumber: 6, description: 'Medical Refrigerator / BDRS', quantity: 1, unit: 'Unit', standardPrice: 1600000, unitPrice: 1400000, totalPrice: 1400000, notes: 'Distribusi Suhu 2-6°C' },
+      { id: 'sph-item-7', catalogNumber: 7, description: 'Pulse Oximeter OK/ICU', quantity: 1, unit: 'Unit', standardPrice: 900000, unitPrice: 800000, totalPrice: 800000, notes: 'Saturasi SpO2 & BPM' },
+      { id: 'sph-item-8', catalogNumber: 8, description: 'Tensimeter Digital Poliklinik', quantity: 2, unit: 'Unit', standardPrice: 800000, unitPrice: 700000, totalPrice: 1400000, notes: 'Tekanan NIBP' },
+      { id: 'sph-item-9', catalogNumber: 9, description: 'Traksi Fisioterapi', quantity: 4, unit: 'Unit', standardPrice: 1800000, unitPrice: 1600000, totalPrice: 6400000, notes: 'Beban Tarikan Mekanik' },
+      { id: 'sph-item-10', catalogNumber: 10, description: 'Automated Blood Culture System', quantity: 1, unit: 'Unit', standardPrice: 2000000, unitPrice: 1800000, totalPrice: 1800000, notes: 'Uji Keselamatan Listrik' },
+      { id: 'sph-item-11', catalogNumber: 11, description: 'VitalStim Plus Rehab', quantity: 1, unit: 'Unit', standardPrice: 1500000, unitPrice: 1300000, totalPrice: 1300000, notes: 'Stimulasi Elektrik' },
+      { id: 'sph-item-12', catalogNumber: 12, description: 'Inkubator Laboratorium', quantity: 1, unit: 'Unit', standardPrice: 1200000, unitPrice: 1100000, totalPrice: 1100000, notes: 'Distribusi Suhu 37°C' },
+      { id: 'sph-item-13', catalogNumber: 13, description: 'Oven Blower Farmasi', quantity: 1, unit: 'Unit', standardPrice: 1400000, unitPrice: 1200000, totalPrice: 1200000, notes: 'Suhu 160°C' },
+      { id: 'sph-item-14', catalogNumber: 14, description: 'Neopuff Resusitasi', quantity: 1, unit: 'Unit', standardPrice: 1500000, unitPrice: 1400000, totalPrice: 1400000, notes: 'PIP & PEEP' },
+      { id: 'sph-item-15', catalogNumber: 15, description: 'TB Analyzer GeneXpert', quantity: 2, unit: 'Unit', standardPrice: 1800000, unitPrice: 1600000, totalPrice: 3200000, notes: 'Kelistrikan & Fungsi' },
+      { id: 'sph-item-16', catalogNumber: 16, description: 'Vortex Mixer Lab', quantity: 2, unit: 'Unit', standardPrice: 700000, unitPrice: 600000, totalPrice: 1200000, notes: 'Kecepatan Rotasi' },
+      { id: 'sph-item-17', catalogNumber: 17, description: 'Micro Wave Diathermy', quantity: 1, unit: 'Unit', standardPrice: 2000000, unitPrice: 1900000, totalPrice: 1900000, notes: 'Radiasi Daya Output' }
+    ],
+    subtotalOriginal: 44300000,
+    subtotal1: 40000000,
+    accommodationFee: 2000000,
+    subtotal2: 42000000,
+    ppnPercent: 0,
+    isPpnIncluded: true,
+    ppnAmount: 0,
+    grandTotal: 42000000,
+    terbilang: 'Empat Puluh Dua Juta Rupiah',
+    marketingStaffName: 'Anggita Larasati, S.I.Kom',
+    marketingStaffPhone: '0812-7788-5678',
+    directorName: 'Ahmad Fajar Ariyanto',
+    directorTitle: 'Direktur Utama',
+    bankName: 'Bank Mandiri (Persero) Tbk',
+    bankAccountNumber: '123-00-9876543-1',
+    bankAccountName: 'SARANA MULTI KALIBRASI PT',
+    termsAndConditions: [
+      'Harga sudah termasuk sertifikat kalibrasi Kemenkes RI berbarcode & stiker lulus uji akreditasi KAN.',
+      'Metode pengujian berpedoman pada SNI / IEC 60601 dan petunjuk kerja Kementerian Kesehatan.',
+      'Sertifikat diterbitkan maksimal 7 hari kerja setelah pengambilan data teknis di lokasi.'
+    ],
+    status: 'Disetujui (Deal)',
+    createdAt: '2026-07-28',
+    validUntilDate: '2026-08-28'
+  },
+  {
+    id: 'SPH-2026-046',
+    sphNumber: '046/SMK-SPH/VIII-2026',
+    subject: 'Surat Penawaran Harga Kalibrasi Terpadu Radiologi & Fasilitas ICU',
+    attachmentPages: '2 lembar',
+    date: '2026-08-10',
+    city: 'Bandung',
+    hospitalId: 'RS-002',
+    hospitalName: 'RSUP Dr. Hasan Sadikin (RSHS)',
+    hospitalAddress: 'Jl. Pasteur No. 38, Pasteur, Kec. Sukajadi, Kota Bandung',
+    hospitalPic: 'Nurul Hidayati, S.Si',
+    hospitalPhone: '0812-7654-321',
+    recipientRole: 'Direktur Pelayanan Medis, Keperawatan & Penunjang',
+    tembusan: 'Ka. Instalasi IPSRS & Petugas Proteksi Radiasi (PPR)',
+    notes: 'Paket kalibrasi alat radiologi dan CT Scan 128 Slice.',
+    formattedDate: 'Bandung, 10 Agustus 2026',
+    items: [
+      { id: 'sph-item-21', catalogNumber: 1, description: 'Stationary X-Ray Multix Impact', quantity: 2, unit: 'Unit', standardPrice: 12000000, unitPrice: 11000000, totalPrice: 22000000, notes: 'kVp accuracy, mA linearity, HVL' },
+      { id: 'sph-item-22', catalogNumber: 2, description: 'Mobile C-Arm GE OEC One CFD', quantity: 2, unit: 'Unit', standardPrice: 10000000, unitPrice: 9000000, totalPrice: 18000000, notes: 'Kebocoran tabung & timer' },
+      { id: 'sph-item-23', catalogNumber: 3, description: 'CT-Scan 128 Slice Aquilion', quantity: 1, unit: 'Unit', standardPrice: 24000000, unitPrice: 22000000, totalPrice: 22000000, notes: 'CTDIw, dose index & noise' }
+    ],
+    subtotalOriginal: 68000000,
+    subtotal1: 62000000,
+    accommodationFee: 0,
+    subtotal2: 62000000,
+    ppnPercent: 0,
+    isPpnIncluded: true,
+    ppnAmount: 0,
+    grandTotal: 62000000,
+    terbilang: 'Enam Puluh Dua Juta Rupiah',
+    marketingStaffName: 'Anggita Larasati, S.I.Kom',
+    marketingStaffPhone: '0812-7788-5678',
+    directorName: 'Ahmad Fajar Ariyanto',
+    directorTitle: 'Direktur Utama',
+    bankName: 'Bank Mandiri (Persero) Tbk',
+    bankAccountNumber: '123-00-9876543-1',
+    bankAccountName: 'SARANA MULTI KALIBRASI PT',
+    termsAndConditions: [
+      'Pelaksanaan uji radiasi bekerja sama dengan PPR RSUP Hasan Sadikin.',
+      'Sertifikat diakui oleh BAPETEN dan Kemenkes RI.'
+    ],
+    status: 'Disetujui (Deal)',
+    createdAt: '2026-08-10',
+    validUntilDate: '2026-09-10'
+  },
+  {
+    id: 'SPH-2026-047',
+    sphNumber: '047/SMK-SPH/VIII-2026',
+    subject: 'Surat Penawaran Harga Kalibrasi Alkes Ruang Bedah Jantung & ICU',
+    attachmentPages: '2 lembar',
+    date: '2026-08-15',
+    city: 'Jakarta',
+    hospitalId: 'RS-001',
+    hospitalName: 'RSUP Nasional Dr. Cipto Mangunkusumo (RSCM)',
+    hospitalAddress: 'Jl. Diponegoro No. 71, Kenari, Senen, Jakarta Pusat',
+    hospitalPic: 'Dr. Ir. Hendro Wibowo, MT',
+    hospitalPhone: '0811-9876-543',
+    recipientRole: 'Direktur Utama',
+    tembusan: 'Ka. Instalasi IPSRS & Bagian Logistik',
+    notes: 'Termin DP 50% telah diterima.',
+    formattedDate: 'Jakarta, 15 Agustus 2026',
+    items: [
+      { id: 'sph-item-31', catalogNumber: 1, description: 'Ventilator ICU Draeger Evita V800', quantity: 4, unit: 'Unit', standardPrice: 3500000, unitPrice: 3000000, totalPrice: 12000000, notes: 'Flow, Pressure & PEEP' },
+      { id: 'sph-item-32', catalogNumber: 2, description: 'Defibrillator Biphasic Philips', quantity: 2, unit: 'Unit', standardPrice: 2500000, unitPrice: 2250000, totalPrice: 4500000, notes: 'Uji Energi 200J & Sinkronisasi' },
+      { id: 'sph-item-33', catalogNumber: 3, description: 'Syringe Pump Terumo TE-SS700', quantity: 6, unit: 'Unit', standardPrice: 1200000, unitPrice: 1000000, totalPrice: 6000000, notes: 'Uji Flow rate & Occlusion' },
+      { id: 'sph-item-34', catalogNumber: 4, description: 'Patient Monitor Mindray N17', quantity: 8, unit: 'Unit', standardPrice: 1500000, unitPrice: 1250000, totalPrice: 10000000, notes: 'ECG, NIBP, SpO2, Temp' },
+      { id: 'sph-item-35', catalogNumber: 5, description: 'Infusion Pump Multi-Channel', quantity: 16, unit: 'Unit', standardPrice: 1200000, unitPrice: 1000000, totalPrice: 16000000, notes: 'Akurasi Infus 5 & 50 ml/jam' }
+    ],
+    subtotalOriginal: 52000000,
+    subtotal1: 48500000,
+    accommodationFee: 0,
+    subtotal2: 48500000,
+    ppnPercent: 0,
+    isPpnIncluded: true,
+    ppnAmount: 0,
+    grandTotal: 48500000,
+    terbilang: 'Empat Puluh Delapan Juta Lima Ratus Ribu Rupiah',
+    marketingStaffName: 'Dimas Raditya, S.E.',
+    marketingStaffPhone: '0811-8899-1234',
+    directorName: 'Ahmad Fajar Ariyanto',
+    directorTitle: 'Direktur Utama',
+    bankName: 'Bank Central Asia (BCA)',
+    bankAccountNumber: '880-123-4567',
+    bankAccountName: 'SARANA MULTI KALIBRASI PT',
+    termsAndConditions: [
+      'Termin pembayaran: Uang muka (DP) 50%, pelunasan 50% setelah seluruh sertifikat diserahkan.',
+      'Sertifikat berstandar ISO/IEC 17025.'
+    ],
+    status: 'Disetujui (Deal)',
+    createdAt: '2026-08-15',
+    validUntilDate: '2026-09-15'
+  }
+];
+
 
 

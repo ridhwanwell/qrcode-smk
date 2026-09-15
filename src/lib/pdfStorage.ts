@@ -203,8 +203,15 @@ export async function deleteLabelCompletely(labelId: string): Promise<void> {
  * Delete a batch of labels completely
  */
 export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
-  for (const id of labelIds) {
-    await fetch(`/api/labels/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+  if (!labelIds || labelIds.length === 0) return;
+  try {
+    await fetch('/api/labels/batch-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ noLabels: labelIds })
+    });
+  } catch (e) {
+    console.warn('API deleteBatchLabels error:', e);
   }
 
   try {
@@ -218,11 +225,16 @@ export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
  * Delete an entire folder and all its labels
  */
 export async function deleteFolderCompletely(prefix: string, labelIds?: string[]): Promise<void> {
-  // 1. Delete on backend API (which deletes from Cloud SQL instantly and syncs to Supabase)
+  // 1. Delete on backend API (which deletes from database instantly)
   try {
-    const res = await fetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
-    if (!res.ok) {
-      console.warn('API delete folder warning:', res.statusText);
+    await fetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
+    await fetch(`/api/folders/prefix/${encodeURIComponent(prefix)}`, { method: 'DELETE' }).catch(() => {});
+    if (labelIds && labelIds.length > 0) {
+      await fetch('/api/labels/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noLabels: labelIds })
+      }).catch(() => {});
     }
   } catch (err) {
     console.warn('API delete folder error:', err);
@@ -233,6 +245,10 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     await supabase.from('labels').delete().like('no_label', `${prefix}.%`);
     await supabase.from('labels').delete().eq('no_label', prefix);
     await supabase.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
+    await supabase.from('labels').delete().eq('no_label', `__meta_folder_rs_${prefix}`);
+    if (labelIds && labelIds.length > 0) {
+      await supabase.from('labels').delete().in('no_label', labelIds);
+    }
     try {
       const map = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
       delete map[prefix];

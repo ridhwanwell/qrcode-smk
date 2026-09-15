@@ -34,7 +34,7 @@ interface WorkOrderPrintModalProps {
   onOpenEditForm?: (schedule: CalibrationSchedule) => void;
 }
 
-export type DocumentTab = 'SPK' | 'BAP' | 'ALL';
+export type DocumentTab = 'SPK' | 'BAP' | 'BASTP' | 'ALL';
 
 export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
   schedule,
@@ -482,11 +482,11 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
                       />
                     ) : (
                       <span className="text-xs font-serif italic text-teal-800 absolute bottom-3 select-none pointer-events-none opacity-80">
-                        Hafizh Pasifianto, S.Tr.T.
+                        Hafizh Pasifianto Utomo S.Tr,T
                       </span>
                     )}
                     <p className="border-b-2 border-teal-900 w-56 pb-1 font-bold text-teal-950 z-10">
-                      {schedule.approvedByName || 'Hafizh Pasifianto, S.Tr.T.'}
+                      {schedule.approvedByName || 'Hafizh Pasifianto Utomo S.Tr,T'}
                     </p>
                   </div>
                 </div>
@@ -658,12 +658,12 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
 
         {showSignatureModal && (
           <SignaturePadModal
+            isOpen={showSignatureModal}
             onClose={() => setShowSignatureModal(false)}
-            onSave={(signatureUrl) => {
+            onSaveSignature={(signatureUrl) => {
               setDigitalSignatureUrl(signatureUrl);
               localStorage.setItem('smk_last_signature', signatureUrl);
             }}
-            initialSignature={digitalSignatureUrl}
             title="Tanda Tangan Digital Resmi PT. Sarana Multi Kalibrasi"
           />
         )}

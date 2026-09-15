@@ -74,7 +74,7 @@ export const MasterHospitalAndTech: React.FC<MasterHospitalAndTechProps> = ({
   const [techSpec, setTechSpec] = useState('');
   const [techPhone, setTechPhone] = useState('');
   const [techEmail, setTechEmail] = useState('');
-  const [techStatus, setTechStatus] = useState<'Tersedia' | 'Bertugas di RS' | 'Cuti / Libur'>('Tersedia');
+  const [techStatus, setTechStatus] = useState<Technician['status']>('Tersedia');
 
   // Marketing Form State
   const [mktName, setMktName] = useState('');
@@ -310,7 +310,6 @@ export const MasterHospitalAndTech: React.FC<MasterHospitalAndTechProps> = ({
                       <h4 className="font-bold text-sm text-white group-hover:text-cyan-300 transition-colors">
                         {tech.name}
                       </h4>
-                      <p className="text-[11px] text-slate-400">{tech.title}</p>
                     </div>
                   </div>
 
@@ -353,37 +352,31 @@ export const MasterHospitalAndTech: React.FC<MasterHospitalAndTechProps> = ({
                 )}
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Tugas Selesai: <strong className="text-white font-mono">{tech.completedJobsCount} RS</strong></span>
-                <div className="flex items-center gap-2">
-                  <span className="text-amber-400 font-bold flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-amber-400" /> {tech.rating}
-                  </span>
-                  <div className="flex items-center gap-1 ml-2">
+              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-end text-xs">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleOpenEditTech(tech)}
+                    className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition-colors"
+                    title="Edit Data Teknisi"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  {onDeleteTechnician && (
                     <button
-                      onClick={() => handleOpenEditTech(tech)}
-                      className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition-colors"
-                      title="Edit Data Teknisi"
+                      onClick={() => {
+                        setDeleteTarget({
+                          id: tech.id,
+                          type: 'technician',
+                          name: tech.name,
+                          detail: `No. STR: ${tech.strNumber} • Spesialisasi: ${tech.specialization}`
+                        });
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                      title="Hapus Teknisi"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                    {onDeleteTechnician && (
-                      <button
-                        onClick={() => {
-                          setDeleteTarget({
-                            id: tech.id,
-                            type: 'technician',
-                            name: tech.name,
-                            detail: `No. STR: ${tech.strNumber} • Spesialisasi: ${tech.specialization}`
-                          });
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                        title="Hapus Teknisi"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -605,8 +598,8 @@ export const MasterHospitalAndTech: React.FC<MasterHospitalAndTechProps> = ({
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
                   >
                     <option value="Tersedia">Tersedia (Ready)</option>
-                    <option value="Bertugas di RS">Bertugas di RS</option>
-                    <option value="Cuti / Libur">Cuti / Libur</option>
+                    <option value="Sedang Bertugas">Sedang Bertugas di RS</option>
+                    <option value="Cuti">Cuti / Libur</option>
                   </select>
                 </div>
               </div>

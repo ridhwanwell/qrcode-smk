@@ -91,32 +91,42 @@ export function subscribeAssetCollectionFromSupabase<T>(
 ): () => void {
   const metaKey = `${ASSET_PREFIX}${collectionName}`;
 
-  const channel = supabase
-    .channel(`asset_sync_${collectionName}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'labels',
-        filter: `no_label=eq.${metaKey}`
-      },
-      (payload) => {
-        try {
-          if (payload.new && (payload.new as any).pdf_url) {
-            const parsed = JSON.parse((payload.new as any).pdf_url);
-            if (Array.isArray(parsed)) {
-              onUpdate(parsed as T[]);
+  const channelId = `asset_sync_${collectionName}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  let channel: any = null;
+  try {
+    channel = supabase
+      .channel(channelId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'labels',
+          filter: `no_label=eq.${metaKey}`
+        },
+        (payload) => {
+          try {
+            if (payload.new && (payload.new as any).pdf_url) {
+              const parsed = JSON.parse((payload.new as any).pdf_url);
+              if (Array.isArray(parsed)) {
+                onUpdate(parsed as T[]);
+              }
             }
+          } catch (err) {
+            console.warn(`[SupabaseAssetSync] Realtime payload error for ${collectionName}:`, err);
           }
-        } catch (err) {
-          console.warn(`[SupabaseAssetSync] Realtime payload error for ${collectionName}:`, err);
         }
-      }
-    )
-    .subscribe();
+      )
+      .subscribe();
+  } catch (err) {
+    console.warn(`[SupabaseAssetSync] Channel subscribe error for ${collectionName}:`, err);
+  }
 
   return () => {
-    supabase.removeChannel(channel);
+    if (channel) {
+      try {
+        supabase.removeChannel(channel);
+      } catch (_) {}
+    }
   };
 }

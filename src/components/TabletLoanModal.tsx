@@ -31,7 +31,7 @@ export const TabletLoanModal: React.FC<TabletLoanModalProps> = ({
   const [expectedReturnDate, setExpectedReturnDate] = useState<string>(TODAY_STR);
   const [notes, setNotes] = useState<string>('Lengkap unit tablet, stylus pen S-Pen, charger 25W, dan rugged casing.');
   const [status, setStatus] = useState<'Dipinjam' | 'Dikembalikan'>('Dipinjam');
-  const [approverName, setApproverName] = useState<string>('Hafizh Pasifianto, S.Tr.T. (Manajer Teknik)');
+  const [approverName, setApproverName] = useState<string>('Hafizh Pasifianto Utomo S.Tr,T (Manajer Teknik)');
 
   // Quick purpose suggestions
   const purposePresets = [
@@ -57,7 +57,7 @@ export const TabletLoanModal: React.FC<TabletLoanModalProps> = ({
       setExpectedReturnDate(initialLoan.expectedReturnDate || initialLoan.borrowDate);
       setNotes(initialLoan.notes || '');
       setStatus(initialLoan.status);
-      setApproverName(initialLoan.approverName || 'Hafizh Pasifianto, S.Tr.T. (Manajer Teknik)');
+      setApproverName(initialLoan.approverName || 'Hafizh Pasifianto Utomo S.Tr,T (Manajer Teknik)');
     } else {
       // New loan defaults
       const targetTab = defaultTabletId || tablets.find(t => t.isAvailable)?.id || 'TAB-01';
@@ -70,7 +70,7 @@ export const TabletLoanModal: React.FC<TabletLoanModalProps> = ({
       setExpectedReturnDate(TODAY_STR);
       setNotes('Lengkap unit tablet, stylus S-Pen, charger adaptor, dan casing rugged.');
       setStatus('Dipinjam');
-      setApproverName('Hafizh Pasifianto, S.Tr.T. (Manajer Teknik)');
+      setApproverName('Hafizh Pasifianto Utomo S.Tr,T (Manajer Teknik)');
     }
   }, [initialLoan, defaultTabletId, isOpen, technicians, tablets]);
 
