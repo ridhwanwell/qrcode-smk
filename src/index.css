@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+/* Custom Scrollbar Slide Bar for Navigation Tabs */
+.nav-scroll-bar::-webkit-scrollbar {
+  height: 7px;
+}
+.nav-scroll-bar::-webkit-scrollbar-track {
+  background: #0F364C;
+  border-radius: 9999px;
+  margin-left: 4px;
+  margin-right: 4px;
+}
+.nav-scroll-bar::-webkit-scrollbar-thumb {
+  background: #398AB9;
+  border-radius: 9999px;
+  border: 1px solid #1C658C;
+  cursor: pointer;
+}
+.nav-scroll-bar::-webkit-scrollbar-thumb:hover {
+  background: #56a5d4;
+}
+.nav-scroll-bar {
+  scrollbar-width: thin;
+  scrollbar-color: #398AB9 #0F364C;
+}

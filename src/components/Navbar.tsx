@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Activity, 
   Calendar, 
@@ -11,7 +11,9 @@ import {
   Award,
   FileCheck,
   Tags,
-  RotateCcw
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { CalibrationSchedule, CalibratorAsset } from '../types';
 import { getUrgencyInfo } from '../utils/helpers';
@@ -150,6 +152,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
+  const navScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollNav = (direction: 'left' | 'right') => {
+    if (navScrollRef.current) {
+      const scrollAmount = 260;
+      navScrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (navScrollRef.current && e.deltaY !== 0) {
+      navScrollRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
   // Real-time clock updating every second
   useEffect(() => {
     const timer = setInterval(() => {
@@ -246,34 +266,61 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* ========================================================================= */}
       {/* DIRECT NAVIGATION BAR: Clean, flat navigation bar for all permitted tabs */}
       {/* ========================================================================= */}
-      <div className="bg-[#144966] border-t border-[#1C658C] px-3 sm:px-6 py-2 shadow-inner">
-        <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
-          {visibleNavTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+      <div className="bg-[#144966] border-t border-[#1C658C] px-2 sm:px-4 py-1.5 shadow-inner">
+        <div className="max-w-7xl mx-auto flex items-center gap-1.5">
+          {/* Tombol Geser Kiri */}
+          <button
+            type="button"
+            onClick={() => scrollNav('left')}
+            className="p-1.5 text-[#398AB9] hover:text-white bg-[#0F364C] hover:bg-[#1C658C] rounded-lg border border-[#1C658C] transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+            title="Geser Menu ke Kiri"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
 
-            return (
-              <button
-                key={tab.id}
-                id={`nav-${tab.id}-tab`}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 whitespace-nowrap border shrink-0 ${
-                  isActive
-                    ? 'bg-gradient-to-r from-[#1C658C] to-[#398AB9] text-white border-[#398AB9] shadow-md ring-1 ring-[#398AB9]/50 scale-[1.01]'
-                    : 'bg-[#0F364C]/90 text-[#D8D2CB] hover:text-white hover:bg-[#1C658C] border-[#1C658C]/60'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-[#EEEEEE]' : 'text-[#398AB9]'}`} />
-                <span className="text-[12px] font-bold leading-none">{tab.label}</span>
+          {/* Container Tab dengan Slide Bar & Mouse Wheel Scroll */}
+          <div
+            ref={navScrollRef}
+            onWheel={handleWheelScroll}
+            className="flex-1 flex items-center gap-2 overflow-x-auto nav-scroll-bar pb-2 pt-1 px-1 scroll-smooth"
+          >
+            {visibleNavTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
 
-                {tab.badgeVal !== undefined && (
-                  <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${tab.badgeColor || 'bg-[#0F364C] text-[#EEEEEE] border-[#1C658C]'}`}>
-                    {tab.badgeVal}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={tab.id}
+                  id={`nav-${tab.id}-tab`}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 whitespace-nowrap border shrink-0 ${
+                    isActive
+                      ? 'bg-gradient-to-r from-[#1C658C] to-[#398AB9] text-white border-[#398AB9] shadow-md ring-1 ring-[#398AB9]/50 scale-[1.01]'
+                      : 'bg-[#0F364C]/90 text-[#D8D2CB] hover:text-white hover:bg-[#1C658C] border-[#1C658C]/60'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-[#EEEEEE]' : 'text-[#398AB9]'}`} />
+                  <span className="text-[12px] font-bold leading-none">{tab.label}</span>
+
+                  {tab.badgeVal !== undefined && (
+                    <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${tab.badgeColor || 'bg-[#0F364C] text-[#EEEEEE] border-[#1C658C]'}`}>
+                      {tab.badgeVal}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tombol Geser Kanan */}
+          <button
+            type="button"
+            onClick={() => scrollNav('right')}
+            className="p-1.5 text-[#398AB9] hover:text-white bg-[#0F364C] hover:bg-[#1C658C] rounded-lg border border-[#1C658C] transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+            title="Geser Menu ke Kanan"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

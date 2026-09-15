@@ -2,20 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 
 // Frontend client: strictly uses public Anon Key. Never imports service role key.
 const metaEnv = (import.meta as any).env || {};
-const rawUrl = metaEnv.VITE_SUPABASE_URL;
-const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY;
+const rawUrl = metaEnv.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder';
 
-if (!rawUrl || !supabaseAnonKey) {
-  const missing = [
-    !rawUrl && 'VITE_SUPABASE_URL',
-    !supabaseAnonKey && 'VITE_SUPABASE_ANON_KEY'
-  ].filter(Boolean).join(', ');
-  
-  console.error(
-    `[Supabase Client Error] Variabel lingkungan berikut belum disetel: ${missing}. ` +
-    `Pastikan file .env telah memuat VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY.`
+if (!metaEnv.VITE_SUPABASE_URL || !metaEnv.VITE_SUPABASE_ANON_KEY) {
+  console.warn(
+    `[Supabase Client Warning] Variabel VITE_SUPABASE_URL atau VITE_SUPABASE_ANON_KEY belum disetel di Vercel. ` +
+    `Aplikasi akan menggunakan penyimpanan lokal (localStorage) tanpa mengalami crash.`
   );
-  throw new Error(`[Supabase Config Error] Missing required environment variables: ${missing}`);
 }
 
 // Clean and normalize Supabase base URL (remove trailing /rest/v1 or trailing slashes)
