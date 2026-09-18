@@ -231,11 +231,12 @@ export default function AdminLabels() {
           };
         });
 
-        // Add any labels in apiMap that weren't in Supabase
+        // Add any labels in apiMap or localStorage that weren't in Supabase
         const existingNos = new Set(formatted.map(f => f.noLabel));
         Object.values(apiMap).forEach((item: any) => {
           const no = item.noLabel || item.no_label;
           if (no && !existingNos.has(no)) {
+            existingNos.add(no);
             const prefix = extractLabelPrefix(no);
             formatted.push({
               id: no,
@@ -255,26 +256,86 @@ export default function AdminLabels() {
           }
         });
 
+        try {
+          const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
+          localList.forEach((item: any) => {
+            const no = item.noLabel || item.no_label || item.id;
+            if (no && !existingNos.has(no) && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
+              existingNos.add(no);
+              const prefix = extractLabelPrefix(no);
+              formatted.push({
+                id: no,
+                noLabel: no,
+                namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
+                status: item.status || 'Menunggu Sertifikat',
+                pdfSource: item.pdfSource || null,
+                pdfUrl: item.pdfUrl || null,
+                pdfDriveUrl: item.pdfDriveUrl || null,
+                pdfOriginalUrl: item.pdfOriginalUrl || null,
+                pdfName: item.pdfName || null,
+                calibratedAt: item.calibratedAt || null,
+                validUntil: item.validUntil || null,
+                createdAt: item.createdAt || null,
+                updatedAt: item.updatedAt || null,
+              });
+            }
+          });
+        } catch (_) {}
+
         setLabels(formatted);
       } else {
-        const formatted = Object.values(apiMap).map((d: any) => {
-          const prefix = extractLabelPrefix(d.noLabel);
-          return {
-            id: d.noLabel,
-            noLabel: d.noLabel,
-            namaRs: d.namaRs || d.nama_rs || mergedFolderMap[prefix] || null,
-            status: d.status,
-            pdfSource: d.pdfSource,
-            pdfUrl: d.pdfUrl,
-            pdfDriveUrl: d.pdfDriveUrl,
-            pdfOriginalUrl: d.pdfOriginalUrl,
-            pdfName: d.pdfName,
-            calibratedAt: d.calibratedAt,
-            validUntil: d.validUntil,
-            createdAt: d.createdAt,
-            updatedAt: d.updatedAt,
-          };
+        const existingNos = new Set<string>();
+        const formatted: any[] = [];
+
+        Object.values(apiMap).forEach((d: any) => {
+          const no = d.noLabel || d.no_label;
+          if (no && !existingNos.has(no) && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
+            existingNos.add(no);
+            const prefix = extractLabelPrefix(no);
+            formatted.push({
+              id: no,
+              noLabel: no,
+              namaRs: d.namaRs || d.nama_rs || mergedFolderMap[prefix] || null,
+              status: d.status || 'Menunggu Sertifikat',
+              pdfSource: d.pdfSource || null,
+              pdfUrl: d.pdfUrl || null,
+              pdfDriveUrl: d.pdfDriveUrl || null,
+              pdfOriginalUrl: d.pdfOriginalUrl || null,
+              pdfName: d.pdfName || null,
+              calibratedAt: d.calibratedAt || null,
+              validUntil: d.validUntil || null,
+              createdAt: d.createdAt || null,
+              updatedAt: d.updatedAt || null,
+            });
+          }
         });
+
+        try {
+          const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
+          localList.forEach((item: any) => {
+            const no = item.noLabel || item.no_label || item.id;
+            if (no && !existingNos.has(no) && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
+              existingNos.add(no);
+              const prefix = extractLabelPrefix(no);
+              formatted.push({
+                id: no,
+                noLabel: no,
+                namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
+                status: item.status || 'Menunggu Sertifikat',
+                pdfSource: item.pdfSource || null,
+                pdfUrl: item.pdfUrl || null,
+                pdfDriveUrl: item.pdfDriveUrl || null,
+                pdfOriginalUrl: item.pdfOriginalUrl || null,
+                pdfName: item.pdfName || null,
+                calibratedAt: item.calibratedAt || null,
+                validUntil: item.validUntil || null,
+                createdAt: item.createdAt || null,
+                updatedAt: item.updatedAt || null,
+              });
+            }
+          });
+        } catch (_) {}
+
         setLabels(formatted);
       }
     } catch (err: any) {
