@@ -130,6 +130,7 @@ async function startServer() {
 
       const payload: any = {
         no_label: noLabel,
+        nama_rs: namaRs || null,
         status: status || 'Menunggu Sertifikat',
         pdf_source: pdfSource || null,
         pdf_url: pdfUrl || null,
@@ -185,6 +186,7 @@ async function startServer() {
         .filter((it: any) => it && (it.noLabel || it.no_label || it.id))
         .map((it: any) => ({
           no_label: it.noLabel || it.no_label || it.id,
+          nama_rs: it.namaRs || it.nama_rs || null,
           status: it.status || 'Menunggu Sertifikat',
           pdf_source: it.pdf_source || null,
           pdf_url: it.pdfUrl || it.pdf_url || null,

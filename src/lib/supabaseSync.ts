@@ -77,8 +77,16 @@ export async function bulkSyncLabelsToSupabase(items: any[]): Promise<{ success:
 
     if (records.length === 0) return { success: true, count: 0 };
 
-    const { error } = await supabase.from('labels').upsert(records);
-    if (error) throw error;
+    // Batch in chunks of 200 items to avoid payload size limit issues
+    const BATCH_SIZE = 200;
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const chunk = records.slice(i, i + BATCH_SIZE);
+      const { error } = await supabase.from('labels').upsert(chunk, { onConflict: 'no_label' });
+      if (error) {
+        console.warn(`Supabase chunk batch ${i} save error:`, error.message);
+        throw error;
+      }
+    }
 
     return { success: true, count: records.length };
   } catch (err: any) {

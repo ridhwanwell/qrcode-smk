@@ -332,19 +332,15 @@ TO authenticated
 USING (public.get_current_user_role() = 'admin_utama');
 
 -- ------------------------------------------------------------------------------
--- 2. KEBIJAKAN UNTUK LABELS & LABEL FOLDERS (Semua staf berhak kelola stiker)
+-- 2. KEBIJAKAN UNTUK LABELS & LABEL FOLDERS (Semua staf & publik berhak kelola stiker)
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Public can view labels" ON public.labels;
-CREATE POLICY "Public can view labels" 
-ON public.labels FOR SELECT 
-USING (true);
-
 DROP POLICY IF EXISTS "Authenticated users can manage labels" ON public.labels;
-CREATE POLICY "Authenticated users can manage labels" 
+DROP POLICY IF EXISTS "Allow full access on labels" ON public.labels;
+CREATE POLICY "Allow full access on labels" 
 ON public.labels FOR ALL 
-TO authenticated 
-USING (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'))
-WITH CHECK (public.get_current_user_role() IN ('admin_utama', 'admin_teknik', 'admin_keuangan'));
+USING (true)
+WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Auth full access on label_folders" ON public.label_folders;
 DROP POLICY IF EXISTS "Authenticated manage label_folders" ON public.label_folders;

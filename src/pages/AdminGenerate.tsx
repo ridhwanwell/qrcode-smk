@@ -6,7 +6,7 @@ import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
 import { fetchTemplateConfigs } from '../lib/templateStorage';
-import { saveFolderRsToSupabase } from '../lib/supabaseSync';
+import { saveFolderRsToSupabase, bulkSyncLabelsToSupabase } from '../lib/supabaseSync';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 
 export default function AdminGenerate() {
@@ -135,24 +135,19 @@ export default function AdminGenerate() {
 
       const itemsToSave = labelsToGenerate.map(lbl => ({
         noLabel: lbl,
-        status: 'Menunggu Sertifikat',
-        namaRs: cleanNamaRs
-      }));
-
-      // 1. Direct save to Supabase (primary)
-      const supabaseRows = labelsToGenerate.map(lbl => ({
         no_label: lbl,
         status: 'Menunggu Sertifikat',
-        nama_rs: cleanNamaRs,
-        updated_at: new Date().toISOString()
+        namaRs: cleanNamaRs,
+        nama_rs: cleanNamaRs
       }));
 
-      const supaRes = await supabase.from('labels').upsert(supabaseRows, { onConflict: 'no_label' });
-      if (supaRes.error) {
-        console.warn('Supabase bulk save warning:', supaRes.error.message);
+      // 1. Direct save to Supabase with chunked batching
+      const syncRes = await bulkSyncLabelsToSupabase(itemsToSave);
+      if (!syncRes.success) {
+        console.warn('Supabase bulk save warning: Primary sync failed, trying API fallback...');
       }
 
-      // If hospital name is provided, update folder metadata map as well
+      // If hospital name is provided, update folder metadata map in Supabase & API
       if (cleanNamaRs && labelsToGenerate.length > 0) {
         const prefix = labelsToGenerate[0].split('.')[0];
         if (prefix) {
@@ -170,17 +165,24 @@ export default function AdminGenerate() {
         }
       }
 
-      // 2. Sync to API backend (Cloud SQL) in parallel / background
-      fetch('/api/labels/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToSave })
-      }).catch(err => console.warn('API bulk sync deferred:', err));
+      // 2. Sync to API backend with Auth Token if available
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const apiHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (session?.access_token) {
+          apiHeaders['Authorization'] = `Bearer ${session.access_token}`;
+        }
+        fetch('/api/labels/bulk', {
+          method: 'POST',
+          headers: apiHeaders,
+          body: JSON.stringify({ items: itemsToSave })
+        }).catch(err => console.warn('API bulk sync deferred:', err));
+      } catch (_) {}
 
-      // 3. Update localStorage labels
+      // 3. Update localStorage labels as local backup
       try {
         const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
-        const existingMap = new Map(localList.map((l: any) => [l.noLabel, l]));
+        const existingMap = new Map(localList.map((l: any) => [l.noLabel || l.no_label, l]));
         itemsToSave.forEach(it => {
           existingMap.set(it.noLabel, {
             id: it.noLabel,
