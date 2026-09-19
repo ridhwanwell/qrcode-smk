@@ -120,6 +120,8 @@ export default function PublicScanPage() {
               id: row.no_label,
               noLabel: row.no_label,
               namaRs: row.nama_rs || row.namaRs || null,
+              namaAlat: row.nama_alat || row.namaAlat || row.pdf_name || null,
+              ruangan: row.ruangan || null,
               status: row.status,
               pdfSource: row.pdf_source,
               pdfUrl: row.pdf_url,
@@ -528,10 +530,22 @@ export default function PublicScanPage() {
             </div>
 
             {/* Certificate Details Info Bar */}
-            <div className="px-4 md:px-6 py-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3 text-xs">
+            <div className="px-4 md:px-6 py-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-xs">
               <div>
                 <span className="text-slate-400 block font-medium">No. Label</span>
                 <span className="font-mono font-bold text-slate-800 text-sm">{displayLabel}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Nama Alat</span>
+                <span className="font-bold text-slate-800 block truncate" title={labelData.namaAlat || labelData.pdfName || '-'}>
+                  {labelData.namaAlat || labelData.pdfName || '-'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Ruangan</span>
+                <span className="font-semibold text-slate-800 block truncate" title={labelData.ruangan || '-'}>
+                  {labelData.ruangan || '-'}
+                </span>
               </div>
               {labelData.namaRs && (
                 <div>
@@ -552,39 +566,7 @@ export default function PublicScanPage() {
                 <span className="text-slate-400 block font-medium">Penerbit</span>
                 <span className="font-semibold text-slate-800">PT Sarana Multi Kalibrasi</span>
               </div>
-              <div>
-                <span className="text-slate-400 block font-medium">Sumber Dokumen</span>
-                <span className="font-medium text-slate-700">
-                  {isDrive ? 'Google Drive Cloud' : 'Database Laboratorium'}
-                </span>
-              </div>
             </div>
-
-            {/* Prominent Google Drive Banner if applicable */}
-            {isDrive && driveViewUrl && (
-              <div className="mx-3 md:mx-6 mt-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                    <Globe className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-blue-950 text-xs">Dokumen Resmi Google Drive Terhubung</h4>
-                    <p className="text-[11px] text-blue-800">
-                      Jika pratinjau di bawah ini dibatasi browser smartphone Anda, ketuk tombol di samping untuk membuka dokumen:
-                    </p>
-                  </div>
-                </div>
-                <a
-                  href={driveViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg shadow-sm shrink-0 transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                  Buka di Google Drive &rarr;
-                </a>
-              </div>
-            )}
             
             {/* Viewer Section */}
             <div className="flex-1 bg-slate-200/50 p-3 md:p-6 flex flex-col min-h-[650px]">

@@ -61,11 +61,14 @@ export async function linkGoogleDriveToLabel(
   labelId: string, 
   driveUrl: string, 
   customDocName?: string,
-  dates?: { calibratedAt?: string; validUntil?: string; namaRs?: string }
+  dates?: { calibratedAt?: string; validUntil?: string; namaRs?: string; namaAlat?: string; ruangan?: string }
 ): Promise<void> {
   const fileId = extractGoogleDriveFileId(driveUrl);
   const embedUrl = fileId ? getGoogleDriveEmbedUrl(fileId) : driveUrl.trim();
   const viewUrl = fileId ? getGoogleDriveViewUrl(fileId) : driveUrl.trim();
+
+  const finalNamaAlat = dates?.namaAlat?.trim() || customDocName?.trim() || undefined;
+  const finalRuangan = dates?.ruangan?.trim() || undefined;
 
   const updatePayload: any = {
     noLabel: labelId,
@@ -74,7 +77,9 @@ export async function linkGoogleDriveToLabel(
     pdfUrl: embedUrl,
     pdfDriveUrl: viewUrl,
     pdfOriginalUrl: driveUrl.trim(),
-    pdfName: customDocName?.trim() || `Sertifikat Kalibrasi ${labelId}`,
+    pdfName: finalNamaAlat || `Sertifikat Kalibrasi ${labelId}`,
+    namaAlat: finalNamaAlat,
+    ruangan: finalRuangan,
     calibratedAt: dates?.calibratedAt || null,
     validUntil: dates?.validUntil || null,
   };
@@ -99,7 +104,9 @@ export async function linkGoogleDriveToLabel(
       pdf_url: embedUrl,
       pdf_drive_url: viewUrl,
       pdforiginal_url: driveUrl.trim(),
-      pdf_name: customDocName?.trim() || `Sertifikat Kalibrasi ${labelId}`,
+      pdf_name: finalNamaAlat || `Sertifikat Kalibrasi ${labelId}`,
+      nama_alat: finalNamaAlat || null,
+      ruangan: finalRuangan || null,
       calibrated_at: dates?.calibratedAt || null,
       valid_until: dates?.validUntil || null,
       updated_at: new Date().toISOString()
@@ -121,12 +128,16 @@ export async function updateLabelDates(
   labelId: string,
   calibratedAt: string,
   validUntil: string,
-  namaRs?: string
+  extra?: { namaRs?: string; namaAlat?: string; ruangan?: string } | string
 ): Promise<void> {
+  const extraObj = typeof extra === 'object' ? extra : { namaRs: extra };
   const payload: any = { noLabel: labelId, calibratedAt, validUntil };
-  if (namaRs !== undefined) {
-    payload.namaRs = namaRs;
+  if (extraObj?.namaRs !== undefined) payload.namaRs = extraObj.namaRs;
+  if (extraObj?.namaAlat !== undefined) {
+    payload.namaAlat = extraObj.namaAlat;
+    payload.pdfName = extraObj.namaAlat;
   }
+  if (extraObj?.ruangan !== undefined) payload.ruangan = extraObj.ruangan;
 
   await fetch('/api/labels', {
     method: 'POST',
@@ -140,6 +151,13 @@ export async function updateLabelDates(
       valid_until: validUntil,
       updated_at: new Date().toISOString()
     };
+    if (extraObj?.namaAlat !== undefined) {
+      supaPayload.nama_alat = extraObj.namaAlat;
+      supaPayload.pdf_name = extraObj.namaAlat;
+    }
+    if (extraObj?.ruangan !== undefined) {
+      supaPayload.ruangan = extraObj.ruangan;
+    }
     const res = await supabase.from('labels').update(supaPayload).eq('no_label', labelId);
     if (res.error) {
       console.warn('Supabase updateLabelDates warning:', res.error.message);

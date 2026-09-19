@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS public.labels (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     no_label TEXT UNIQUE NOT NULL,
     nama_rs TEXT,
+    nama_alat TEXT,
+    ruangan TEXT,
     status TEXT NOT NULL DEFAULT 'Menunggu Sertifikat',
     pdf_source TEXT,
     pdf_url TEXT,
@@ -55,6 +57,9 @@ CREATE TABLE IF NOT EXISTS public.labels (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS nama_alat TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS ruangan TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_labels_no_label ON public.labels(no_label);
 CREATE INDEX IF NOT EXISTS idx_labels_nama_rs ON public.labels(nama_rs);

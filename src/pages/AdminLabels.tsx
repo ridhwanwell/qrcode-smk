@@ -102,6 +102,7 @@ export default function AdminLabels() {
   const [activeModalLabel, setActiveModalLabel] = useState<any | null>(null);
   const [driveUrlInput, setDriveUrlInput] = useState('');
   const [docNameInput, setDocNameInput] = useState('');
+  const [ruanganInput, setRuanganInput] = useState('');
   const [calibratedAtInput, setCalibratedAtInput] = useState('');
   const [validUntilInput, setValidUntilInput] = useState('');
   const [savingDrive, setSavingDrive] = useState(false);
@@ -218,6 +219,8 @@ export default function AdminLabels() {
             id: d.no_label,
             noLabel: d.no_label,
             namaRs: effectiveNamaRs,
+            namaAlat: d.nama_alat || d.namaAlat || d.pdf_name || local.namaAlat || local.pdfName || null,
+            ruangan: d.ruangan || local.ruangan || null,
             status: d.status || local.status || 'Menunggu Sertifikat',
             pdfSource: d.pdf_source || local.pdfSource || null,
             pdfUrl: d.pdf_url || local.pdfUrl || null,
@@ -242,6 +245,8 @@ export default function AdminLabels() {
               id: no,
               noLabel: no,
               namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
+              namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
+              ruangan: item.ruangan || null,
               status: item.status || 'Menunggu Sertifikat',
               pdfSource: item.pdfSource || null,
               pdfUrl: item.pdfUrl || null,
@@ -267,6 +272,8 @@ export default function AdminLabels() {
                 id: no,
                 noLabel: no,
                 namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
+                namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
+                ruangan: item.ruangan || null,
                 status: item.status || 'Menunggu Sertifikat',
                 pdfSource: item.pdfSource || null,
                 pdfUrl: item.pdfUrl || null,
@@ -296,6 +303,8 @@ export default function AdminLabels() {
               id: no,
               noLabel: no,
               namaRs: d.namaRs || d.nama_rs || mergedFolderMap[prefix] || null,
+              namaAlat: d.namaAlat || d.nama_alat || d.pdfName || d.pdf_name || null,
+              ruangan: d.ruangan || null,
               status: d.status || 'Menunggu Sertifikat',
               pdfSource: d.pdfSource || null,
               pdfUrl: d.pdfUrl || null,
@@ -321,6 +330,8 @@ export default function AdminLabels() {
                 id: no,
                 noLabel: no,
                 namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
+                namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
+                ruangan: item.ruangan || null,
                 status: item.status || 'Menunggu Sertifikat',
                 pdfSource: item.pdfSource || null,
                 pdfUrl: item.pdfUrl || null,
@@ -474,7 +485,8 @@ export default function AdminLabels() {
     setValidUntilInput(label.validUntil || '');
 
     setDriveUrlInput(label.pdfOriginalUrl || label.pdfDriveUrl || (typeof label.pdfUrl === 'string' && label.pdfUrl.includes('drive.google.com') ? label.pdfUrl : ''));
-    setDocNameInput(label.pdfName || '');
+    setDocNameInput(label.namaAlat || label.pdfName || '');
+    setRuanganInput(label.ruangan || '');
   };
 
   const closeLinkModal = () => {
@@ -483,6 +495,7 @@ export default function AdminLabels() {
     setModalError('');
     setDriveUrlInput('');
     setDocNameInput('');
+    setRuanganInput('');
     setCalibratedAtInput('');
     setValidUntilInput('');
   };
@@ -510,7 +523,12 @@ export default function AdminLabels() {
         activeModalLabel.id, 
         trimmedUrl, 
         docNameInput.trim() || undefined,
-        { calibratedAt: calibratedAtInput, validUntil: validUntilInput }
+        { 
+          calibratedAt: calibratedAtInput, 
+          validUntil: validUntilInput,
+          namaAlat: docNameInput.trim(),
+          ruangan: ruanganInput.trim()
+        }
       );
       setLabels(prev => prev.map(l => l.id === activeModalLabel.id ? { 
         ...l, 
@@ -518,6 +536,8 @@ export default function AdminLabels() {
         calibratedAt: calibratedAtInput,
         validUntil: validUntilInput,
         pdfName: docNameInput.trim() || l.pdfName,
+        namaAlat: docNameInput.trim() || l.namaAlat,
+        ruangan: ruanganInput.trim() || l.ruangan,
         pdfSource: 'drive',
         pdfDriveUrl: trimmedUrl
       } : l));
@@ -535,11 +555,17 @@ export default function AdminLabels() {
     setSavingDrive(true);
     setModalError('');
     try {
-      await updateLabelDates(activeModalLabel.id, calibratedAtInput, validUntilInput);
+      await updateLabelDates(activeModalLabel.id, calibratedAtInput, validUntilInput, {
+        namaAlat: docNameInput.trim(),
+        ruangan: ruanganInput.trim()
+      });
       setLabels(prev => prev.map(l => l.id === activeModalLabel.id ? { 
         ...l, 
         calibratedAt: calibratedAtInput,
-        validUntil: validUntilInput
+        validUntil: validUntilInput,
+        pdfName: docNameInput.trim() || l.pdfName,
+        namaAlat: docNameInput.trim() || l.namaAlat,
+        ruangan: ruanganInput.trim() || l.ruangan
       } : l));
       setSavingDrive(false);
       closeLinkModal();
@@ -1262,17 +1288,31 @@ export default function AdminLabels() {
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Nama Sertifikat / Alat <span className="text-slate-400 font-normal">(Opsional)</span>
-                  </label>
-                  <input 
-                    type="text" 
-                    value={docNameInput}
-                    onChange={(e) => setDocNameInput(e.target.value)}
-                    placeholder="Contoh: Sertifikat Kalibrasi AED Mindray"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Nama Alat <span className="text-slate-400 font-normal">(Opsional)</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      value={docNameInput}
+                      onChange={(e) => setDocNameInput(e.target.value)}
+                      placeholder="Contoh: Patient Monitor / Defibrillator"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Ruangan <span className="text-slate-400 font-normal">(Opsional)</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      value={ruanganInput}
+                      onChange={(e) => setRuanganInput(e.target.value)}
+                      placeholder="Contoh: Ruang ICU / Poli Dalam / VK"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
                 </div>
 
                 {/* Calibration & Expiration Dates */}

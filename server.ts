@@ -55,6 +55,8 @@ async function startServer() {
       res.json({
         noLabel: data.no_label,
         namaRs: data.nama_rs,
+        namaAlat: data.nama_alat || data.namaAlat || data.pdf_name || null,
+        ruangan: data.ruangan || null,
         status: data.status,
         pdfSource: data.pdf_source,
         pdfUrl: data.pdf_url,
@@ -90,6 +92,8 @@ async function startServer() {
       const formatted = (data || []).map((it: any) => ({
         noLabel: it.no_label,
         namaRs: it.nama_rs || null,
+        namaAlat: it.nama_alat || it.namaAlat || it.pdf_name || null,
+        ruangan: it.ruangan || null,
         status: it.status,
         pdfSource: it.pdf_source,
         pdfUrl: it.pdf_url,
@@ -114,6 +118,8 @@ async function startServer() {
       const { 
         noLabel, 
         namaRs, 
+        namaAlat,
+        ruangan,
         status, 
         pdfSource, 
         pdfUrl, 
@@ -128,15 +134,19 @@ async function startServer() {
         return res.status(400).json({ error: "noLabel is required" });
       }
 
+      const finalNamaAlat = namaAlat || pdfName || null;
+
       const payload: any = {
         no_label: noLabel,
         nama_rs: namaRs || null,
+        nama_alat: finalNamaAlat,
+        ruangan: ruangan || null,
         status: status || 'Menunggu Sertifikat',
         pdf_source: pdfSource || null,
         pdf_url: pdfUrl || null,
         pdf_drive_url: pdfDriveUrl || null,
         pdforiginal_url: pdfOriginalUrl || null,
-        pdf_name: pdfName || null,
+        pdf_name: pdfName || finalNamaAlat || null,
         calibrated_at: calibratedAt || null,
         valid_until: validUntil || null,
         updated_at: new Date().toISOString()
@@ -644,15 +654,37 @@ async function startServer() {
     }
   });
 
-  // --- API: SUPABASE STATUS CHECK (Protected by requireAuth, sanitized response) ---
+  // --- API: SUPABASE STATUS & SYNC CHECK (Protected by requireAuth) ---
   app.get("/api/supabase/status", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { error } = await supabaseAdmin.from('labels').select('count', { count: 'exact', head: true });
+      if (error) {
+        return res.json({ connected: false, tableReady: false, message: error.message });
+      }
       res.json({
-        connected: !error
+        connected: true,
+        tableReady: true
       });
     } catch (err: any) {
-      res.json({ connected: false });
+      res.json({ connected: false, tableReady: false, message: err.message });
+    }
+  });
+
+  app.post("/api/supabase/sync", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { error } = await supabaseAdmin.from('labels').select('count', { count: 'exact', head: true });
+      if (error) {
+        return res.status(400).json({ success: false, error: error.message || 'Tabel labels belum siap di Supabase' });
+      }
+
+      const { data, error: selectErr } = await supabaseAdmin.from('labels').select('no_label');
+      if (selectErr) {
+        return res.status(500).json({ success: false, error: selectErr.message });
+      }
+
+      res.json({ success: true, count: data ? data.length : 0 });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 
