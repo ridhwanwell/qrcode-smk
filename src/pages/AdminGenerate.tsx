@@ -172,7 +172,7 @@ export default function AdminGenerate() {
         if (session?.access_token) {
           apiHeaders['Authorization'] = `Bearer ${session.access_token}`;
         }
-        fetch('/api/labels/bulk', {
+        await fetch('/api/labels/bulk', {
           method: 'POST',
           headers: apiHeaders,
           body: JSON.stringify({ items: itemsToSave })

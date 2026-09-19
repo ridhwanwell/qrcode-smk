@@ -197,6 +197,8 @@ async function startServer() {
         .map((it: any) => ({
           no_label: it.noLabel || it.no_label || it.id,
           nama_rs: it.namaRs || it.nama_rs || null,
+          nama_alat: it.namaAlat || it.nama_alat || it.pdfName || it.pdf_name || null,
+          ruangan: it.ruangan || null,
           status: it.status || 'Menunggu Sertifikat',
           pdf_source: it.pdf_source || null,
           pdf_url: it.pdfUrl || it.pdf_url || null,
