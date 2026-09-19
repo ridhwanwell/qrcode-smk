@@ -48,7 +48,7 @@ export function useSupabaseData<T extends { id: string }>(
   const initialFallbackRef = useRef(initialFallback);
   initialFallbackRef.current = initialFallback;
 
-  // 2. Fetch from Backend / Supabase
+  // 2. Fetch from Backend / Supabase with auto-polling & focus sync
   useEffect(() => {
     let isMounted = true;
 
@@ -69,14 +69,13 @@ export function useSupabaseData<T extends { id: string }>(
         // If not found in database yet, check if initialized locally
         const isInited = localStorage.getItem(initKey) === 'true';
         if (!isInited && initialFallbackRef.current.length > 0) {
-          // First time launch: save initial fallback to database
           if (isMounted) {
             updateCache(initialFallbackRef.current);
           }
           fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: initialFallbackRef.current })
+            body: JSON.stringify({ items: initialFallbackRef.current, replaceAll: true })
           }).catch(() => {});
         }
       } catch (err) {
@@ -88,8 +87,24 @@ export function useSupabaseData<T extends { id: string }>(
 
     loadData();
 
+    // Auto-polling every 5 seconds for instant live synchronization across office devices
+    const pollInterval = setInterval(() => {
+      loadData();
+    }, 5000);
+
+    // Sync immediately when user switches back to this tab
+    const handleFocus = () => {
+      loadData();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
     };
   }, [collectionName, updateCache, initKey]);
 
@@ -104,11 +119,17 @@ export function useSupabaseData<T extends { id: string }>(
     updateCache(next);
 
     try {
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+      const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: next })
+        body: JSON.stringify({ items: [item] })
       });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.items && Array.isArray(json.items)) {
+          updateCache(json.items as T[]);
+        }
+      }
     } catch (e) {
       console.warn(`[useSupabaseData] Add error on ${collectionName}:`, e);
     }
@@ -125,11 +146,17 @@ export function useSupabaseData<T extends { id: string }>(
     updateCache(next);
 
     try {
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+      const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: next })
+        body: JSON.stringify({ items: [item] })
       });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.items && Array.isArray(json.items)) {
+          updateCache(json.items as T[]);
+        }
+      }
     } catch (e) {
       console.warn(`[useSupabaseData] Update error on ${collectionName}:`, e);
     }

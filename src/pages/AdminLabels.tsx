@@ -360,10 +360,10 @@ export default function AdminLabels() {
   useEffect(() => {
     fetchLabels();
 
-    // Polling every 15 seconds to ensure instant data synchronization across all office PCs/laptops
+    // Polling every 5 seconds to ensure instant data synchronization across all office PCs/laptops
     const syncInterval = setInterval(() => {
       fetchLabels();
-    }, 15000);
+    }, 5000);
 
     // Realtime Supabase updates with unique channel ID
     const channelId = `admin_labels_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;

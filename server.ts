@@ -395,12 +395,33 @@ async function startServer() {
   });
 
   // --- API: DURABLE ASSET COLLECTIONS (SPH, Schedules, Calibrators, etc.) ---
-  // Stores and synchronizes asset portal collections in Supabase labels table with 100% durability
+  // Helper functions for collection item matching and keying
+  function isSameCollectionItem(a: any, b: any): boolean {
+    if (!a || !b) return false;
+    if (a.id && b.id && String(a.id).trim() === String(b.id).trim()) return true;
+    if (a.sphNumber && b.sphNumber && String(a.sphNumber).trim() === String(b.sphNumber).trim()) return true;
+    if (a.noLabel && b.noLabel && String(a.noLabel).trim() === String(b.noLabel).trim()) return true;
+    if (a.no_label && b.no_label && String(a.no_label).trim() === String(b.no_label).trim()) return true;
+    if (a.workOrderNumber && b.workOrderNumber && String(a.workOrderNumber).trim() === String(b.workOrderNumber).trim()) return true;
+    if (a.code && b.code && String(a.code).trim() === String(b.code).trim()) return true;
+    if (a.number && b.number && String(a.number).trim() === String(b.number).trim()) return true;
+    if (a.hospitalId && b.hospitalId && String(a.hospitalId).trim() === String(b.hospitalId).trim()) return true;
+    return false;
+  }
+
+  function getCollectionItemKey(it: any): string {
+    if (!it || typeof it !== 'object') return `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const k = it.id || it.sphNumber || it.noLabel || it.no_label || it.workOrderNumber || it.code || it.number || it.hospitalId;
+    return k ? String(k).trim().replace(/[^a-zA-Z0-9_\-\.]/g, '_') : `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  }
+
   app.get("/api/collections/:name", async (req, res) => {
     try {
       const { name } = req.params;
       const metaKey = `__aset_coll_${name}`;
-      const { data, error } = await supabaseAdmin
+      const itemPrefix = `__item_${name}_`;
+
+      const { data: mainData, error } = await supabaseAdmin
         .from('labels')
         .select('pdf_url')
         .eq('no_label', metaKey)
@@ -410,16 +431,44 @@ async function startServer() {
         return res.status(500).json({ error: error.message });
       }
 
-      if (!data || !data.pdf_url) {
+      const { data: itemRows } = await supabaseAdmin
+        .from('labels')
+        .select('no_label, pdf_url')
+        .like('no_label', `${itemPrefix}%`);
+
+      let mainItems: any[] = [];
+      if (mainData?.pdf_url) {
+        try {
+          const parsed = JSON.parse(mainData.pdf_url);
+          if (Array.isArray(parsed)) mainItems = parsed;
+        } catch (_) {}
+      }
+
+      let individualItems: any[] = [];
+      if (itemRows && itemRows.length > 0) {
+        itemRows.forEach(row => {
+          if (row.pdf_url) {
+            try {
+              const parsed = JSON.parse(row.pdf_url);
+              if (parsed && typeof parsed === 'object') individualItems.push(parsed);
+            } catch (_) {}
+          }
+        });
+      }
+
+      if (!mainData && individualItems.length === 0) {
         return res.json({ found: false, items: null });
       }
 
-      try {
-        const items = JSON.parse(data.pdf_url);
-        return res.json({ found: true, items: Array.isArray(items) ? items : [] });
-      } catch {
-        return res.json({ found: true, items: [] });
-      }
+      const combined: any[] = [...individualItems];
+      mainItems.forEach(mainIt => {
+        const exists = combined.some(indIt => isSameCollectionItem(mainIt, indIt));
+        if (!exists) {
+          combined.push(mainIt);
+        }
+      });
+
+      return res.json({ found: true, items: combined });
     } catch (err: any) {
       console.error(`API error in GET /api/collections/${req.params.name}:`, err);
       res.status(500).json({ error: err.message });
@@ -429,13 +478,78 @@ async function startServer() {
   app.post("/api/collections/:name", async (req, res) => {
     try {
       const { name } = req.params;
-      const { items } = req.body;
+      const { items, replaceAll } = req.body;
       if (!Array.isArray(items)) {
         return res.status(400).json({ error: "items array is required" });
       }
 
       const metaKey = `__aset_coll_${name}`;
-      const jsonStr = JSON.stringify(items);
+      const itemPrefix = `__item_${name}_`;
+
+      let finalItems: any[] = [];
+
+      if (replaceAll) {
+        await supabaseAdmin.from('labels').delete().like('no_label', `${itemPrefix}%`);
+        finalItems = items;
+      } else {
+        const { data: mainData } = await supabaseAdmin
+          .from('labels')
+          .select('pdf_url')
+          .eq('no_label', metaKey)
+          .maybeSingle();
+
+        const { data: itemRows } = await supabaseAdmin
+          .from('labels')
+          .select('no_label, pdf_url')
+          .like('no_label', `${itemPrefix}%`);
+
+        let existing: any[] = [];
+        if (itemRows && itemRows.length > 0) {
+          itemRows.forEach(row => {
+            if (row.pdf_url) {
+              try {
+                const parsed = JSON.parse(row.pdf_url);
+                if (parsed) existing.push(parsed);
+              } catch (_) {}
+            }
+          });
+        }
+        if (mainData?.pdf_url) {
+          try {
+            const parsed = JSON.parse(mainData.pdf_url);
+            if (Array.isArray(parsed)) {
+              parsed.forEach(mIt => {
+                if (!existing.some(eIt => isSameCollectionItem(eIt, mIt))) {
+                  existing.push(mIt);
+                }
+              });
+            }
+          } catch (_) {}
+        }
+
+        finalItems = [...existing];
+        items.forEach(incomingIt => {
+          const idx = finalItems.findIndex(eIt => isSameCollectionItem(eIt, incomingIt));
+          if (idx >= 0) {
+            finalItems[idx] = { ...finalItems[idx], ...incomingIt };
+          } else {
+            finalItems.unshift(incomingIt);
+          }
+        });
+      }
+
+      for (const it of finalItems) {
+        const itemKey = getCollectionItemKey(it);
+        const rowKey = `${itemPrefix}${itemKey}`;
+        await supabaseAdmin.from('labels').upsert({
+          no_label: rowKey,
+          status: 'asset_item',
+          pdf_source: name,
+          pdf_name: itemKey,
+          pdf_url: JSON.stringify(it),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'no_label' });
+      }
 
       const { error } = await supabaseAdmin
         .from('labels')
@@ -443,8 +557,8 @@ async function startServer() {
           no_label: metaKey,
           status: 'asset_data',
           pdf_source: name,
-          pdf_name: `Collection: ${name} (${items.length} items)`,
-          pdf_url: jsonStr,
+          pdf_name: `Collection: ${name} (${finalItems.length} items)`,
+          pdf_url: JSON.stringify(finalItems),
           updated_at: new Date().toISOString()
         }, { onConflict: 'no_label' });
 
@@ -453,7 +567,7 @@ async function startServer() {
         return res.status(500).json({ error: error.message });
       }
 
-      res.json({ success: true, count: items.length });
+      res.json({ success: true, count: finalItems.length, items: finalItems });
     } catch (err: any) {
       console.error(`API error in POST /api/collections/${req.params.name}:`, err);
       res.status(500).json({ error: err.message });
@@ -464,44 +578,42 @@ async function startServer() {
     try {
       const { name, id } = req.params;
       const metaKey = `__aset_coll_${name}`;
+      const itemPrefix = `__item_${name}_`;
       console.log(`[API] Deleting item ${id} from collection ${name}`);
 
-      const { data } = await supabaseAdmin
+      const sanitizeId = id.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+      await supabaseAdmin.from('labels').delete().eq('no_label', `${itemPrefix}${sanitizeId}`);
+      await supabaseAdmin.from('labels').delete().eq('no_label', `${itemPrefix}${id}`);
+
+      const { data: itemRows } = await supabaseAdmin
         .from('labels')
         .select('pdf_url')
-        .eq('no_label', metaKey)
-        .maybeSingle();
+        .like('no_label', `${itemPrefix}%`);
 
-      let items: any[] = [];
-      if (data?.pdf_url) {
-        try {
-          const parsed = JSON.parse(data.pdf_url);
-          if (Array.isArray(parsed)) items = parsed;
-        } catch (_) {}
+      let remainingItems: any[] = [];
+      if (itemRows && itemRows.length > 0) {
+        itemRows.forEach(row => {
+          if (row.pdf_url) {
+            try {
+              const parsed = JSON.parse(row.pdf_url);
+              if (parsed && !isSameCollectionItem(parsed, { id, sphNumber: id, noLabel: id })) {
+                remainingItems.push(parsed);
+              }
+            } catch (_) {}
+          }
+        });
       }
 
-      const filtered = items.filter((it: any) => 
-        it.id !== id && 
-        it.noLabel !== id && 
-        it.no_label !== id && 
-        it.sphNumber !== id && 
-        it.workOrderNumber !== id
-      );
+      await supabaseAdmin.from('labels').upsert({
+        no_label: metaKey,
+        status: 'asset_data',
+        pdf_source: name,
+        pdf_name: `Collection: ${name} (${remainingItems.length} items)`,
+        pdf_url: JSON.stringify(remainingItems),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'no_label' });
 
-      const jsonStr = JSON.stringify(filtered);
-
-      await supabaseAdmin
-        .from('labels')
-        .upsert({
-          no_label: metaKey,
-          status: 'asset_data',
-          pdf_source: name,
-          pdf_name: `Collection: ${name} (${filtered.length} items)`,
-          pdf_url: jsonStr,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'no_label' });
-
-      res.json({ success: true, remaining: filtered.length });
+      res.json({ success: true, remaining: remainingItems.length, items: remainingItems });
     } catch (err: any) {
       console.error(`API error in DELETE /api/collections/${req.params.name}/${req.params.id}:`, err);
       res.status(500).json({ error: err.message });
@@ -512,18 +624,18 @@ async function startServer() {
     try {
       const { name } = req.params;
       const metaKey = `__aset_coll_${name}`;
+      const itemPrefix = `__item_${name}_`;
       console.log(`[API] Clearing entire collection ${name}`);
 
-      await supabaseAdmin
-        .from('labels')
-        .upsert({
-          no_label: metaKey,
-          status: 'asset_data',
-          pdf_source: name,
-          pdf_name: `Collection: ${name} (0 items)`,
-          pdf_url: JSON.stringify([]),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'no_label' });
+      await supabaseAdmin.from('labels').delete().like('no_label', `${itemPrefix}%`);
+      await supabaseAdmin.from('labels').upsert({
+        no_label: metaKey,
+        status: 'asset_data',
+        pdf_source: name,
+        pdf_name: `Collection: ${name} (0 items)`,
+        pdf_url: JSON.stringify([]),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'no_label' });
 
       res.json({ success: true, remaining: 0 });
     } catch (err: any) {
