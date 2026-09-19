@@ -32,9 +32,11 @@ export default function AdminDashboard() {
 
   const supabaseSqlScript = `-- Jalankan query ini di Dashboard Supabase > SQL Editor:
 CREATE TABLE IF NOT EXISTS public.labels (
-  id BIGSERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   no_label TEXT NOT NULL UNIQUE,
   nama_rs TEXT,
+  nama_alat TEXT,
+  ruangan TEXT,
   status TEXT NOT NULL DEFAULT 'Menunggu Sertifikat',
   pdf_source TEXT,
   pdf_url TEXT,
@@ -48,13 +50,19 @@ CREATE TABLE IF NOT EXISTS public.labels (
 );
 
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS nama_rs TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS nama_alat TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS ruangan TEXT;
+
 ALTER TABLE public.labels ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public Read Access" ON public.labels
-  FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Public can view labels" ON public.labels;
+DROP POLICY IF EXISTS "Authenticated users can manage labels" ON public.labels;
+DROP POLICY IF EXISTS "Allow full access on labels" ON public.labels;
 
-CREATE POLICY "Service Role Full Access" ON public.labels
-  FOR ALL USING (true);`;
+CREATE POLICY "Allow full access on labels" 
+ON public.labels FOR ALL 
+USING (true)
+WITH CHECK (true);`;
 
   const fetchLabels = useCallback(async () => {
     try {
@@ -138,6 +146,11 @@ CREATE POLICY "Service Role Full Access" ON public.labels
     checkSupabaseStatus();
     fetchLabels();
 
+    // Auto-polling every 15 seconds to sync data across all devices
+    const interval = setInterval(() => {
+      fetchLabels();
+    }, 15000);
+
     // Realtime Supabase updates with unique channel ID
     const channelId = `dashboard_labels_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     let channel: any = null;
@@ -153,6 +166,7 @@ CREATE POLICY "Service Role Full Access" ON public.labels
     }
 
     return () => {
+      clearInterval(interval);
       if (channel) {
         try {
           supabase.removeChannel(channel);
