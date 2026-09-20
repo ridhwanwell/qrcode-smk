@@ -11,7 +11,7 @@ import {
   updateLabelDates,
   extractGoogleDriveFileId
 } from '../lib/pdfStorage';
-import { fetchFolderRsFromSupabase, saveFolderRsToSupabase } from '../lib/supabaseSync';
+import { fetchFolderRsFromSupabase, saveFolderRsToSupabase, upsertLabelsToSupabase } from '../lib/supabaseSync';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 import { 
   Search, 
@@ -141,7 +141,7 @@ export default function AdminLabels() {
           status: l.status || 'Menunggu Sertifikat',
           updated_at: new Date().toISOString()
         }));
-        await supabase.from('labels').upsert(supaRows, { onConflict: 'no_label' });
+        await upsertLabelsToSupabase(supaRows);
       }
 
       const map = { ...folderRsMap };

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.labels (
   pdf_url TEXT,
   pdf_drive_url TEXT,
   pdf_original_url TEXT,
+  pdforiginal_url TEXT,
   pdf_name TEXT,
   calibrated_at TEXT,
   valid_until TEXT,
@@ -60,6 +61,9 @@ ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS nama_alat TEXT;
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS ruangan TEXT;
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_source TEXT;
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_url TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_drive_url TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_original_url TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdforiginal_url TEXT;
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_name TEXT;
 
 -- 3. Aktifkan Row Level Security (RLS) & Berikan Izin Akses Penuh

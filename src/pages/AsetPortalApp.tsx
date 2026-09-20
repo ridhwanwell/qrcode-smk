@@ -89,7 +89,7 @@ function AsetPortalMain() {
   useEffect(() => {
     if (role === 'hanya_sph' && activeTab !== 'sph') {
       setActiveTab('sph');
-    } else if (role === 'admin_keuangan' && !['dashboard', 'sph', 'labels', 'financial', 'masters'].includes(activeTab)) {
+    } else if (role === 'admin_keuangan' && !['dashboard', 'labels', 'schedules', 'sph', 'financial', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
     } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
@@ -97,7 +97,7 @@ function AsetPortalMain() {
   }, [role, activeTab]);
 
   const handleSelectCoreSlide = (newTab: 'dashboard' | 'sph' | 'labels' | 'schedules' | 'selia') => {
-    const order: Record<string, number> = { dashboard: 0, sph: 1, labels: 2, schedules: 3, selia: 4 };
+    const order: Record<string, number> = { dashboard: 0, labels: 1, schedules: 2, sph: 3, selia: 4 };
     const currentIdx = order[activeTab] ?? 0;
     const newIdx = order[newTab] ?? 0;
     setSlideDirection(newIdx >= currentIdx ? 1 : -1);

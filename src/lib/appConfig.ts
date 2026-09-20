@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase.ts';
+import { upsertLabelsToSupabase } from './supabaseSync';
 
 export const DEFAULT_LOGO_URL = '/logo-smk.webp';
 
@@ -33,13 +34,14 @@ export function useAppConfig() {
       try {
         const { data, error } = await supabase
           .from('labels')
-          .select('pdforiginal_url')
+          .select('*')
           .eq('no_label', '__meta_app_config')
-          .single();
+          .maybeSingle();
 
-        if (!error && data?.pdforiginal_url) {
+        const rawJson = (data as any)?.pdforiginal_url || (data as any)?.pdf_original_url || (data as any)?.pdf_url;
+        if (!error && rawJson) {
           try {
-            const parsed = JSON.parse(data.pdforiginal_url);
+            const parsed = JSON.parse(rawJson);
             if (parsed && parsed.logoUrl && isMounted) {
               setLogoUrlState(parsed.logoUrl);
               try {
@@ -99,16 +101,18 @@ export async function saveAppLogo(newLogoUrl: string) {
 
   // 2. Save to Supabase (unified database)
   try {
-    await supabase.from('labels').upsert({
+    const configPayload = JSON.stringify({
+      logoUrl: cleanUrl,
+      updatedAt: new Date().toISOString()
+    });
+    await upsertLabelsToSupabase([{
       no_label: '__meta_app_config',
       status: 'metadata',
       pdf_source: 'app_config',
-      pdforiginal_url: JSON.stringify({
-        logoUrl: cleanUrl,
-        updatedAt: new Date().toISOString()
-      }),
+      pdforiginal_url: configPayload,
+      pdf_original_url: configPayload,
       updated_at: new Date().toISOString()
-    }, { onConflict: 'no_label' });
+    }]);
   } catch (sbErr) {
     console.warn('Supabase saveAppLogo warning:', sbErr);
   }

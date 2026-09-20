@@ -132,13 +132,13 @@ export default function AdminTemplates() {
           onClick={() => setActiveTab('besar')}
           className={cn("px-6 py-2.5 rounded-lg text-sm font-bold transition-colors cursor-pointer", activeTab === 'besar' ? "bg-amber-500 text-slate-900 shadow-xs" : "text-slate-600 hover:bg-slate-100")}
         >
-          Template Besar (Laik Pakai) • 5x2 cm
+          Template Besar (Laik Pakai) • 6x3 cm
         </button>
         <button
           onClick={() => setActiveTab('besarTidakLaik')}
           className={cn("px-6 py-2.5 rounded-lg text-sm font-bold transition-colors cursor-pointer", activeTab === 'besarTidakLaik' ? "bg-rose-500 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100")}
         >
-          Template Besar (Tidak Laik Pakai) • 5x2 cm
+          Template Besar (Tidak Laik Pakai) • 6x3 cm
         </button>
       </div>
 
@@ -228,7 +228,7 @@ export default function AdminTemplates() {
               className="relative shadow-2xl overflow-hidden" 
               style={{ 
                 width: 750, 
-                height: 300
+                height: 375
               }}
             >
               <img 

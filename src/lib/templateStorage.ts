@@ -1,4 +1,5 @@
 import { supabase } from './supabase.ts';
+import { upsertLabelsToSupabase } from './supabaseSync';
 
 export interface TemplateConfig {
   imageUrl?: string;
@@ -46,25 +47,22 @@ export async function fetchTemplateConfigs(): Promise<TemplateConfigs> {
     // 1. Fetch directly from Supabase (unified across all devices & accounts)
     const { data, error } = await supabase
       .from('labels')
-      .select('no_label, pdforiginal_url')
+      .select('*')
       .in('no_label', ['__meta_template_kecil', '__meta_template_besar', '__meta_template_besar_tidak_laik']);
 
     if (!error && data && data.length > 0) {
-      for (const row of data) {
-        if (row.no_label === '__meta_template_kecil' && row.pdforiginal_url) {
-          try {
-            result.kecil = JSON.parse(row.pdforiginal_url);
-          } catch (_) {}
-        }
-        if (row.no_label === '__meta_template_besar' && row.pdforiginal_url) {
-          try {
-            result.besar = JSON.parse(row.pdforiginal_url);
-          } catch (_) {}
-        }
-        if (row.no_label === '__meta_template_besar_tidak_laik' && row.pdforiginal_url) {
-          try {
-            result.besarTidakLaik = JSON.parse(row.pdforiginal_url);
-          } catch (_) {}
+      for (const row of data as any[]) {
+        const rawJson = row.pdforiginal_url || row.pdf_original_url || row.pdf_url;
+        if (rawJson) {
+          if (row.no_label === '__meta_template_kecil') {
+            try { result.kecil = JSON.parse(rawJson); } catch (_) {}
+          }
+          if (row.no_label === '__meta_template_besar') {
+            try { result.besar = JSON.parse(rawJson); } catch (_) {}
+          }
+          if (row.no_label === '__meta_template_besar_tidak_laik') {
+            try { result.besarTidakLaik = JSON.parse(rawJson); } catch (_) {}
+          }
         }
       }
 
@@ -117,55 +115,49 @@ export async function saveTemplateConfigs(configs: TemplateConfigs): Promise<{ s
 
   // 2. Persist to Supabase so EVERY device and account immediately has it
   try {
-    const updates: PromiseLike<any>[] = [];
+    const payloadItems: any[] = [];
 
     if (configs.kecil) {
-      updates.push(
-        Promise.resolve(
-          supabase.from('labels').upsert({
-            no_label: '__meta_template_kecil',
-            status: 'metadata',
-            pdf_source: 'template_kecil',
-            pdforiginal_url: JSON.stringify(configs.kecil),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'no_label' })
-        )
-      );
+      payloadItems.push({
+        no_label: '__meta_template_kecil',
+        status: 'metadata',
+        pdf_source: 'template_kecil',
+        pdforiginal_url: JSON.stringify(configs.kecil),
+        pdf_original_url: JSON.stringify(configs.kecil),
+        updated_at: new Date().toISOString(),
+      });
     }
 
     if (configs.besar) {
-      updates.push(
-        Promise.resolve(
-          supabase.from('labels').upsert({
-            no_label: '__meta_template_besar',
-            status: 'metadata',
-            pdf_source: 'template_besar',
-            pdforiginal_url: JSON.stringify(configs.besar),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'no_label' })
-        )
-      );
+      payloadItems.push({
+        no_label: '__meta_template_besar',
+        status: 'metadata',
+        pdf_source: 'template_besar',
+        pdforiginal_url: JSON.stringify(configs.besar),
+        pdf_original_url: JSON.stringify(configs.besar),
+        updated_at: new Date().toISOString(),
+      });
     }
 
     if (configs.besarTidakLaik) {
-      updates.push(
-        Promise.resolve(
-          supabase.from('labels').upsert({
-            no_label: '__meta_template_besar_tidak_laik',
-            status: 'metadata',
-            pdf_source: 'template_besar_tidak_laik',
-            pdforiginal_url: JSON.stringify(configs.besarTidakLaik),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'no_label' })
-        )
-      );
+      payloadItems.push({
+        no_label: '__meta_template_besar_tidak_laik',
+        status: 'metadata',
+        pdf_source: 'template_besar_tidak_laik',
+        pdforiginal_url: JSON.stringify(configs.besarTidakLaik),
+        pdf_original_url: JSON.stringify(configs.besarTidakLaik),
+        updated_at: new Date().toISOString(),
+      });
     }
 
-    const results = await Promise.all(updates);
-    const errors = results.filter(r => r?.error);
-    if (errors.length > 0) {
-      lastError = errors.map(e => e.error?.message).join(', ');
-      console.warn('Supabase saveTemplateConfigs error:', lastError);
+    if (payloadItems.length > 0) {
+      const res = await upsertLabelsToSupabase(payloadItems);
+      if (res.success) {
+        supabaseSuccess = true;
+      } else {
+        lastError = res.error?.message || 'Gagal menyimpan template ke Supabase';
+        console.warn('Supabase saveTemplateConfigs error:', lastError);
+      }
     } else {
       supabaseSuccess = true;
     }

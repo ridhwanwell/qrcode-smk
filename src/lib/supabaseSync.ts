@@ -1,6 +1,117 @@
 import { supabase } from './supabaseClient';
 
 /**
+ * Robust helper to upsert labels to Supabase table `labels`.
+ * Handles both `pdf_original_url` and `pdforiginal_url` column name variations,
+ * and falls back gracefully to core label fields if optional columns do not exist.
+ */
+export async function upsertLabelsToSupabase(items: any[]): Promise<{ success: boolean; count: number; error?: any }> {
+  if (!items || items.length === 0) return { success: true, count: 0 };
+
+  const tryUpsert = async (payload: any[]) => {
+    return await supabase.from('labels').upsert(payload, { onConflict: 'no_label' });
+  };
+
+  // Batch in chunks of 200 items to avoid payload size limit issues
+  const BATCH_SIZE = 200;
+  let totalSaved = 0;
+
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const chunk = items.slice(i, i + BATCH_SIZE);
+
+    // Variant 1: Both pdf_original_url and pdforiginal_url
+    const variantBoth = chunk.map(it => {
+      const copy = { ...it };
+      const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
+      if (origVal) {
+        copy.pdf_original_url = origVal;
+        copy.pdforiginal_url = origVal;
+      }
+      delete copy.pdfOriginalUrl;
+      return copy;
+    });
+
+    let res = await tryUpsert(variantBoth);
+    if (!res.error) {
+      totalSaved += chunk.length;
+      continue;
+    }
+
+    // Variant 2: Try with pdf_original_url only
+    const variantOriginalUrlOnly = chunk.map(it => {
+      const copy = { ...it };
+      const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
+      if (origVal) {
+        copy.pdf_original_url = origVal;
+      }
+      delete copy.pdforiginal_url;
+      delete copy.pdfOriginalUrl;
+      return copy;
+    });
+
+    res = await tryUpsert(variantOriginalUrlOnly);
+    if (!res.error) {
+      totalSaved += chunk.length;
+      continue;
+    }
+
+    // Variant 3: Try with pdforiginal_url only
+    const variantNoUnderscoreOnly = chunk.map(it => {
+      const copy = { ...it };
+      const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
+      if (origVal) {
+        copy.pdforiginal_url = origVal;
+      }
+      delete copy.pdf_original_url;
+      delete copy.pdfOriginalUrl;
+      return copy;
+    });
+
+    res = await tryUpsert(variantNoUnderscoreOnly);
+    if (!res.error) {
+      totalSaved += chunk.length;
+      continue;
+    }
+
+    // Variant 4: Strip pdf_original_url and pdforiginal_url entirely
+    const variantNoOriginalUrl = chunk.map(it => {
+      const copy = { ...it };
+      delete copy.pdf_original_url;
+      delete copy.pdforiginal_url;
+      delete copy.pdfOriginalUrl;
+      return copy;
+    });
+
+    res = await tryUpsert(variantNoOriginalUrl);
+    if (!res.error) {
+      totalSaved += chunk.length;
+      continue;
+    }
+
+    // Variant 5: Fallback to core fields only
+    const variantCore = chunk.map(it => ({
+      no_label: it.no_label || it.noLabel || it.id,
+      nama_rs: it.nama_rs || it.namaRs || null,
+      nama_alat: it.nama_alat || it.namaAlat || null,
+      ruangan: it.ruangan || null,
+      status: it.status || 'Menunggu Sertifikat',
+      updated_at: new Date().toISOString()
+    }));
+
+    res = await tryUpsert(variantCore);
+    if (!res.error) {
+      totalSaved += chunk.length;
+      continue;
+    }
+
+    console.warn(`Supabase upsertLabelsToSupabase batch ${i} error:`, res.error.message);
+    return { success: false, count: totalSaved, error: res.error };
+  }
+
+  return { success: true, count: totalSaved };
+}
+
+/**
  * Fetches folder hospital names metadata from Supabase
  */
 export async function fetchFolderRsFromSupabase(): Promise<Record<string, string>> {
@@ -32,12 +143,12 @@ export async function fetchFolderRsFromSupabase(): Promise<Record<string, string
  */
 export async function saveFolderRsToSupabase(prefix: string, namaRs: string): Promise<void> {
   try {
-    await supabase.from('labels').upsert({
+    await upsertLabelsToSupabase([{
       no_label: `__meta_folder_${prefix}`,
       nama_rs: namaRs,
       status: '__meta_folder_info',
       updated_at: new Date().toISOString()
-    });
+    }]);
   } catch (err) {
     console.warn('Error saving folder RS to Supabase:', err);
   }
@@ -70,7 +181,8 @@ export async function bulkSyncLabelsToSupabase(items: any[]): Promise<{ success:
         pdf_source: it.pdfSource || it.pdf_source || null,
         pdf_url: it.pdfUrl || it.pdf_url || null,
         pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
-        pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
+        pdf_original_url: it.pdfOriginalUrl || it.pdf_original_url || it.pdforiginal_url || null,
+        pdforiginal_url: it.pdfOriginalUrl || it.pdf_original_url || it.pdforiginal_url || null,
         pdf_name: it.pdfName || it.pdf_name || null,
         calibrated_at: it.calibratedAt || it.calibrated_at || null,
         valid_until: it.validUntil || it.valid_until || null,
@@ -79,20 +191,11 @@ export async function bulkSyncLabelsToSupabase(items: any[]): Promise<{ success:
 
     if (records.length === 0) return { success: true, count: 0 };
 
-    // Batch in chunks of 200 items to avoid payload size limit issues
-    const BATCH_SIZE = 200;
-    for (let i = 0; i < records.length; i += BATCH_SIZE) {
-      const chunk = records.slice(i, i + BATCH_SIZE);
-      const { error } = await supabase.from('labels').upsert(chunk, { onConflict: 'no_label' });
-      if (error) {
-        console.warn(`Supabase chunk batch ${i} save error:`, error.message);
-        throw error;
-      }
-    }
-
-    return { success: true, count: records.length };
+    const res = await upsertLabelsToSupabase(records);
+    return { success: res.success, count: res.count };
   } catch (err: any) {
     console.warn('Error bulk syncing to Supabase:', err);
     return { success: false, count: 0 };
   }
 }
+

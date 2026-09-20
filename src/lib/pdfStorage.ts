@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { upsertLabelsToSupabase } from './supabaseSync';
 
 /**
  * Validates and extracts a Google Drive File ID from various link formats
@@ -104,6 +105,7 @@ export async function linkGoogleDriveToLabel(
       pdf_url: embedUrl,
       pdf_drive_url: viewUrl,
       pdforiginal_url: driveUrl.trim(),
+      pdf_original_url: driveUrl.trim(),
       pdf_name: finalNamaAlat || `Sertifikat Kalibrasi ${labelId}`,
       nama_alat: finalNamaAlat || null,
       ruangan: finalRuangan || null,
@@ -112,10 +114,7 @@ export async function linkGoogleDriveToLabel(
       updated_at: new Date().toISOString()
     };
 
-    const res = await supabase.from('labels').upsert(supaPayload, { onConflict: 'no_label' });
-    if (res.error) {
-      console.warn('Supabase linkGoogleDriveToLabel warning:', res.error.message);
-    }
+    await upsertLabelsToSupabase([supaPayload]);
   } catch (err) {
     console.warn('Supabase linkGoogleDriveToLabel error:', err);
   }
@@ -188,15 +187,22 @@ export async function deleteCertificateFromLabel(labelId: string): Promise<void>
   });
 
   try {
-    await supabase.from('labels').update({
+    const updateObj: any = {
       status: 'Menunggu Sertifikat',
       pdf_source: null,
       pdf_name: null,
       pdf_url: null,
       pdf_drive_url: null,
       pdforiginal_url: null,
+      pdf_original_url: null,
       updated_at: new Date().toISOString()
-    }).eq('no_label', labelId);
+    };
+    let { error } = await supabase.from('labels').update(updateObj).eq('no_label', labelId);
+    if (error) {
+      delete updateObj.pdforiginal_url;
+      delete updateObj.pdf_original_url;
+      await supabase.from('labels').update(updateObj).eq('no_label', labelId);
+    }
   } catch (err) {
     console.warn('Supabase deleteCertificateFromLabel error:', err);
   }
