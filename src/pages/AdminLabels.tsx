@@ -207,7 +207,17 @@ export default function AdminLabels() {
         localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(mergedFolderMap));
       } catch (_) {}
 
-      const sbData = (sbLabelsRes.data || []).filter((d: any) => !d.no_label?.startsWith('__meta_') && !d.no_label?.startsWith('__aset_'));
+      // Tombstone sets to guarantee deleted folders and labels never resurrect
+      const deletedFolders = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]'));
+      const deletedLabels = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]'));
+
+      const sbData = (sbLabelsRes.data || []).filter((d: any) => {
+        const no = d.no_label;
+        if (!no || no.startsWith('__meta_') || no.startsWith('__aset_')) return false;
+        const prefix = extractLabelPrefix(no);
+        if (deletedFolders.has(prefix) || deletedLabels.has(no)) return false;
+        return true;
+      });
 
       if (sbData && sbData.length > 0) {
         const formatted = sbData.map((d: any) => {
@@ -239,8 +249,9 @@ export default function AdminLabels() {
         Object.values(apiMap).forEach((item: any) => {
           const no = item.noLabel || item.no_label;
           if (no && !existingNos.has(no)) {
-            existingNos.add(no);
             const prefix = extractLabelPrefix(no);
+            if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
+            existingNos.add(no);
             formatted.push({
               id: no,
               noLabel: no,
@@ -263,30 +274,39 @@ export default function AdminLabels() {
 
         try {
           const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
+          const cleanLocalList: any[] = [];
           localList.forEach((item: any) => {
             const no = item.noLabel || item.no_label || item.id;
-            if (no && !existingNos.has(no) && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
-              existingNos.add(no);
+            if (no && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
               const prefix = extractLabelPrefix(no);
-              formatted.push({
-                id: no,
-                noLabel: no,
-                namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
-                namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
-                ruangan: item.ruangan || null,
-                status: item.status || 'Menunggu Sertifikat',
-                pdfSource: item.pdfSource || null,
-                pdfUrl: item.pdfUrl || null,
-                pdfDriveUrl: item.pdfDriveUrl || null,
-                pdfOriginalUrl: item.pdfOriginalUrl || null,
-                pdfName: item.pdfName || null,
-                calibratedAt: item.calibratedAt || null,
-                validUntil: item.validUntil || null,
-                createdAt: item.createdAt || null,
-                updatedAt: item.updatedAt || null,
-              });
+              if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
+
+              cleanLocalList.push(item);
+              if (!existingNos.has(no)) {
+                existingNos.add(no);
+                formatted.push({
+                  id: no,
+                  noLabel: no,
+                  namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
+                  namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
+                  ruangan: item.ruangan || null,
+                  status: item.status || 'Menunggu Sertifikat',
+                  pdfSource: item.pdfSource || null,
+                  pdfUrl: item.pdfUrl || null,
+                  pdfDriveUrl: item.pdfDriveUrl || null,
+                  pdfOriginalUrl: item.pdfOriginalUrl || null,
+                  pdfName: item.pdfName || null,
+                  calibratedAt: item.calibratedAt || null,
+                  validUntil: item.validUntil || null,
+                  createdAt: item.createdAt || null,
+                  updatedAt: item.updatedAt || null,
+                });
+              }
             }
           });
+          if (cleanLocalList.length !== localList.length) {
+            localStorage.setItem('smk_labels', JSON.stringify(cleanLocalList));
+          }
         } catch (_) {}
 
         setLabels(formatted);
@@ -297,8 +317,9 @@ export default function AdminLabels() {
         Object.values(apiMap).forEach((d: any) => {
           const no = d.noLabel || d.no_label;
           if (no && !existingNos.has(no) && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
-            existingNos.add(no);
             const prefix = extractLabelPrefix(no);
+            if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
+            existingNos.add(no);
             formatted.push({
               id: no,
               noLabel: no,
@@ -321,30 +342,39 @@ export default function AdminLabels() {
 
         try {
           const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
+          const cleanLocalList: any[] = [];
           localList.forEach((item: any) => {
             const no = item.noLabel || item.no_label || item.id;
-            if (no && !existingNos.has(no) && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
-              existingNos.add(no);
+            if (no && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
               const prefix = extractLabelPrefix(no);
-              formatted.push({
-                id: no,
-                noLabel: no,
-                namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
-                namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
-                ruangan: item.ruangan || null,
-                status: item.status || 'Menunggu Sertifikat',
-                pdfSource: item.pdfSource || null,
-                pdfUrl: item.pdfUrl || null,
-                pdfDriveUrl: item.pdfDriveUrl || null,
-                pdfOriginalUrl: item.pdfOriginalUrl || null,
-                pdfName: item.pdfName || null,
-                calibratedAt: item.calibratedAt || null,
-                validUntil: item.validUntil || null,
-                createdAt: item.createdAt || null,
-                updatedAt: item.updatedAt || null,
-              });
+              if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
+
+              cleanLocalList.push(item);
+              if (!existingNos.has(no)) {
+                existingNos.add(no);
+                formatted.push({
+                  id: no,
+                  noLabel: no,
+                  namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
+                  namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
+                  ruangan: item.ruangan || null,
+                  status: item.status || 'Menunggu Sertifikat',
+                  pdfSource: item.pdfSource || null,
+                  pdfUrl: item.pdfUrl || null,
+                  pdfDriveUrl: item.pdfDriveUrl || null,
+                  pdfOriginalUrl: item.pdfOriginalUrl || null,
+                  pdfName: item.pdfName || null,
+                  calibratedAt: item.calibratedAt || null,
+                  validUntil: item.validUntil || null,
+                  createdAt: item.createdAt || null,
+                  updatedAt: item.updatedAt || null,
+                });
+              }
             }
           });
+          if (cleanLocalList.length !== localList.length) {
+            localStorage.setItem('smk_labels', JSON.stringify(cleanLocalList));
+          }
         } catch (_) {}
 
         setLabels(formatted);
@@ -654,7 +684,35 @@ export default function AdminLabels() {
         const previousLabels = [...labels];
 
         // Optimistic remove from UI state
-        setLabels(prev => prev.filter(l => !idsToDelete.includes(l.noLabel) && !idsToDelete.includes(l.id)));
+        setLabels(prev => prev.filter(l => extractLabelPrefix(l.noLabel) !== folder.prefix && !idsToDelete.includes(l.noLabel) && !idsToDelete.includes(l.id)));
+        setFolderRsMap(prev => {
+          const next = { ...prev };
+          delete next[folder.prefix];
+          return next;
+        });
+
+        // Synchronously purge localStorage so no background interval can resurrect it
+        try {
+          const rawLocal = localStorage.getItem('smk_labels');
+          if (rawLocal) {
+            const list = JSON.parse(rawLocal);
+            const remaining = list.filter((it: any) => {
+              const no = it.noLabel || it.no_label || it.id || '';
+              return extractLabelPrefix(no) !== folder.prefix && !idsToDelete.includes(no) && !idsToDelete.includes(it.id);
+            });
+            localStorage.setItem('smk_labels', JSON.stringify(remaining));
+          }
+
+          const map = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
+          delete map[folder.prefix];
+          localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
+
+          const delF = JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]');
+          if (!delF.includes(folder.prefix)) {
+            delF.push(folder.prefix);
+            localStorage.setItem('smk_deleted_folders', JSON.stringify(delF));
+          }
+        } catch (_) {}
 
         try {
           await deleteFolderCompletely(folder.prefix, idsToDelete);
@@ -673,6 +731,25 @@ export default function AdminLabels() {
         const previousLabels = [...labels];
 
         setLabels(prev => prev.filter(l => l.id !== label.id && l.noLabel !== label.noLabel));
+
+        // Synchronously purge localStorage
+        try {
+          const rawLocal = localStorage.getItem('smk_labels');
+          if (rawLocal) {
+            const list = JSON.parse(rawLocal);
+            const remaining = list.filter((it: any) => {
+              const no = it.noLabel || it.no_label || it.id || '';
+              return no !== targetId && it.id !== targetId;
+            });
+            localStorage.setItem('smk_labels', JSON.stringify(remaining));
+          }
+
+          const delL = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
+          if (!delL.includes(targetId)) {
+            delL.push(targetId);
+            localStorage.setItem('smk_deleted_labels', JSON.stringify(delL));
+          }
+        } catch (_) {}
 
         try {
           await deleteLabelCompletely(targetId);

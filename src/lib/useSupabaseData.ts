@@ -3,19 +3,6 @@ import { useAuth } from './AuthContext';
 import { supabase } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-// Helper to identify legacy mock IDs so they are never erroneously pushed back to Supabase
-const isMockId = (id: any): boolean => {
-  if (!id || typeof id !== 'string') return false;
-  return (
-    id.startsWith('SCH-2026-') ||
-    id.startsWith('SPH-2026-') ||
-    id.startsWith('HOSP-00') ||
-    id.startsWith('MKT-00') ||
-    id.startsWith('MD-MOE-') ||
-    id.startsWith('MD-0')
-  );
-};
-
 /**
  * Universal React Hook for durable data persistence and live Realtime cross-device sync.
  * Connects directly to Supabase cloud table 'app_collections' from any device (laptop, mobile phone, tablet)
@@ -170,16 +157,16 @@ export function useSupabaseData<T extends { id: string }>(
 
           const getItemKey = (i: any) => i?.id || i?.sphNumber || i?.workOrderNumber || i?.noLabel || i?.no_label;
           
-          // Only consider non-mock user-created items for local sync
+          // Identify any local items created on this device that are not yet on the server
           const localOnlyItems = localItems.filter(loc => {
             const lk = getItemKey(loc);
-            if (!lk || isMockId(lk)) return false;
+            if (!lk) return false;
             return !serverItems.some(srv => getItemKey(srv) === lk);
           });
 
-          if (localOnlyItems.length > 0 && serverItems.length === 0) {
-            // Local device has authentic data and server is empty -> upload local data to server
-            console.log(`[useSupabaseData] Auto-syncing ${localOnlyItems.length} local items to Supabase for ${collectionName}...`);
+          if (localOnlyItems.length > 0) {
+            // Local device has items that server doesn't have yet -> MERGE them together so no device loses input
+            console.log(`[useSupabaseData] Auto-merging ${localOnlyItems.length} local items with ${serverItems.length} server items for ${collectionName}...`);
             const merged = [...serverItems, ...localOnlyItems];
             if (isMounted) {
               updateCache(merged);

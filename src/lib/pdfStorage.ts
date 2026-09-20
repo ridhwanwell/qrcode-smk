@@ -203,12 +203,44 @@ export async function deleteCertificateFromLabel(labelId: string): Promise<void>
 }
 
 /**
+ * Helper to extract prefix
+ */
+function getPrefix(no: string): string {
+  if (!no) return '';
+  const dot = no.indexOf('.');
+  if (dot > 0) return no.substring(0, dot);
+  if (no.length >= 3) return no.substring(0, 3);
+  return no;
+}
+
+/**
  * Delete label document completely
  */
 export async function deleteLabelCompletely(labelId: string): Promise<void> {
+  // Purge from local storage immediately
+  try {
+    const rawLabels = localStorage.getItem('smk_labels');
+    if (rawLabels) {
+      const list = JSON.parse(rawLabels);
+      const remaining = list.filter((item: any) => {
+        const no = item.noLabel || item.no_label || item.id || '';
+        return no !== labelId;
+      });
+      localStorage.setItem('smk_labels', JSON.stringify(remaining));
+    }
+
+    const deletedLabels = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
+    if (!deletedLabels.includes(labelId)) {
+      deletedLabels.push(labelId);
+      localStorage.setItem('smk_deleted_labels', JSON.stringify(deletedLabels));
+    }
+  } catch (err) {
+    console.warn('LocalStorage deleteLabelCompletely cleanup warning:', err);
+  }
+
   await fetch(`/api/labels/${encodeURIComponent(labelId)}`, {
     method: 'DELETE',
-  });
+  }).catch(() => {});
 
   try {
     await supabase.from('labels').delete().eq('no_label', labelId);
@@ -222,6 +254,28 @@ export async function deleteLabelCompletely(labelId: string): Promise<void> {
  */
 export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
   if (!labelIds || labelIds.length === 0) return;
+
+  // Purge from local storage immediately
+  try {
+    const rawLabels = localStorage.getItem('smk_labels');
+    if (rawLabels) {
+      const list = JSON.parse(rawLabels);
+      const set = new Set(labelIds);
+      const remaining = list.filter((item: any) => {
+        const no = item.noLabel || item.no_label || item.id || '';
+        return !set.has(no) && !set.has(item.id);
+      });
+      localStorage.setItem('smk_labels', JSON.stringify(remaining));
+    }
+
+    const deletedLabels = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
+    const labelSet = new Set(deletedLabels);
+    labelIds.forEach(id => labelSet.add(id));
+    localStorage.setItem('smk_deleted_labels', JSON.stringify(Array.from(labelSet)));
+  } catch (err) {
+    console.warn('LocalStorage deleteBatchLabels cleanup warning:', err);
+  }
+
   try {
     await fetch('/api/labels/batch-delete', {
       method: 'POST',
@@ -243,7 +297,46 @@ export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
  * Delete an entire folder and all its labels
  */
 export async function deleteFolderCompletely(prefix: string, labelIds?: string[]): Promise<void> {
-  // 1. Delete on backend API (which deletes from database instantly)
+  // 1. Purge from local storage immediately so it can NEVER resurrect on client refresh/polling
+  try {
+    const rawLabels = localStorage.getItem('smk_labels');
+    if (rawLabels) {
+      const list = JSON.parse(rawLabels);
+      const labelIdSet = new Set(labelIds || []);
+      const remaining = list.filter((item: any) => {
+        const no = item.noLabel || item.no_label || item.id || '';
+        const p = getPrefix(no);
+        if (p === prefix) return false;
+        if (labelIdSet.has(no) || labelIdSet.has(item.id)) return false;
+        return true;
+      });
+      localStorage.setItem('smk_labels', JSON.stringify(remaining));
+    }
+
+    // Clean folder hospital name mapping
+    const map = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
+    delete map[prefix];
+    localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
+
+    // Register folder in tombstone to block any resurrection
+    const deletedFolders = JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]');
+    if (!deletedFolders.includes(prefix)) {
+      deletedFolders.push(prefix);
+      localStorage.setItem('smk_deleted_folders', JSON.stringify(deletedFolders));
+    }
+
+    // Register labelIds in tombstone
+    if (labelIds && labelIds.length > 0) {
+      const deletedLabels = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
+      const labelSet = new Set(deletedLabels);
+      labelIds.forEach(id => labelSet.add(id));
+      localStorage.setItem('smk_deleted_labels', JSON.stringify(Array.from(labelSet)));
+    }
+  } catch (err) {
+    console.warn('LocalStorage deleteFolderCompletely cleanup warning:', err);
+  }
+
+  // 2. Delete on backend API (which deletes from database instantly)
   try {
     await fetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
     await fetch(`/api/folders/prefix/${encodeURIComponent(prefix)}`, { method: 'DELETE' }).catch(() => {});
@@ -258,7 +351,7 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     console.warn('API delete folder error:', err);
   }
 
-  // 2. Direct Supabase deletion for instant client-side sync
+  // 3. Direct Supabase deletion for instant client-side sync
   try {
     await supabase.from('labels').delete().like('no_label', `${prefix}.%`);
     await supabase.from('labels').delete().eq('no_label', prefix);
@@ -267,11 +360,6 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     if (labelIds && labelIds.length > 0) {
       await supabase.from('labels').delete().in('no_label', labelIds);
     }
-    try {
-      const map = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
-      delete map[prefix];
-      localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
-    } catch (_) {}
   } catch (err) {
     console.warn('Supabase deleteFolderCompletely error:', err);
   }
