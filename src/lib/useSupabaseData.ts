@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { supabase } from './supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 /**
- * Universal React Hook for durable data persistence.
- * Uses backend API proxying to Supabase via service role for 100% reliable persistence,
- * preventing deleted records from ever reappearing.
+ * Universal React Hook for durable data persistence and live Realtime cross-device sync.
+ * Uses supabase.channel to automatically synchronize data between connected clients in real-time
+ * without needing manual page reloads, combined with backend API persistence to Supabase.
  */
 export function useSupabaseData<T extends { id: string }>(
   collectionName: string,
@@ -12,6 +14,10 @@ export function useSupabaseData<T extends { id: string }>(
 ) {
   const storageKey = `smk_supa_${collectionName}`;
   const initKey = `smk_inited_${collectionName}`;
+
+  // Unique client instance ID to identify broadcast origin and avoid redundant self-refetches
+  const clientIdRef = useRef<string>(`client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   // 1. Instant load from local cache or initialFallback
   const [data, setData] = useState<T[]>(() => {
@@ -32,6 +38,7 @@ export function useSupabaseData<T extends { id: string }>(
   });
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(false);
   const { user } = useAuth();
   const dataRef = useRef<T[]>(data);
   dataRef.current = data;
@@ -48,13 +55,32 @@ export function useSupabaseData<T extends { id: string }>(
   const initialFallbackRef = useRef(initialFallback);
   initialFallbackRef.current = initialFallback;
 
-  // 2. Fetch from Backend / Supabase with auto-polling & focus sync
+  // Broadcast function to notify all other clients instantly via Supabase WebSocket
+  const broadcastSync = useCallback(() => {
+    try {
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: `sync_${collectionName}`,
+          payload: {
+            senderId: clientIdRef.current,
+            timestamp: Date.now()
+          }
+        });
+      }
+    } catch (e) {
+      console.warn(`[useSupabaseData] Broadcast error on ${collectionName}:`, e);
+    }
+  }, [collectionName]);
+
+  // 2. Fetch from Backend / Supabase and set up Supabase Realtime channel
   useEffect(() => {
     let isMounted = true;
+    let debounceTimer: any = null;
 
     const loadData = async () => {
       try {
-        const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}`);
+        const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}?_t=${Date.now()}`);
         if (res.ok) {
           const json = await res.json();
           if (json && json.found === true && Array.isArray(json.items)) {
@@ -85,14 +111,73 @@ export function useSupabaseData<T extends { id: string }>(
       }
     };
 
+    // Debounced loader to prevent thundering herd when multiple events arrive simultaneously
+    const debouncedLoadData = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (isMounted) {
+          loadData();
+        }
+      }, 150);
+    };
+
+    // Initial data fetch
     loadData();
 
-    // Auto-polling every 5 seconds for instant live synchronization across office devices
+    // 3. Supabase Realtime Channel Subscription
+    // Subscribes to Postgres table changes (INSERT/UPDATE/DELETE on labels)
+    // and Realtime Broadcast messages across clients
+    const channelName = `realtime_coll_${collectionName}`;
+    const channel = supabase.channel(channelName);
+    channelRef.current = channel;
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'labels'
+        },
+        (payload: any) => {
+          const row = (payload.new || payload.old) as any;
+          // Check if changed row belongs to this collection
+          if (
+            row &&
+            (row.pdf_source === collectionName ||
+             row.no_label === `__aset_coll_${collectionName}` ||
+             (typeof row.no_label === 'string' && (
+               row.no_label.startsWith(`__item_${collectionName}_`) ||
+               row.no_label.includes(`_${collectionName}_`) ||
+               row.no_label.endsWith(`_${collectionName}`)
+             )))
+          ) {
+            debouncedLoadData();
+          }
+        }
+      )
+      .on(
+        'broadcast',
+        { event: `sync_${collectionName}` },
+        (msg: any) => {
+          // If update came from another device/tab, reload immediately without page reload
+          if (msg?.payload?.senderId !== clientIdRef.current) {
+            debouncedLoadData();
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (isMounted) {
+          setIsRealtimeConnected(status === 'SUBSCRIBED');
+        }
+      });
+
+    // Fallback polling every 5 seconds to ensure absolute consistency even during network transitions
     const pollInterval = setInterval(() => {
       loadData();
     }, 5000);
 
-    // Sync immediately when user switches back to this tab
+    // Sync immediately when user switches back to this tab/window
     const handleFocus = () => {
       loadData();
     };
@@ -102,9 +187,16 @@ export function useSupabaseData<T extends { id: string }>(
 
     return () => {
       isMounted = false;
+      if (debounceTimer) clearTimeout(debounceTimer);
       clearInterval(pollInterval);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (_) {}
+      }
+      channelRef.current = null;
     };
   }, [collectionName, updateCache, initKey]);
 
@@ -129,6 +221,7 @@ export function useSupabaseData<T extends { id: string }>(
         if (json && json.items && Array.isArray(json.items)) {
           updateCache(json.items as T[]);
         }
+        broadcastSync();
       }
     } catch (e) {
       console.warn(`[useSupabaseData] Add error on ${collectionName}:`, e);
@@ -156,6 +249,7 @@ export function useSupabaseData<T extends { id: string }>(
         if (json && json.items && Array.isArray(json.items)) {
           updateCache(json.items as T[]);
         }
+        broadcastSync();
       }
     } catch (e) {
       console.warn(`[useSupabaseData] Update error on ${collectionName}:`, e);
@@ -186,6 +280,7 @@ export function useSupabaseData<T extends { id: string }>(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: next })
       });
+      broadcastSync();
     } catch (e) {
       console.warn(`[useSupabaseData] Delete error on ${collectionName}:`, e);
     }
@@ -200,10 +295,11 @@ export function useSupabaseData<T extends { id: string }>(
       await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
         method: 'DELETE'
       });
+      broadcastSync();
     } catch (e) {
       console.warn(`[useSupabaseData] ClearAll error on ${collectionName}:`, e);
     }
   };
 
-  return { data, add, update, remove, clearAll, setData: updateCache, loading };
+  return { data, add, update, remove, clearAll, setData: updateCache, loading, isRealtimeConnected };
 }

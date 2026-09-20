@@ -30,6 +30,7 @@ interface NavbarProps {
   calibrators: CalibratorAsset[];
   sphCount?: number;
   borrowedTabletsCount?: number;
+  isRealtimeConnected?: boolean;
   onOpenNewSchedule: () => void;
   onOpenNewSph?: () => void;
   onPurgeAllData?: () => void;
@@ -43,6 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   calibrators,
   sphCount = 0,
   borrowedTabletsCount = 0,
+  isRealtimeConnected = true,
   onOpenNewSchedule,
   onOpenNewSph,
   onPurgeAllData,
@@ -187,6 +189,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="inline-flex items-center text-[#EEEEEE] font-medium text-[11px] sm:text-xs">
               <span className="w-2 h-2 rounded-full bg-[#398AB9] animate-pulse mr-1.5 shadow-[0_0_8px_#398AB9]"></span>
               Sistem Aktif & Terhubung Metrologi Medis
+            </span>
+            <span className={`inline-flex items-center gap-1.5 bg-[#0A2636] px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+              isRealtimeConnected ? 'text-emerald-300 border-emerald-500/40 shadow-sm' : 'text-amber-300 border-amber-500/40'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                isRealtimeConnected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400 animate-pulse'
+              }`}></span>
+              {isRealtimeConnected ? 'Supabase Realtime Terhubung' : 'Menghubungkan Realtime...'}
             </span>
             <span className="text-[#398AB9]/50 hidden md:inline">|</span>
             <span className="hidden md:inline text-[#D8D2CB] text-[11px]">

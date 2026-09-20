@@ -99,8 +99,8 @@ function AsetPortalMain() {
     setActiveTab(newTab);
   };
 
-  // Persistence State via Supabase with rich initial fallbacks
-  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules } = useSupabaseData<CalibrationSchedule>('schedules', INITIAL_SCHEDULES);
+  // Persistence State via Supabase with rich initial fallbacks and Supabase Realtime channel
+  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules, isRealtimeConnected } = useSupabaseData<CalibrationSchedule>('schedules', INITIAL_SCHEDULES);
   const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph } = useSupabaseData<SphQuotation>('sphDocuments', INITIAL_SPH_LIST);
   const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets', SPREADSHEET_CALIBRATORS);
   const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets } = useSupabaseData<FinancialAsset>('financialAssets', []);
@@ -696,6 +696,7 @@ function AsetPortalMain() {
         calibrators={effectiveCalibrators}
         sphCount={effectiveSphList.length}
         borrowedTabletsCount={effectiveTablets.filter(t => !t.isAvailable).length}
+        isRealtimeConnected={isRealtimeConnected}
         onOpenNewSchedule={() => {
           setEditingSchedule(null);
           setShowNewScheduleModal(true);
