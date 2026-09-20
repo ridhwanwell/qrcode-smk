@@ -17,9 +17,12 @@ import {
   Building2,
   Tablet,
   Check,
-  RotateCw
+  RotateCw,
+  CloudDownload,
+  CloudUpload
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { supabase } from '../lib/supabase';
 
 export interface CollectionSyncItem {
   id: string;
@@ -37,6 +40,7 @@ interface CheckSyncModalProps {
   onClose: () => void;
   onShowToast: (message: string) => void;
   onForceSyncAll: () => Promise<void>;
+  onForcePullAll?: () => Promise<void>;
 }
 
 const COLLECTIONS_CONFIG = [
@@ -56,11 +60,13 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
   isOpen,
   onClose,
   onShowToast,
-  onForceSyncAll
+  onForceSyncAll,
+  onForcePullAll
 }) => {
   const [loading, setLoading] = useState(false);
   const [syncingKey, setSyncingKey] = useState<string | null>(null);
   const [syncingAll, setSyncingAll] = useState(false);
+  const [pullingAll, setPullingAll] = useState(false);
   const [items, setItems] = useState<CollectionSyncItem[]>([]);
   const [lastChecked, setLastChecked] = useState<string>('');
 
@@ -79,14 +85,24 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         }
       } catch (_) {}
 
-      // Server count from API
+      // Server count directly from Supabase app_collections first, then API
       let serverCount = 0;
       try {
-        const res = await fetch(`/api/collections/${encodeURIComponent(col.name)}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json && json.found && Array.isArray(json.items)) {
-            serverCount = json.items.length;
+        const { data: supaRow, error } = await supabase
+          .from('app_collections')
+          .select('data')
+          .eq('collection_name', col.name)
+          .maybeSingle();
+
+        if (!error && supaRow && Array.isArray(supaRow.data)) {
+          serverCount = supaRow.data.length;
+        } else {
+          const res = await fetch(`/api/collections/${encodeURIComponent(col.name)}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.found && Array.isArray(json.items)) {
+              serverCount = json.items.length;
+            }
           }
         }
       } catch (_) {}
@@ -140,6 +156,14 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         const raw = localStorage.getItem(`smk_supa_${item.name}`);
         let localData = [];
         if (raw) localData = JSON.parse(raw);
+        
+        // Direct write to Supabase
+        await supabase.from('app_collections').upsert({
+          collection_name: item.name,
+          data: localData,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'collection_name' });
+
         await fetch(`/api/collections/${encodeURIComponent(item.name)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -148,14 +172,28 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         onShowToast(`Koleksi ${item.label} berhasil diunggah ke Supabase server!`);
       } else {
         // pull from server to local
-        const res = await fetch(`/api/collections/${encodeURIComponent(item.name)}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json && json.found && Array.isArray(json.items)) {
-            localStorage.setItem(`smk_supa_${item.name}`, JSON.stringify(json.items));
-            window.dispatchEvent(new CustomEvent('supabase_collection_sync', { detail: { collection: item.name } }));
-            onShowToast(`Koleksi ${item.label} diperbarui dari Supabase server!`);
+        const { data: supaRow } = await supabase
+          .from('app_collections')
+          .select('data')
+          .eq('collection_name', item.name)
+          .maybeSingle();
+
+        let serverItems = supaRow?.data;
+        if (!Array.isArray(serverItems)) {
+          const res = await fetch(`/api/collections/${encodeURIComponent(item.name)}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.found && Array.isArray(json.items)) {
+              serverItems = json.items;
+            }
           }
+        }
+
+        if (Array.isArray(serverItems)) {
+          localStorage.setItem(`smk_supa_${item.name}`, JSON.stringify(serverItems));
+          localStorage.setItem(`smk_inited_${item.name}`, 'true');
+          window.dispatchEvent(new CustomEvent('supabase_collection_sync', { detail: { collection: item.name } }));
+          onShowToast(`Koleksi ${item.label} diperbarui dari Supabase server!`);
         }
       }
       await checkStatus();
@@ -180,6 +218,35 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
       onShowToast('Gagal menyinkronkan seluruh data.');
     } finally {
       setSyncingAll(false);
+    }
+  };
+
+  const handlePullAll = async () => {
+    setPullingAll(true);
+    try {
+      if (onForcePullAll) {
+        await onForcePullAll();
+      } else {
+        for (const col of COLLECTIONS_CONFIG) {
+          const { data: supaRow } = await supabase
+            .from('app_collections')
+            .select('data')
+            .eq('collection_name', col.name)
+            .maybeSingle();
+          if (supaRow && Array.isArray(supaRow.data)) {
+            localStorage.setItem(`smk_supa_${col.name}`, JSON.stringify(supaRow.data));
+            localStorage.setItem(`smk_inited_${col.name}`, 'true');
+          }
+        }
+      }
+      await checkStatus();
+      confetti({ particleCount: 70, spread: 70 });
+      onShowToast('Semua data dari server Supabase berhasil ditarik ke perangkat ini!');
+    } catch (e) {
+      console.error(e);
+      onShowToast('Gagal menarik data dari server.');
+    } finally {
+      setPullingAll(false);
     }
   };
 
@@ -360,7 +427,7 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
             <button
               onClick={onClose}
               className="flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-semibold bg-[#144966] hover:bg-[#1C658C] text-[#EEEEEE] transition-colors"
@@ -368,9 +435,29 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
               Tutup
             </button>
             <button
+              id="btn-modal-pull-all-sync"
+              onClick={handlePullAll}
+              disabled={pullingAll || loading}
+              title="Tarik seluruh data dari Supabase ke perangkat ini (Cocok untuk HP/Device lain)"
+              className="flex-1 sm:flex-initial bg-cyan-900/80 hover:bg-cyan-800 text-cyan-200 border border-cyan-500/40 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              {pullingAll ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menarik Data...</span>
+                </>
+              ) : (
+                <>
+                  <CloudDownload className="w-3.5 h-3.5 text-cyan-300" />
+                  <span>Tarik ke Device Ini</span>
+                </>
+              )}
+            </button>
+            <button
               id="btn-modal-fix-all-sync"
               onClick={handleFixAll}
               disabled={syncingAll || loading}
+              title="Kirim seluruh data lokal laptop ini ke server Supabase agar muncul di HP/perangkat lain"
               className="flex-1 sm:flex-initial bg-gradient-to-r from-cyan-600 to-[#1C658C] hover:from-cyan-500 hover:to-[#398AB9] text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/30 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               {syncingAll ? (
@@ -380,8 +467,8 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
-                  <span>Perbaiki & Samakan Otomatis</span>
+                  <CloudUpload className="w-3.5 h-3.5 text-cyan-200" />
+                  <span>Kirim Laptop ke Server</span>
                 </>
               )}
             </button>

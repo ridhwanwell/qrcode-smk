@@ -101,17 +101,17 @@ function AsetPortalMain() {
   };
 
   // Persistence State via Supabase with rich initial fallbacks and Supabase Realtime channel
-  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules, forceSyncToSupabase: forceSyncSchedules, isRealtimeConnected } = useSupabaseData<CalibrationSchedule>('schedules', INITIAL_SCHEDULES);
-  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph, forceSyncToSupabase: forceSyncSph } = useSupabaseData<SphQuotation>('sphDocuments', INITIAL_SPH_LIST);
-  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators, forceSyncToSupabase: forceSyncCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets', SPREADSHEET_CALIBRATORS);
-  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets, forceSyncToSupabase: forceSyncFinancial } = useSupabaseData<FinancialAsset>('financialAssets', []);
-  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions, forceSyncToSupabase: forceSyncTransactions } = useSupabaseData<FinancialTransaction>('financialTransactions', []);
-  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals, forceSyncToSupabase: forceSyncHospitals } = useSupabaseData<Hospital>('hospitals', INITIAL_HOSPITALS);
-  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians, forceSyncToSupabase: forceSyncTechnicians } = useSupabaseData<Technician>('technicians', INITIAL_TECHNICIANS);
-  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets, forceSyncToSupabase: forceSyncTablets } = useSupabaseData<TabletDevice>('tabletAssets', OFFICIAL_TABLETS);
-  const { data: tabletLoans, add: addTabletLoan, update: updateTabletLoanDb, remove: removeTabletLoanDb, clearAll: clearAllTabletLoans, forceSyncToSupabase: forceSyncTabletLoans } = useSupabaseData<TabletLoan>('tabletLoans');
-  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing, forceSyncToSupabase: forceSyncMarketing } = useSupabaseData<MarketingStaff>('marketingStaff', INITIAL_MARKETING);
-  const { data: bapDocuments, add: addBapDocument, update: updateBapDocument, remove: removeBapDocument, clearAll: clearAllBapDocuments, forceSyncToSupabase: forceSyncBap } = useSupabaseData<BapDocument>('bapDocuments');
+  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules, forceSyncToSupabase: forceSyncSchedules, forcePullFromSupabase: forcePullSchedules, isRealtimeConnected } = useSupabaseData<CalibrationSchedule>('schedules', INITIAL_SCHEDULES);
+  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph, forceSyncToSupabase: forceSyncSph, forcePullFromSupabase: forcePullSph } = useSupabaseData<SphQuotation>('sphDocuments', INITIAL_SPH_LIST);
+  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators, forceSyncToSupabase: forceSyncCalibrators, forcePullFromSupabase: forcePullCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets', SPREADSHEET_CALIBRATORS);
+  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets, forceSyncToSupabase: forceSyncFinancial, forcePullFromSupabase: forcePullFinancial } = useSupabaseData<FinancialAsset>('financialAssets', []);
+  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions, forceSyncToSupabase: forceSyncTransactions, forcePullFromSupabase: forcePullTransactions } = useSupabaseData<FinancialTransaction>('financialTransactions', []);
+  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals, forceSyncToSupabase: forceSyncHospitals, forcePullFromSupabase: forcePullHospitals } = useSupabaseData<Hospital>('hospitals', INITIAL_HOSPITALS);
+  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians, forceSyncToSupabase: forceSyncTechnicians, forcePullFromSupabase: forcePullTechnicians } = useSupabaseData<Technician>('technicians', INITIAL_TECHNICIANS);
+  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets, forceSyncToSupabase: forceSyncTablets, forcePullFromSupabase: forcePullTablets } = useSupabaseData<TabletDevice>('tabletAssets', OFFICIAL_TABLETS);
+  const { data: tabletLoans, add: addTabletLoan, update: updateTabletLoanDb, remove: removeTabletLoanDb, clearAll: clearAllTabletLoans, forceSyncToSupabase: forceSyncTabletLoans, forcePullFromSupabase: forcePullTabletLoans } = useSupabaseData<TabletLoan>('tabletLoans');
+  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing, forceSyncToSupabase: forceSyncMarketing, forcePullFromSupabase: forcePullMarketing } = useSupabaseData<MarketingStaff>('marketingStaff', INITIAL_MARKETING);
+  const { data: bapDocuments, add: addBapDocument, update: updateBapDocument, remove: removeBapDocument, clearAll: clearAllBapDocuments, forceSyncToSupabase: forceSyncBap, forcePullFromSupabase: forcePullBap } = useSupabaseData<BapDocument>('bapDocuments');
 
   const handleForceSyncAll = async () => {
     try {
@@ -134,6 +134,30 @@ function AsetPortalMain() {
     } catch (e) {
       console.error('Sync error:', e);
       showToast('Gagal menyinkronkan data.');
+    }
+  };
+
+  const handleForcePullAll = async () => {
+    try {
+      showToast('Menarik data terbaru dari server Supabase...');
+      await Promise.all([
+        forcePullSchedules(),
+        forcePullSph(),
+        forcePullCalibrators(),
+        forcePullFinancial(),
+        forcePullTransactions(),
+        forcePullHospitals(),
+        forcePullTechnicians(),
+        forcePullTablets(),
+        forcePullTabletLoans(),
+        forcePullMarketing(),
+        forcePullBap()
+      ]);
+      showToast('Berhasil menarik dan menyamakan data terbaru dari server Supabase!');
+      confetti({ particleCount: 70, spread: 60 });
+    } catch (e) {
+      console.error('Pull error:', e);
+      showToast('Gagal menarik data dari server.');
     }
   };
 
@@ -726,6 +750,7 @@ function AsetPortalMain() {
         borrowedTabletsCount={effectiveTablets.filter(t => !t.isAvailable).length}
         isRealtimeConnected={isRealtimeConnected}
         onForceSyncAll={handleForceSyncAll}
+        onForcePullAll={handleForcePullAll}
         onOpenNewSchedule={() => {
           setEditingSchedule(null);
           setShowNewScheduleModal(true);
@@ -1146,6 +1171,7 @@ function AsetPortalMain() {
         onClose={() => setShowCheckSyncModal(false)}
         onShowToast={showToast}
         onForceSyncAll={handleForceSyncAll}
+        onForcePullAll={handleForcePullAll}
       />
 
       {/* Floating Toast Alert Notification */}

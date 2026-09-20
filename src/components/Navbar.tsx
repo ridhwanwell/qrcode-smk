@@ -14,7 +14,8 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
-  CloudUpload
+  CloudUpload,
+  CloudDownload
 } from 'lucide-react';
 import { CalibrationSchedule, CalibratorAsset } from '../types';
 import { getUrgencyInfo } from '../utils/helpers';
@@ -33,6 +34,7 @@ interface NavbarProps {
   borrowedTabletsCount?: number;
   isRealtimeConnected?: boolean;
   onForceSyncAll?: () => void;
+  onForcePullAll?: () => void;
   onOpenNewSchedule: () => void;
   onOpenNewSph?: () => void;
   onPurgeAllData?: () => void;
@@ -48,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   borrowedTabletsCount = 0,
   isRealtimeConnected = true,
   onForceSyncAll,
+  onForcePullAll,
   onOpenNewSchedule,
   onOpenNewSph,
   onPurgeAllData,
@@ -209,7 +212,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="inline-flex items-center gap-1.5 bg-[#1C658C]/70 hover:bg-[#398AB9] text-[#EEEEEE] hover:text-white px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-cyan-400/40 transition-all shadow-sm active:scale-95 cursor-pointer"
               >
                 <CloudUpload className="w-3 h-3 text-cyan-300" />
-                <span>Samakan Data Laptop ke Device Lain</span>
+                <span>Kirim Data ke Supabase</span>
+              </button>
+            )}
+            {onForcePullAll && (
+              <button
+                id="btn-pull-device-supabase"
+                onClick={onForcePullAll}
+                title="Tarik data terbaru langsung dari Supabase ke HP/perangkat ini"
+                className="inline-flex items-center gap-1.5 bg-[#0F364C] hover:bg-[#1C658C] text-cyan-300 hover:text-white px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-cyan-500/40 transition-all shadow-sm active:scale-95 cursor-pointer"
+              >
+                <CloudDownload className="w-3 h-3 text-cyan-300" />
+                <span>Tarik Data Terbaru (HP)</span>
               </button>
             )}
             <span className="text-[#398AB9]/50 hidden md:inline">|</span>

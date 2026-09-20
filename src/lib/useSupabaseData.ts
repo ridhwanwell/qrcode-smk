@@ -3,10 +3,23 @@ import { useAuth } from './AuthContext';
 import { supabase } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+// Helper to identify legacy mock IDs so they are never erroneously pushed back to Supabase
+const isMockId = (id: any): boolean => {
+  if (!id || typeof id !== 'string') return false;
+  return (
+    id.startsWith('SCH-2026-') ||
+    id.startsWith('SPH-2026-') ||
+    id.startsWith('HOSP-00') ||
+    id.startsWith('MKT-00') ||
+    id.startsWith('MD-MOE-') ||
+    id.startsWith('MD-0')
+  );
+};
+
 /**
  * Universal React Hook for durable data persistence and live Realtime cross-device sync.
- * Uses supabase.channel to automatically synchronize data between connected clients in real-time
- * without needing manual page reloads, combined with backend API persistence to Supabase.
+ * Connects directly to Supabase cloud table 'app_collections' from any device (laptop, mobile phone, tablet)
+ * with instant WebSocket postgres_changes and fallback backend proxy synchronization.
  */
 export function useSupabaseData<T extends { id: string }>(
   collectionName: string,
@@ -27,7 +40,7 @@ export function useSupabaseData<T extends { id: string }>(
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          // If already initialized, respect whatever is cached (including empty array [])
+          // If already initialized, respect whatever is cached
           if (isInited || parsed.length > 0) {
             return parsed as T[];
           }
@@ -73,58 +86,114 @@ export function useSupabaseData<T extends { id: string }>(
     }
   }, [collectionName]);
 
-  // 2. Fetch from Backend / Supabase and set up Supabase Realtime channel
+  // Direct fetch from Supabase (Works everywhere: mobile, tablet, laptop, Vercel, etc.)
+  const fetchDirectFromSupabase = useCallback(async (): Promise<T[] | null> => {
+    // 1. First priority: Direct Supabase client query
+    try {
+      const { data: supaRow, error } = await supabase
+        .from('app_collections')
+        .select('data')
+        .eq('collection_name', collectionName)
+        .maybeSingle();
+
+      if (!error && supaRow && Array.isArray(supaRow.data)) {
+        return supaRow.data as T[];
+      }
+    } catch (e) {
+      console.warn(`[useSupabaseData] Direct fetch failed for ${collectionName}:`, e);
+    }
+
+    // 2. Second priority: Backend API proxy
+    try {
+      const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}?_t=${Date.now()}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.found === true && Array.isArray(json.items)) {
+          return json.items as T[];
+        }
+      }
+    } catch (e) {
+      console.warn(`[useSupabaseData] API proxy fetch failed for ${collectionName}:`, e);
+    }
+
+    return null;
+  }, [collectionName]);
+
+  // Direct write to Supabase (Writes to both direct Supabase cloud table AND backend proxy)
+  const saveToSupabase = useCallback(async (items: T[]) => {
+    // 1. Direct Supabase Cloud Table Upsert
+    try {
+      await supabase.from('app_collections').upsert({
+        collection_name: collectionName,
+        data: items,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection_name' });
+    } catch (e) {
+      console.warn(`[useSupabaseData] Direct Supabase upsert error on ${collectionName}:`, e);
+    }
+
+    // 2. Backend API Proxy as backup
+    try {
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, replaceAll: true })
+      });
+    } catch (e) {
+      console.warn(`[useSupabaseData] API Proxy save error on ${collectionName}:`, e);
+    }
+
+    // 3. Realtime Broadcast
+    broadcastSync();
+  }, [collectionName, broadcastSync]);
+
+  // 2. Fetch from Supabase and set up Supabase Realtime channel
   useEffect(() => {
     let isMounted = true;
     let debounceTimer: any = null;
 
     const loadData = async () => {
       try {
-        const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}?_t=${Date.now()}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json && json.found === true && Array.isArray(json.items)) {
-            const serverItems = json.items as T[];
-            
-            // Check if local cache has items that the server does not have (e.g. entered on laptop)
-            let localItems: T[] = [];
-            try {
-              const raw = localStorage.getItem(storageKey);
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) localItems = parsed;
-              }
-            } catch (_) {}
+        const serverItems = await fetchDirectFromSupabase();
 
-            const getItemKey = (i: any) => i?.id || i?.sphNumber || i?.workOrderNumber || i?.noLabel || i?.no_label;
-            
-            const localOnlyItems = localItems.filter(loc => {
-              const lk = getItemKey(loc);
-              return lk && !serverItems.some(srv => getItemKey(srv) === lk);
-            });
-
-            if (localOnlyItems.length > 0) {
-              console.log(`[useSupabaseData] Auto-syncing ${localOnlyItems.length} laptop-local items to Supabase for ${collectionName}...`);
-              const merged = [...serverItems, ...localOnlyItems];
-              if (isMounted) {
-                updateCache(merged);
-                setLoading(false);
-              }
-              // Push laptop-exclusive items up to Supabase so other devices receive them
-              await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ items: localOnlyItems })
-              });
-              broadcastSync();
-            } else {
-              if (isMounted) {
-                updateCache(serverItems);
-                setLoading(false);
-              }
+        if (serverItems !== null) {
+          // If server has data, or server was explicitly initialized:
+          // Check if local cache has items that the server does not have
+          let localItems: T[] = [];
+          try {
+            const raw = localStorage.getItem(storageKey);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) localItems = parsed;
             }
-            return;
+          } catch (_) {}
+
+          const getItemKey = (i: any) => i?.id || i?.sphNumber || i?.workOrderNumber || i?.noLabel || i?.no_label;
+          
+          // Only consider non-mock user-created items for local sync
+          const localOnlyItems = localItems.filter(loc => {
+            const lk = getItemKey(loc);
+            if (!lk || isMockId(lk)) return false;
+            return !serverItems.some(srv => getItemKey(srv) === lk);
+          });
+
+          if (localOnlyItems.length > 0 && serverItems.length === 0) {
+            // Local device has authentic data and server is empty -> upload local data to server
+            console.log(`[useSupabaseData] Auto-syncing ${localOnlyItems.length} local items to Supabase for ${collectionName}...`);
+            const merged = [...serverItems, ...localOnlyItems];
+            if (isMounted) {
+              updateCache(merged);
+              setLoading(false);
+            }
+            await saveToSupabase(merged);
+          } else {
+            // Server has authentic data -> Server is the single source of truth across all devices
+            if (isMounted) {
+              updateCache(serverItems);
+              setLoading(false);
+            }
           }
+          return;
         }
 
         // If not found in database yet, check if initialized locally
@@ -133,11 +202,7 @@ export function useSupabaseData<T extends { id: string }>(
           if (isMounted) {
             updateCache(initialFallbackRef.current);
           }
-          fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: initialFallbackRef.current, replaceAll: true })
-          }).catch(() => {});
+          await saveToSupabase(initialFallbackRef.current);
         }
       } catch (err) {
         console.warn(`[useSupabaseData] Error loading ${collectionName}:`, err);
@@ -146,7 +211,7 @@ export function useSupabaseData<T extends { id: string }>(
       }
     };
 
-    // Debounced loader to prevent thundering herd when multiple events arrive simultaneously
+    // Debounced loader to prevent thundering herd
     const debouncedLoadData = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
@@ -160,9 +225,8 @@ export function useSupabaseData<T extends { id: string }>(
     loadData();
 
     // 3. Supabase Realtime Channel Subscription
-    // Subscribes to Postgres table changes (INSERT/UPDATE/DELETE on labels)
-    // and Realtime Broadcast messages across clients
-    const channelName = `realtime_coll_${collectionName}`;
+    // Subscribes directly to Postgres table changes on 'app_collections' AND 'labels'
+    const channelName = `realtime_coll_${collectionName}_${Math.random().toString(36).substring(2, 6)}`;
     const channel = supabase.channel(channelName);
     channelRef.current = channel;
 
@@ -172,11 +236,32 @@ export function useSupabaseData<T extends { id: string }>(
         {
           event: '*',
           schema: 'public',
+          table: 'app_collections'
+        },
+        (payload: any) => {
+          const row = (payload.new || payload.old) as any;
+          if (row && row.collection_name === collectionName) {
+            console.log(`[useSupabaseData] Realtime postgres_changes on app_collections for ${collectionName}`);
+            if (Array.isArray(row.data)) {
+              if (isMounted) {
+                updateCache(row.data);
+                setLoading(false);
+              }
+            } else {
+              debouncedLoadData();
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'labels'
         },
         (payload: any) => {
           const row = (payload.new || payload.old) as any;
-          // Check if changed row belongs to this collection
           if (
             row &&
             (row.pdf_source === collectionName ||
@@ -195,8 +280,8 @@ export function useSupabaseData<T extends { id: string }>(
         'broadcast',
         { event: `sync_${collectionName}` },
         (msg: any) => {
-          // If update came from another device/tab, reload immediately without page reload
           if (msg?.payload?.senderId !== clientIdRef.current) {
+            console.log(`[useSupabaseData] Broadcast received on ${collectionName} from other device`);
             debouncedLoadData();
           }
         }
@@ -207,12 +292,12 @@ export function useSupabaseData<T extends { id: string }>(
         }
       });
 
-    // Fallback polling every 5 seconds to ensure absolute consistency even during network transitions
+    // Fallback polling every 5 seconds to ensure absolute consistency
     const pollInterval = setInterval(() => {
       loadData();
     }, 5000);
 
-    // Sync immediately when user switches back to this tab/window
+    // Sync immediately when user switches back to this tab/window (mobile app switch / tab switch)
     const handleFocus = () => {
       loadData();
     };
@@ -233,34 +318,18 @@ export function useSupabaseData<T extends { id: string }>(
       }
       channelRef.current = null;
     };
-  }, [collectionName, updateCache, initKey]);
+  }, [collectionName, updateCache, initKey, fetchDirectFromSupabase, saveToSupabase]);
 
   // Add an item
   const add = async (item: T) => {
     const current = dataRef.current;
+    const targetId = item.id || (item as any).noLabel || (item as any).sphNumber;
     const next = [item, ...current.filter(i => {
       const curId = i.id || (i as any).noLabel || (i as any).sphNumber;
-      const targetId = item.id || (item as any).noLabel || (item as any).sphNumber;
       return curId !== targetId;
     })];
     updateCache(next);
-
-    try {
-      const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [item] })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json && json.items && Array.isArray(json.items)) {
-          updateCache(json.items as T[]);
-        }
-        broadcastSync();
-      }
-    } catch (e) {
-      console.warn(`[useSupabaseData] Add error on ${collectionName}:`, e);
-    }
+    await saveToSupabase(next);
   };
 
   // Update an item
@@ -272,23 +341,7 @@ export function useSupabaseData<T extends { id: string }>(
       return curId === targetId ? item : i;
     });
     updateCache(next);
-
-    try {
-      const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [item] })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json && json.items && Array.isArray(json.items)) {
-          updateCache(json.items as T[]);
-        }
-        broadcastSync();
-      }
-    } catch (e) {
-      console.warn(`[useSupabaseData] Update error on ${collectionName}:`, e);
-    }
+    await saveToSupabase(next);
   };
 
   // Remove an item
@@ -300,54 +353,24 @@ export function useSupabaseData<T extends { id: string }>(
       return itemKey !== id;
     });
     
-    // Update local state and cache immediately
     updateCache(next);
-
-    try {
-      // Direct deletion endpoint
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}`, {
-        method: 'DELETE'
-      });
-
-      // Synchronize exact state to prevent any stale reads
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: next })
-      });
-      broadcastSync();
-    } catch (e) {
-      console.warn(`[useSupabaseData] Delete error on ${collectionName}:`, e);
-    }
+    await saveToSupabase(next);
   };
 
   // Clear all items in collection
   const clearAll = async () => {
     console.log(`[useSupabaseData] Clearing all items from ${collectionName}`);
     updateCache([]);
-
-    try {
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'DELETE'
-      });
-      broadcastSync();
-    } catch (e) {
-      console.warn(`[useSupabaseData] ClearAll error on ${collectionName}:`, e);
-    }
+    await saveToSupabase([]);
   };
 
   // Force push all data currently in memory/localStorage to Supabase
   const forceSyncToSupabase = useCallback(async () => {
     try {
       const current = dataRef.current;
-      if (Array.isArray(current) && current.length > 0) {
+      if (Array.isArray(current)) {
         console.log(`[useSupabaseData] Force-pushing ${current.length} items to Supabase for ${collectionName}...`);
-        await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: current, replaceAll: true })
-        });
-        broadcastSync();
+        await saveToSupabase(current);
         return true;
       }
       return false;
@@ -355,7 +378,37 @@ export function useSupabaseData<T extends { id: string }>(
       console.warn(`[useSupabaseData] forceSync error on ${collectionName}:`, e);
       return false;
     }
-  }, [collectionName, broadcastSync]);
+  }, [collectionName, saveToSupabase]);
 
-  return { data, add, update, remove, clearAll, forceSyncToSupabase, setData: updateCache, loading, isRealtimeConnected };
+  // Force pull latest data directly from Supabase server (overwrites any local state)
+  const forcePullFromSupabase = useCallback(async () => {
+    try {
+      setLoading(true);
+      const serverItems = await fetchDirectFromSupabase();
+      if (serverItems !== null) {
+        updateCache(serverItems);
+        setLoading(false);
+        return true;
+      }
+      setLoading(false);
+      return false;
+    } catch (e) {
+      console.warn(`[useSupabaseData] forcePull error on ${collectionName}:`, e);
+      setLoading(false);
+      return false;
+    }
+  }, [fetchDirectFromSupabase, updateCache]);
+
+  return { 
+    data, 
+    add, 
+    update, 
+    remove, 
+    clearAll, 
+    forceSyncToSupabase, 
+    forcePullFromSupabase,
+    setData: updateCache, 
+    loading, 
+    isRealtimeConnected 
+  };
 }
