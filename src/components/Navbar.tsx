@@ -95,20 +95,20 @@ export const Navbar: React.FC<NavbarProps> = ({
       icon: Tags
     },
     {
-      id: 'schedules',
-      label: 'Penjadwalan RS',
-      sublabel: 'SPK, BAP, BASTP & Teknisi',
-      icon: Calendar,
-      badgeVal: schedules.length > 0 ? schedules.length : undefined,
-      badgeColor: 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
-    },
-    {
       id: 'sph',
       label: 'Penawaran SPH',
       sublabel: 'Katalog 121 Alat & Cetak',
       icon: FileText,
       badgeVal: sphCount > 0 ? sphCount : undefined,
       badgeColor: 'bg-cyan-950 text-cyan-300 border-cyan-500/40'
+    },
+    {
+      id: 'schedules',
+      label: 'Penjadwalan RS',
+      sublabel: 'SPK, BAP, BASTP & Teknisi',
+      icon: Calendar,
+      badgeVal: schedules.length > 0 ? schedules.length : undefined,
+      badgeColor: 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
     },
     {
       id: 'selia',
@@ -151,10 +151,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   const allowedTabs: AppTab[] = role === 'hanya_sph'
     ? ['sph']
     : role === 'admin_keuangan'
-    ? ['dashboard', 'labels', 'schedules', 'sph', 'financial', 'masters']
+    ? ['dashboard', 'labels', 'sph', 'schedules', 'financial', 'masters']
     : role === 'admin_teknik'
     ? ['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters']
-    : ['dashboard', 'labels', 'schedules', 'sph', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates'];
+    : ['dashboard', 'labels', 'sph', 'schedules', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates'];
 
   const visibleNavTabs = allNavTabs.filter(tab => allowedTabs.includes(tab.id));
 

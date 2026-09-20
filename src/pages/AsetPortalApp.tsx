@@ -97,7 +97,7 @@ function AsetPortalMain() {
   }, [role, activeTab]);
 
   const handleSelectCoreSlide = (newTab: 'dashboard' | 'sph' | 'labels' | 'schedules' | 'selia') => {
-    const order: Record<string, number> = { dashboard: 0, labels: 1, schedules: 2, sph: 3, selia: 4 };
+    const order: Record<string, number> = { dashboard: 0, labels: 1, sph: 2, schedules: 3, selia: 4 };
     const currentIdx = order[activeTab] ?? 0;
     const newIdx = order[newTab] ?? 0;
     setSlideDirection(newIdx >= currentIdx ? 1 : -1);
