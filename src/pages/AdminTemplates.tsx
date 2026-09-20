@@ -14,7 +14,7 @@ import {
 } from '../lib/templateStorage';
 
 export default function AdminTemplates() {
-  const [activeTab, setActiveTab] = useState<'kecil' | 'besar'>('kecil');
+  const [activeTab, setActiveTab] = useState<'besar' | 'besarTidakLaik'>('besar');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -28,7 +28,7 @@ export default function AdminTemplates() {
   const loadTemplates = useCallback(async () => {
     try {
       const data = await fetchTemplateConfigs();
-      if (data && (data.kecil || data.besar)) {
+      if (data && (data.besar || data.besarTidakLaik || data.kecil)) {
         setConfigs(data);
         setError('');
       }
@@ -36,7 +36,7 @@ export default function AdminTemplates() {
       console.warn('Error fetching unified templates:', err);
       // Only set error if no local config exists
       setConfigs(curr => {
-        if (!curr.kecil && !curr.besar) {
+        if (!curr.besar && !curr.besarTidakLaik) {
           setError('Gagal memuat pengaturan template dari database. Silakan klik Coba Lagi.');
         }
         return curr;
@@ -120,25 +120,25 @@ export default function AdminTemplates() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl shadow-sm transition-colors disabled:opacity-50"
+          className="flex items-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl shadow-sm transition-colors disabled:opacity-50 cursor-pointer"
         >
           {saving ? <RefreshCw className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
           Simpan Desain
         </button>
       </div>
 
-      <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-200 inline-flex">
-        <button
-          onClick={() => setActiveTab('kecil')}
-          className={cn("px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors", activeTab === 'kecil' ? "bg-amber-500 text-slate-900" : "text-slate-600 hover:bg-slate-100")}
-        >
-          Template Kecil (3x2 cm)
-        </button>
+      <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-200 inline-flex flex-wrap gap-2">
         <button
           onClick={() => setActiveTab('besar')}
-          className={cn("px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors", activeTab === 'besar' ? "bg-amber-500 text-slate-900" : "text-slate-600 hover:bg-slate-100")}
+          className={cn("px-6 py-2.5 rounded-lg text-sm font-bold transition-colors cursor-pointer", activeTab === 'besar' ? "bg-amber-500 text-slate-900 shadow-xs" : "text-slate-600 hover:bg-slate-100")}
         >
-          Template Besar (5x2 cm)
+          Template Besar (Laik Pakai) • 5x2 cm
+        </button>
+        <button
+          onClick={() => setActiveTab('besarTidakLaik')}
+          className={cn("px-6 py-2.5 rounded-lg text-sm font-bold transition-colors cursor-pointer", activeTab === 'besarTidakLaik' ? "bg-rose-500 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100")}
+        >
+          Template Besar (Tidak Laik Pakai) • 5x2 cm
         </button>
       </div>
 
@@ -221,13 +221,13 @@ export default function AdminTemplates() {
           {!activeConfig?.imageUrl ? (
             <div className="text-slate-400 text-center">
               <Upload className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>Belum ada gambar background untuk template {activeTab}.</p>
+              <p>Belum ada gambar background untuk {activeTab === 'besar' ? 'Template Besar (Laik Pakai)' : 'Template Besar (Tidak Laik Pakai)'}.</p>
             </div>
           ) : (
             <div 
               className="relative shadow-2xl overflow-hidden" 
               style={{ 
-                width: activeTab === 'kecil' ? 450 : 750, 
+                width: 750, 
                 height: 300
               }}
             >

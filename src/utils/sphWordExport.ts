@@ -73,8 +73,14 @@ export function exportSphToWord(
         <li style="margin-bottom: 3px;">Pekerjaan dianggap selesai setelah berita acara/BO (Bukti Order) di tanda tangani oleh pihak yang berwenang.</li>
         <li style="margin-bottom: 3px;">Kalibrasi di atas termasuk sertifikat kalibrasi yang dikeluarkan oleh PT. Sarana Multi Kalibrasi.</li>
         <li style="margin-bottom: 3px;">
-          Pembayaran : ${sph.bankName || 'Bank Mandiri Cab. Surakarta'}<br/><br/>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>No. Rek : ${sph.bankAccountNumber || '138-00-2610846-9'} (${sph.bankAccountName || 'SARANA MULTI KALIBRASI PT'})</b>
+          Pembayaran :<br/>
+          ${sph.paymentOption === 'jateng' 
+            ? '&nbsp;&nbsp;&nbsp;&nbsp;<b>Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)</b>'
+            : sph.paymentOption === 'mandiri'
+            ? '&nbsp;&nbsp;&nbsp;&nbsp;<b>Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)</b>'
+            : sph.paymentOption === 'custom' && sph.customBankDetails
+            ? `&nbsp;&nbsp;&nbsp;&nbsp;<b>${sph.customBankDetails}</b>`
+            : '&nbsp;&nbsp;&nbsp;&nbsp;<b>1. Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)</b><br/>&nbsp;&nbsp;&nbsp;&nbsp;<b>2. Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)</b>'}
         </li>
       </ol>
 

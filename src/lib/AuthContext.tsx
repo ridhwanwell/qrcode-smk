@@ -2,12 +2,71 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
-export type UserRole = 'admin_utama' | 'admin_teknik' | 'admin_keuangan';
+export type UserRole = 'admin_utama' | 'admin_teknik' | 'admin_keuangan' | 'hanya_sph';
+
+export interface UserDirectoryInfo {
+  username: string;
+  role: UserRole;
+  fullName: string;
+  roleLabel: string;
+}
+
+export const OFFICIAL_USERS_DIRECTORY: Record<string, UserDirectoryInfo> = {
+  'ridhwanwell@smk.co.id': {
+    username: 'ridhwanwell',
+    role: 'admin_utama',
+    fullName: 'Ridhwan Well',
+    roleLabel: 'Admin Utama'
+  },
+  'hafizh@smk.co.id': {
+    username: 'hafizh',
+    role: 'admin_utama',
+    fullName: 'Hafizh',
+    roleLabel: 'Admin Utama'
+  },
+  'sheva@smk.co.id': {
+    username: 'sheva',
+    role: 'admin_utama',
+    fullName: 'Sheva',
+    roleLabel: 'Admin Utama'
+  },
+  'alinu@smk.co.id': {
+    username: 'alinu',
+    role: 'admin_teknik',
+    fullName: 'Alinu',
+    roleLabel: 'Admin Teknik'
+  },
+  'fitri@smk.co.id': {
+    username: 'fitri',
+    role: 'admin_keuangan',
+    fullName: 'Fitri',
+    roleLabel: 'Admin Keuangan'
+  },
+  'nissa@smk.co.id': {
+    username: 'nissa',
+    role: 'hanya_sph',
+    fullName: 'Nissa',
+    roleLabel: 'Hanya SPH'
+  },
+  'erwin@smk.co.id': {
+    username: 'erwin',
+    role: 'hanya_sph',
+    fullName: 'Erwin',
+    roleLabel: 'Hanya SPH'
+  },
+  'sulis@smk.co.id': {
+    username: 'sulis',
+    role: 'hanya_sph',
+    fullName: 'Sulis',
+    roleLabel: 'Hanya SPH'
+  }
+};
 
 export interface AppUser {
   id: string;
   email: string;
   role: UserRole;
+  roleLabel?: string;
   fullName?: string;
   avatarUrl?: string;
   displayName?: string;
@@ -46,24 +105,36 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 /**
- * Normalizes username inputs like "admin utama", "adminteknik", "adminkeuangan"
- * to their respective official login emails.
+ * Normalizes username inputs to their respective official login emails.
  */
 function normalizeEmail(input: string): string {
   const trimmed = input.trim().toLowerCase();
   if (trimmed.includes('@')) {
     return trimmed;
   }
-  const clean = trimmed.replace(/[\s_-]+/g, '');
-  if (clean === 'adminutama' || clean === 'ridhwanwell' || clean === 'admin') {
-    return 'admin.utama@smk.co.id';
+  const clean = trimmed.replace(/[\s_.-]+/g, '');
+
+  // Check against known usernames
+  for (const [email, info] of Object.entries(OFFICIAL_USERS_DIRECTORY)) {
+    if (info.username.toLowerCase() === clean || clean === info.fullName.toLowerCase().replace(/\s+/g, '')) {
+      return email;
+    }
+  }
+
+  // Common aliases
+  if (clean === 'adminutama' || clean === 'admin' || clean === 'ridhwan') {
+    return 'ridhwanwell@smk.co.id';
   }
   if (clean === 'adminteknik' || clean === 'teknik') {
-    return 'admin.teknik@smk.co.id';
+    return 'alinu@smk.co.id';
   }
   if (clean === 'adminkeuangan' || clean === 'keuangan') {
-    return 'admin.keuangan@smk.co.id';
+    return 'fitri@smk.co.id';
   }
+  if (clean === 'sph' || clean === 'hanyasph') {
+    return 'nissa@smk.co.id';
+  }
+
   return `${clean}@smk.co.id`;
 }
 
@@ -80,10 +151,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch role and profile from public.profiles table
+  // Fetch role and profile from public.profiles table or official directory
   const loadUserProfile = async (sbUser: User): Promise<AppUser> => {
-    let role: UserRole = 'admin_utama';
-    let fullName = sbUser.email || 'Admin PT SMK';
+    const emailStr = (sbUser.email || '').toLowerCase().trim();
+    const matchedDir = OFFICIAL_USERS_DIRECTORY[emailStr];
+
+    let role: UserRole = matchedDir?.role || 'admin_utama';
+    let fullName = matchedDir?.fullName || sbUser.email || 'Pengguna PT SMK';
+    let roleLabel = matchedDir?.roleLabel || (role === 'admin_utama' ? 'Admin Utama' : role === 'admin_keuangan' ? 'Admin Keuangan' : role === 'admin_teknik' ? 'Admin Teknik' : 'Hanya SPH');
+    let username = matchedDir?.username || emailStr.split('@')[0] || 'admin';
 
     try {
       const { data, error: profileErr } = await supabase
@@ -92,36 +168,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', sbUser.id)
         .maybeSingle();
 
-      if (!profileErr && data && data.role) {
-        role = data.role as UserRole;
+      if (!profileErr && data) {
+        if (data.role) role = data.role as UserRole;
         if (data.full_name) fullName = data.full_name;
-      } else {
-        // Fallback role deduction from verified email if profile record hasn't been created yet
-        const email = (sbUser.email || '').toLowerCase();
-        if (email.includes('teknik')) {
-          role = 'admin_teknik';
-          fullName = 'Admin Teknik PT SMK';
-        } else if (email.includes('keuangan')) {
-          role = 'admin_keuangan';
-          fullName = 'Admin Keuangan PT SMK';
-        } else {
-          role = 'admin_utama';
-          fullName = 'Admin Utama (Pemilik)';
-        }
       }
     } catch (err) {
       console.warn('Could not fetch user profile from Supabase:', err);
     }
 
-    const emailStr = sbUser.email || '';
-    const username = emailStr.split('@')[0] || 'admin';
-    const displayName = fullName || (username.charAt(0).toUpperCase() + username.slice(1));
+    const displayName = fullName;
     const avatarLetter = (displayName.charAt(0) || 'A').toUpperCase();
 
     const appUser: AppUser = {
       id: sbUser.id,
-      email: emailStr,
+      email: sbUser.email || emailStr,
       role,
+      roleLabel,
       fullName,
       displayName,
       username,

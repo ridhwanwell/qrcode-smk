@@ -25,7 +25,7 @@ export default function AdminLogin() {
 
   useEffect(() => {
     if (user) {
-      if (user.role === 'admin_teknik' || user.role === 'admin_keuangan') {
+      if (user.role === 'admin_teknik' || user.role === 'admin_keuangan' || user.role === 'hanya_sph') {
         navigate('/admin/aset', { replace: true });
       } else {
         navigate('/admin/dashboard', { replace: true });
@@ -43,7 +43,7 @@ export default function AdminLogin() {
       if (result.success) {
         // Redirect based on role
         const targetEmail = username.toLowerCase();
-        if (targetEmail.includes('teknik') || targetEmail.includes('keuangan')) {
+        if (targetEmail.includes('teknik') || targetEmail.includes('keuangan') || targetEmail.includes('sph') || targetEmail.includes('nissa') || targetEmail.includes('erwin') || targetEmail.includes('sulis')) {
           navigate('/admin/aset');
         } else {
           navigate('/admin/dashboard');

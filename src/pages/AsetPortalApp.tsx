@@ -12,6 +12,7 @@ import { WorkOrderPrintModal } from '../components/WorkOrderPrintModal';
 import { SphManager } from '../components/SphManager';
 import { SphFormModal } from '../components/SphFormModal';
 import { SphPrintModal } from '../components/SphPrintModal';
+import { SphTypeSelectorModal } from '../components/SphTypeSelectorModal';
 import { downloadSphPdf } from '../utils/sphPdfExport';
 import { TabletLoanManager } from '../components/TabletLoanManager';
 import { TemplateSettings } from '../components/TemplateSettings';
@@ -31,6 +32,7 @@ import {
   Technician,
   MarketingStaff,
   SphQuotation,
+  SphDealData,
   TabletDevice,
   TabletLoan,
   BapDocument
@@ -85,7 +87,9 @@ function AsetPortalMain() {
 
   // Auto-redirect to default permitted tab if current activeTab is restricted for the logged-in role
   useEffect(() => {
-    if (role === 'admin_keuangan' && !['dashboard', 'sph', 'labels', 'financial', 'masters'].includes(activeTab)) {
+    if (role === 'hanya_sph' && activeTab !== 'sph') {
+      setActiveTab('sph');
+    } else if (role === 'admin_keuangan' && !['dashboard', 'sph', 'labels', 'financial', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
     } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
@@ -255,9 +259,18 @@ function AsetPortalMain() {
   const [showCheckSyncModal, setShowCheckSyncModal] = useState(false);
 
   // SPH Modal States
+  const [showSphTypeSelector, setShowSphTypeSelector] = useState(false);
+  const [initialSphType, setInitialSphType] = useState<'non_ecatalogue' | 'ecatalogue'>('non_ecatalogue');
   const [showSphModal, setShowSphModal] = useState(false);
   const [editingSph, setEditingSph] = useState<SphQuotation | null>(null);
   const [printSph, setPrintSph] = useState<SphQuotation | null>(null);
+
+  const handleStartNewSphWithType = (type: 'non_ecatalogue' | 'ecatalogue') => {
+    setInitialSphType(type);
+    setEditingSph(null);
+    setShowSphTypeSelector(false);
+    setShowSphModal(true);
+  };
 
   // BAP (Berita Acara Pekerjaan) States
   const [selectedBap, setSelectedBap] = useState<BapDocument | null>(null);
@@ -305,11 +318,32 @@ function AsetPortalMain() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Helper to remove schedule associated with an SPH when status is no longer Deal
+  const removeScheduleForSph = (sph: SphQuotation) => {
+    const spkNum = generateSpkNumberFromSph(sph.sphNumber);
+    const bapNum = generateBapNumberFromSph(sph.sphNumber);
+
+    const matchingSchedules = schedules.filter(s => 
+      (sph.sphNumber && s.notes?.includes(sph.sphNumber)) ||
+      (spkNum && s.workOrderNumber === spkNum) ||
+      (bapNum && s.bapNumber === bapNum)
+    );
+
+    matchingSchedules.forEach(sch => {
+      removeSchedule(sch.id);
+    });
+  };
+
   // Helper to ensure an approved/deal SPH enters calibration scheduling
   const syncSphToSchedule = (sph: SphQuotation) => {
+    const spkNum = generateSpkNumberFromSph(sph.sphNumber);
+    const bapNum = generateBapNumberFromSph(sph.sphNumber);
+
     // Check if schedule for this SPH already exists
     const existingSch = schedules.find(s => 
-      s.notes?.includes(sph.sphNumber) || s.hospitalName.toLowerCase() === sph.hospitalName.toLowerCase()
+      (sph.sphNumber && s.notes?.includes(sph.sphNumber)) ||
+      (spkNum && s.workOrderNumber === spkNum) ||
+      (bapNum && s.bapNumber === bapNum)
     );
 
     if (existingSch) {
@@ -392,6 +426,8 @@ function AsetPortalMain() {
     if (sphToSave.status === 'Disetujui (Deal)') {
       syncSphToSchedule(sphToSave);
       ensureBapForSph(sphToSave);
+    } else {
+      removeScheduleForSph(sphToSave);
     }
   };
 
@@ -412,11 +448,33 @@ function AsetPortalMain() {
       showToast(`SPH ${targetSph.sphNumber} Deal! Otomatis dibuatkan dokumen BAP (4 Sheet) & masuk Jadwal RS.`);
       confetti({ particleCount: 75, spread: 65 });
     } else {
-      showToast(`Status SPH ${targetSph.sphNumber} berhasil diubah menjadi "${newStatus}".`);
+      removeScheduleForSph(targetSph);
+      showToast(`Status SPH ${targetSph.sphNumber} diubah menjadi "${newStatus}". Penjadwalan RS telah dihapus.`);
     }
   };
 
+  const handleSaveDealData = (sphId: string, dealData: SphDealData) => {
+    const targetSph = sphList.find(s => s.id === sphId);
+    if (!targetSph) return;
+
+    const updatedSph: SphQuotation = {
+      ...targetSph,
+      status: 'Disetujui (Deal)',
+      dealData
+    };
+
+    updateSph(updatedSph);
+    syncSphToSchedule(updatedSph);
+    ensureBapForSph(updatedSph);
+    showToast(`SPH ${targetSph.sphNumber} Deal! Dokumen BO (${dealData.boNumber}), FP (${dealData.fpNumber}), KWP (${dealData.kwpNumber}), dan BAP siap diunduh PDF.`);
+    confetti({ particleCount: 80, spread: 70 });
+  };
+
   const handleDeleteSph = (sphId: string) => {
+    const targetSph = sphList.find(s => s.id === sphId);
+    if (targetSph) {
+      removeScheduleForSph(targetSph);
+    }
     removeSph(sphId);
     if (editingSph?.id === sphId) setEditingSph(null);
     if (printSph?.id === sphId) setPrintSph(null);
@@ -809,7 +867,7 @@ function AsetPortalMain() {
                 sphList={effectiveSphList}
                 onOpenNewSph={() => {
                   setEditingSph(null);
-                  setShowSphModal(true);
+                  setShowSphTypeSelector(true);
                 }}
                 onEditSph={(sph) => {
                   setEditingSph(sph);
@@ -822,6 +880,7 @@ function AsetPortalMain() {
                 onDeleteSph={handleDeleteSph}
                 onConvertToSpk={handleConvertToSpkFromSph}
                 onUpdateStatus={handleUpdateSphStatus}
+                onSaveDealData={handleSaveDealData}
                 onNavigateToSchedules={() => setActiveTab('schedules')}
                 hospitals={effectiveHospitals}
                 bapDocuments={bapDocuments}
@@ -1121,6 +1180,13 @@ function AsetPortalMain() {
         />
       )}
 
+      {/* SPH Type Selector Modal (Non E-Catalogue vs E-Catalogue) */}
+      <SphTypeSelectorModal
+        isOpen={showSphTypeSelector}
+        onClose={() => setShowSphTypeSelector(false)}
+        onSelectType={handleStartNewSphWithType}
+      />
+
       {/* SPH Form Modal */}
       {showSphModal && (
         <SphFormModal
@@ -1133,6 +1199,7 @@ function AsetPortalMain() {
           hospitals={effectiveHospitals}
           initialSph={editingSph}
           existingSphCount={effectiveSphList.length}
+          initialSphType={initialSphType}
         />
       )}
 

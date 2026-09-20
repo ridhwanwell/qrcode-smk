@@ -7,8 +7,9 @@ export interface TemplateConfig {
 }
 
 export interface TemplateConfigs {
-  kecil: TemplateConfig | null;
+  kecil?: TemplateConfig | null;
   besar: TemplateConfig | null;
+  besarTidakLaik: TemplateConfig | null;
 }
 
 export const DEFAULT_QR_POS = { x: 260, y: 70, width: 140, height: 140 };
@@ -27,11 +28,12 @@ export function getCachedTemplateConfigs(): TemplateConfigs {
       return {
         kecil: parsed.kecil || null,
         besar: parsed.besar || null,
+        besarTidakLaik: parsed.besarTidakLaik || null,
       };
     }
   } catch (_) {}
 
-  return { kecil: null, besar: null };
+  return { kecil: null, besar: null, besarTidakLaik: null };
 }
 
 /**
@@ -45,7 +47,7 @@ export async function fetchTemplateConfigs(): Promise<TemplateConfigs> {
     const { data, error } = await supabase
       .from('labels')
       .select('no_label, pdforiginal_url')
-      .in('no_label', ['__meta_template_kecil', '__meta_template_besar']);
+      .in('no_label', ['__meta_template_kecil', '__meta_template_besar', '__meta_template_besar_tidak_laik']);
 
     if (!error && data && data.length > 0) {
       for (const row of data) {
@@ -57,6 +59,11 @@ export async function fetchTemplateConfigs(): Promise<TemplateConfigs> {
         if (row.no_label === '__meta_template_besar' && row.pdforiginal_url) {
           try {
             result.besar = JSON.parse(row.pdforiginal_url);
+          } catch (_) {}
+        }
+        if (row.no_label === '__meta_template_besar_tidak_laik' && row.pdforiginal_url) {
+          try {
+            result.besarTidakLaik = JSON.parse(row.pdforiginal_url);
           } catch (_) {}
         }
       }
@@ -82,6 +89,7 @@ export async function fetchTemplateConfigs(): Promise<TemplateConfigs> {
         if (val) {
           result.kecil = val.kecil || result.kecil;
           result.besar = val.besar || result.besar;
+          result.besarTidakLaik = val.besarTidakLaik || result.besarTidakLaik;
           try {
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result));
           } catch (_) {}
@@ -133,6 +141,20 @@ export async function saveTemplateConfigs(configs: TemplateConfigs): Promise<{ s
             status: 'metadata',
             pdf_source: 'template_besar',
             pdforiginal_url: JSON.stringify(configs.besar),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'no_label' })
+        )
+      );
+    }
+
+    if (configs.besarTidakLaik) {
+      updates.push(
+        Promise.resolve(
+          supabase.from('labels').upsert({
+            no_label: '__meta_template_besar_tidak_laik',
+            status: 'metadata',
+            pdf_source: 'template_besar_tidak_laik',
+            pdforiginal_url: JSON.stringify(configs.besarTidakLaik),
             updated_at: new Date().toISOString(),
           }, { onConflict: 'no_label' })
         )

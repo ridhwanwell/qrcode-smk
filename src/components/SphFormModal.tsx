@@ -14,19 +14,29 @@ import {
   DollarSign, 
   Percent, 
   TrendingDown, 
-  ArrowRight,
-  HelpCircle,
-  Receipt,
-  Download,
-  User,
-  Calendar,
-  Layers,
-  Phone,
-  FileCheck
+  ArrowRight, 
+  HelpCircle, 
+  Receipt, 
+  Download, 
+  User, 
+  Calendar, 
+  Layers, 
+  Phone, 
+  FileCheck,
+  Globe,
+  ExternalLink,
+  ShoppingCart,
+  CreditCard
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { SphItem, SphQuotation, Hospital } from '../types';
 import { SPH_TARIFF_CATALOG, TariffItem } from '../data/sphTariffCatalog';
+import { 
+  SPH_ECATALOGUE_CATALOG, 
+  ECatalogueItem, 
+  extractCleanToolName, 
+  getECatalogueTariff 
+} from '../data/sphECatalogueData';
 import { 
   calculateNegotiation, 
   generateSphNumber, 
@@ -39,6 +49,7 @@ import {
 import { createAuthenticSphPdf } from '../lib/templateGenerator';
 import { getFullTemplatesConfig } from '../lib/templateService';
 import { getLocalBlob } from '../lib/localBlobStorage';
+import { useAuth } from '../lib/AuthContext';
 
 const OFFICIAL_SAMPLE_ITEMS: SphItem[] = [
   { id: 'sample-1', description: 'Anaesthesia Unit (Mesin Anesthesi)', quantity: 1, unit: 'Unit', standardPrice: 362400, unitPrice: 362400, totalPrice: 362400 },
@@ -63,6 +74,79 @@ const OFFICIAL_SAMPLE_ITEMS: SphItem[] = [
   { id: 'sample-20', description: 'Ventilator', quantity: 2, unit: 'Unit', standardPrice: 400000, unitPrice: 400000, totalPrice: 800000 }
 ];
 
+const OFFICIAL_ECATALOGUE_SAMPLE_ITEMS: SphItem[] = [
+  { 
+    id: 'ecat-1', 
+    description: 'Syringe Pump', 
+    quantity: 5, 
+    unit: 'Unit', 
+    standardPrice: 460650, 
+    unitPrice: 460650, 
+    totalPrice: 2303250,
+    eCatalogueUrl: 'https://katalog.inaproc.id/sarana-multi-kalibrasi/jasa-kalibrasi-dan-atau-pengujian-alat-kesehatan-syringe-pump' 
+  },
+  { 
+    id: 'ecat-2', 
+    description: 'Infuse Pump', 
+    quantity: 5, 
+    unit: 'Unit', 
+    standardPrice: 305250, 
+    unitPrice: 305250, 
+    totalPrice: 1526250,
+    eCatalogueUrl: 'https://katalog.inaproc.id/sarana-multi-kalibrasi/jasa-kalibrasi-dan-atau-pengujian-alat-kalibrasi-infuse-pump' 
+  },
+  { 
+    id: 'ecat-3', 
+    description: 'Centrifuge', 
+    quantity: 2, 
+    unit: 'Unit', 
+    standardPrice: 252000, 
+    unitPrice: 252000, 
+    totalPrice: 504000,
+    eCatalogueUrl: 'https://katalog.inaproc.id/sarana-multi-kalibrasi/jasa-pengujian-dan-atau-kalibrasi-alat-kesehatan-centrifuge' 
+  },
+  { 
+    id: 'ecat-4', 
+    description: 'Autoclave', 
+    quantity: 1, 
+    unit: 'Unit', 
+    standardPrice: 428999, 
+    unitPrice: 428999, 
+    totalPrice: 428999,
+    eCatalogueUrl: 'https://katalog.inaproc.id/sarana-multi-kalibrasi/jasa-pengujian-dan-atau-kalibrasi-alat-kesehatan-autoclave' 
+  },
+  { 
+    id: 'ecat-5', 
+    description: 'Electrocardiograph (ECG)', 
+    quantity: 2, 
+    unit: 'Unit', 
+    standardPrice: 298500, 
+    unitPrice: 298500, 
+    totalPrice: 597000,
+    eCatalogueUrl: 'https://katalog.inaproc.id/sarana-multi-kalibrasi/jasa-pengujian-dan-atau-kalibrasi-alat-kesehatan-electrocardiograph' 
+  },
+  { 
+    id: 'ecat-6', 
+    description: 'Bed Side Monitor', 
+    quantity: 4, 
+    unit: 'Unit', 
+    standardPrice: 350000, 
+    unitPrice: 350000, 
+    totalPrice: 1400000,
+    eCatalogueUrl: 'https://katalog.inaproc.id/sarana-multi-kalibrasi/jasa-kalibrasi-dan-atau-pengujian-bed-side-monitor' 
+  },
+  { 
+    id: 'ecat-7', 
+    description: 'Tensimeter Jarum / Sphygmomanometer', 
+    quantity: 8, 
+    unit: 'Unit', 
+    standardPrice: 230880, 
+    unitPrice: 230880, 
+    totalPrice: 1847040,
+    eCatalogueUrl: 'https://katalog.inaproc.id/sarana-multi-kalibrasi/jasa-kalibrasi-dan-atau-pengujian-tensi-jarum' 
+  }
+];
+
 interface SphFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -70,6 +154,7 @@ interface SphFormModalProps {
   hospitals: Hospital[];
   initialSph?: SphQuotation | null;
   existingSphCount?: number;
+  initialSphType?: 'non_ecatalogue' | 'ecatalogue';
 }
 
 export const SphFormModal: React.FC<SphFormModalProps> = ({
@@ -78,8 +163,15 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
   onSave,
   hospitals,
   initialSph,
-  existingSphCount = 45
+  existingSphCount = 45,
+  initialSphType = 'non_ecatalogue'
 }) => {
+  const { role } = useAuth();
+  const canMarkDeal = role === 'admin_utama' || role === 'admin_keuangan';
+
+  // SPH Type (Non E-Catalogue vs E-Catalogue)
+  const [sphType, setSphType] = useState<'non_ecatalogue' | 'ecatalogue'>('non_ecatalogue');
+
   // Form Header & Letter Info State
   const [sphNumber, setSphNumber] = useState('');
   const [subject, setSubject] = useState('Surat Penawaran Harga Kalibrasi');
@@ -94,6 +186,10 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
   const [hospitalName, setHospitalName] = useState('');
   const [hospitalAddress, setHospitalAddress] = useState('');
   const [customerUp, setCustomerUp] = useState('Direktur');
+
+  // Payment Bank Option in Info Surat (Poin 9)
+  const [paymentOption, setPaymentOption] = useState<'both' | 'jateng' | 'mandiri' | 'custom'>('both');
+  const [customBankDetails, setCustomBankDetails] = useState('');
 
   // Items State
   const [items, setItems] = useState<SphItem[]>([]);
@@ -119,10 +215,13 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedCatalogCategory, setSelectedCatalogCategory] = useState<string>('Semua');
   const [showCatalogModal, setShowCatalogModal] = useState(false);
+  const [catalogTab, setCatalogTab] = useState<'ecatalogue' | 'brochure'>('brochure');
 
   // Initialize or reset form
   useEffect(() => {
     if (initialSph) {
+      setSphType(initialSph.sphType || 'non_ecatalogue');
+      setCatalogTab(initialSph.sphType === 'ecatalogue' ? 'ecatalogue' : 'brochure');
       setSphNumber(initialSph.sphNumber);
       setSubject(initialSph.subject || 'Surat Penawaran Harga Kalibrasi');
       setAttachmentPages(initialSph.attachmentPages || '1 Lembar');
@@ -145,11 +244,16 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       setMarketingStaffPhone(initialSph.marketingStaffPhone || '0812-4484-2383');
       setDirectorName(initialSph.directorName || 'Ahmad Fajar Ariyanto');
       setDirectorTitle(initialSph.directorTitle || 'Direktur');
+      setPaymentOption(initialSph.paymentOption || 'both');
+      setCustomBankDetails(initialSph.customBankDetails || '');
     } else {
       // New SPH defaults
+      const chosenType = initialSphType || 'non_ecatalogue';
+      setSphType(chosenType);
+      setCatalogTab(chosenType === 'ecatalogue' ? 'ecatalogue' : 'brochure');
       setSphNumber(generateSphNumber(existingSphCount));
       setSubject('Surat Penawaran Harga Kalibrasi');
-      setAttachmentPages('1 Lembar');
+      setAttachmentPages(chosenType === 'ecatalogue' ? '2 Lembar' : '1 Lembar');
       setDate(new Date().toISOString().split('T')[0]);
       setCity('Surakarta');
       setTembusan('-');
@@ -158,6 +262,8 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       setHospitalName('');
       setHospitalAddress('');
       setCustomerUp('Direktur');
+      setPaymentOption('both');
+      setCustomBankDetails('');
       setAccommodationFee(0);
       setIsPpnIncluded(true);
       setNegotiationTarget('');
@@ -168,11 +274,9 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       setMarketingStaffPhone('0812-4484-2383');
       setDirectorName('Ahmad Fajar Ariyanto');
       setDirectorTitle('Direktur');
-
-      // Start with empty items list for custom entry
       setItems([]);
     }
-  }, [initialSph, isOpen, existingSphCount]);
+  }, [initialSph, isOpen, existingSphCount, initialSphType]);
 
   // Handle hospital select
   const handleHospitalChange = (hId: string) => {
@@ -193,25 +297,62 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
     }
   };
 
-  // Add Item
-  const handleAddItem = (tariff?: TariffItem) => {
+  // Add Item from Brochure Catalog
+  const handleAddItemFromBrochure = (tariff: TariffItem) => {
     const newItem: SphItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      ...(tariff?.id ? { catalogNumber: tariff.id } : {}),
-      description: tariff ? tariff.name : '',
+      catalogNumber: tariff.id,
+      description: tariff.name,
       quantity: 1,
-      unit: tariff ? tariff.unit : 'Unit',
-      standardPrice: tariff ? tariff.price : 0,
-      unitPrice: tariff ? tariff.price : 0,
-      totalPrice: tariff ? tariff.price : 0,
-      notes: tariff?.notes || ''
+      unit: tariff.unit,
+      standardPrice: tariff.price,
+      unitPrice: tariff.price,
+      totalPrice: tariff.price,
+      notes: tariff.notes || '',
+      eCatalogueUrl: getECatalogueTariff(tariff.name)?.link
     };
     setItems(prev => [...prev, newItem]);
   };
 
-  // Load Official 20 items sample
-  const handleLoadOfficialSample = () => {
-    setItems(OFFICIAL_SAMPLE_ITEMS);
+  // Add Item from E-Catalogue Catalog
+  const handleAddItemFromECatalogue = (ecat: ECatalogueItem) => {
+    const cleanName = extractCleanToolName(ecat.name);
+    const newItem: SphItem = {
+      id: `ecat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      catalogNumber: ecat.id,
+      description: cleanName,
+      quantity: 1,
+      unit: ecat.unit || 'Unit',
+      standardPrice: ecat.price,
+      unitPrice: ecat.price,
+      totalPrice: ecat.price,
+      eCatalogueUrl: ecat.link
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
+  // Add Empty Item Manual
+  const handleAddEmptyItem = () => {
+    const newItem: SphItem = {
+      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      description: '',
+      quantity: 1,
+      unit: 'Unit',
+      standardPrice: 0,
+      unitPrice: 0,
+      totalPrice: 0,
+      eCatalogueUrl: ''
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
+  // Load sample items
+  const handleLoadSampleItems = () => {
+    if (sphType === 'ecatalogue') {
+      setItems(OFFICIAL_ECATALOGUE_SAMPLE_ITEMS);
+    } else {
+      setItems(OFFICIAL_SAMPLE_ITEMS);
+    }
   };
 
   // Remove Item
@@ -275,12 +416,20 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
   const formattedDateStr = formatIndonesianLongDate(date, city);
 
   // Filter Catalog
-  const categories = ['Semua', ...Array.from(new Set(SPH_TARIFF_CATALOG.map(t => t.category)))];
-  const filteredCatalog = SPH_TARIFF_CATALOG.filter(t => {
+  const brochureCategories = ['Semua', ...Array.from(new Set(SPH_TARIFF_CATALOG.map(t => t.category)))];
+  const filteredBrochureCatalog = SPH_TARIFF_CATALOG.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(catalogSearch.toLowerCase()) || 
                           t.id.toString().includes(catalogSearch);
     const matchesCat = selectedCatalogCategory === 'Semua' || t.category === selectedCatalogCategory;
     return matchesSearch && matchesCat;
+  });
+
+  const filteredECatalogue = SPH_ECATALOGUE_CATALOG.filter(ec => {
+    const matchesSearch = 
+      ec.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+      ec.id.toString().includes(catalogSearch) ||
+      extractCleanToolName(ec.name).toLowerCase().includes(catalogSearch.toLowerCase());
+    return matchesSearch;
   });
 
   // Direct PDF Download Handler
@@ -305,66 +454,79 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
           : config.kop_surat.activeUrl;
       }
 
-    const calculatedTerbilang = angkaTerbilang(grandTotal);
-    const dynamicAttachmentPages = items.length > 0 ? (items.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
+      const calculatedTerbilang = angkaTerbilang(grandTotal);
+      const dynamicAttachmentPages = sphType === 'ecatalogue'
+        ? (items.length > 14 ? '3 Lembar' : '2 Lembar')
+        : (items.length > 18 ? '2 Lembar' : '1 Lembar');
 
-    // Bersihkan dan amankan item sesuai input manual pengguna
-    const cleanItems: SphItem[] = items.map((it, idx) => {
-      const q = Math.max(1, Number(it.quantity) || 1);
-      const uPrice = Math.max(0, Number(it.unitPrice) || 0);
-      return {
-        ...it,
-        no: it.no || (idx + 1),
-        quantity: q,
-        unitPrice: uPrice,
-        totalPrice: q * uPrice,
-        standardPrice: (it.standardPrice !== undefined && it.standardPrice > 0) ? it.standardPrice : uPrice
+      const cleanItems: SphItem[] = items.map((it, idx) => {
+        const q = Math.max(1, Number(it.quantity) || 1);
+        const uPrice = Math.max(0, Number(it.unitPrice) || 0);
+        const cleanName = extractCleanToolName(it.description || '');
+        const autoUrl = it.eCatalogueUrl || getECatalogueTariff(it.description)?.link || getECatalogueTariff(cleanName)?.link;
+
+        return {
+          ...it,
+          no: it.no || (idx + 1),
+          quantity: q,
+          unitPrice: uPrice,
+          totalPrice: q * uPrice,
+          standardPrice: (it.standardPrice !== undefined && it.standardPrice > 0) ? it.standardPrice : uPrice,
+          eCatalogueUrl: autoUrl || it.eCatalogueUrl
+        };
+      });
+
+      const sphData = {
+        sphType,
+        sphNumber: sphNumber || generateSphNumber(existingSphCount),
+        subject,
+        attachmentPages: dynamicAttachmentPages,
+        date,
+        city,
+        formattedDate: formattedDateStr,
+        hospitalName,
+        hospitalAddress,
+        recipientRole: customerUp || 'Direktur',
+        tembusan,
+        notes,
+        items: cleanItems.map((it, idx) => ({
+          no: idx + 1,
+          description: it.description,
+          quantity: it.quantity,
+          unit: it.unit || 'Unit',
+          unitPrice: it.unitPrice,
+          totalPrice: it.totalPrice,
+          eCatalogueUrl: it.eCatalogueUrl
+        })),
+        subtotalOriginal,
+        subtotal1,
+        accommodationFee: Number(accommodationFee) || 0,
+        subtotal2,
+        ppnPercent: isPpnIncluded ? 11 : 0,
+        isPpnIncluded,
+        ppnAmount,
+        grandTotal,
+        terbilang: calculatedTerbilang,
+        marketingStaffName,
+        marketingStaffPhone,
+        directorName,
+        directorTitle,
+        paymentOption,
+        customBankDetails,
+        bankName: paymentOption === 'jateng' 
+          ? 'Bank Jateng Cab. Surakarta' 
+          : (paymentOption === 'mandiri' ? 'Bank Mandiri Cab. Surakarta' : 'Bank Mandiri & Bank Jateng'),
+        bankAccountNumber: paymentOption === 'jateng' 
+          ? '1-002-01495-1' 
+          : (paymentOption === 'mandiri' ? '138-00-2610846-9' : '1-002-01495-1 / 138-00-2610846-9'),
+        bankAccountName: 'SARANA MULTI KALIBRASI PT'
       };
-    });
-
-    const sphData = {
-      sphNumber: sphNumber || generateSphNumber(existingSphCount),
-      subject,
-      attachmentPages: dynamicAttachmentPages,
-      date,
-      city,
-      formattedDate: formattedDateStr,
-      hospitalName,
-      hospitalAddress,
-      recipientRole: customerUp || 'Direktur',
-      tembusan,
-      notes,
-      items: cleanItems.map((it, idx) => ({
-        no: idx + 1,
-        description: it.description,
-        quantity: it.quantity,
-        unit: it.unit || 'Unit',
-        unitPrice: it.unitPrice,
-        totalPrice: it.totalPrice
-      })),
-      subtotalOriginal,
-      subtotal1,
-      accommodationFee: Number(accommodationFee) || 0,
-      subtotal2,
-      ppnPercent: isPpnIncluded ? 11 : 0,
-      isPpnIncluded,
-      ppnAmount,
-      grandTotal,
-      terbilang: calculatedTerbilang,
-      marketingStaffName,
-      marketingStaffPhone,
-      directorName,
-      directorTitle,
-      bankName: 'Bank Mandiri Cab. Surakarta',
-      bankAccountNumber: '138-00-2610846-9',
-      bankAccountName: 'SARANA MULTI KALIBRASI PT'
-    };
 
       const pdfBytes = await createAuthenticSphPdf(sphData, undefined, resolvedLh);
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const cleanNumber = (sphNumber || 'SPH').replace(/[^a-zA-Z0-9-]/g, '_');
       const cleanCust = (hospitalName || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
-      saveAs(blob, `SPH_${cleanNumber}_${cleanCust}.pdf`);
+      saveAs(blob, `SPH_${sphType === 'ecatalogue' ? 'ECATALOGUE_' : ''}${cleanNumber}_${cleanCust}.pdf`);
     } catch (err: any) {
       console.error('Error generating direct SPH PDF:', err);
       alert('Gagal menghasilkan PDF: ' + (err?.message || 'Error tidak diketahui'));
@@ -390,13 +552,17 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
     const cleanItems: SphItem[] = items.map((it, idx) => {
       const q = Math.max(1, Number(it.quantity) || 1);
       const uPrice = Math.max(0, Number(it.unitPrice) || 0);
+      const cleanName = extractCleanToolName(it.description || '');
+      const autoUrl = it.eCatalogueUrl || getECatalogueTariff(it.description)?.link || getECatalogueTariff(cleanName)?.link;
+
       return {
         ...it,
         no: it.no || (idx + 1),
         quantity: q,
         unitPrice: uPrice,
         totalPrice: q * uPrice,
-        standardPrice: (it.standardPrice !== undefined && it.standardPrice > 0) ? it.standardPrice : uPrice
+        standardPrice: (it.standardPrice !== undefined && it.standardPrice > 0) ? it.standardPrice : uPrice,
+        eCatalogueUrl: autoUrl || it.eCatalogueUrl
       };
     });
 
@@ -412,10 +578,21 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
     const calculatedDiscountAmount = Math.max(0, calculatedSubtotalOriginal - calculatedSubtotal1);
     const calculatedDiscountPercent = calculatedSubtotalOriginal > 0 ? (calculatedDiscountAmount / calculatedSubtotalOriginal) * 100 : 0;
 
-    const dynamicAttachmentPages = cleanItems.length > 0 ? (cleanItems.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
+    const dynamicAttachmentPages = sphType === 'ecatalogue'
+      ? (cleanItems.length > 14 ? '3 Lembar' : '2 Lembar')
+      : (cleanItems.length > 18 ? '2 Lembar' : '1 Lembar');
+
+    const paymentTermText = paymentOption === 'jateng'
+      ? 'Pembayaran : Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)'
+      : paymentOption === 'mandiri'
+      ? 'Pembayaran : Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)'
+      : paymentOption === 'custom' && customBankDetails
+      ? `Pembayaran : ${customBankDetails}`
+      : 'Pembayaran : 1. Bank Jateng: 1-002-01495-1 | 2. Bank Mandiri: 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)';
 
     const newSph: SphQuotation = {
       id: initialSph?.id || `SPH-${Date.now()}`,
+      sphType,
       sphNumber: sphNumber || generateSphNumber(existingSphCount),
       subject,
       attachmentPages: dynamicAttachmentPages,
@@ -442,8 +619,14 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       marketingStaffPhone,
       directorName,
       directorTitle,
-      bankName: 'Bank Mandiri Cab. Surakarta',
-      bankAccountNumber: '138-00-2610846-9',
+      paymentOption,
+      customBankDetails,
+      bankName: paymentOption === 'jateng' 
+        ? 'Bank Jateng Cab. Surakarta' 
+        : (paymentOption === 'mandiri' ? 'Bank Mandiri Cab. Surakarta' : 'Bank Mandiri & Bank Jateng'),
+      bankAccountNumber: paymentOption === 'jateng' 
+        ? '1-002-01495-1' 
+        : (paymentOption === 'mandiri' ? '138-00-2610846-9' : '1-002-01495-1 / 138-00-2610846-9'),
       bankAccountName: 'SARANA MULTI KALIBRASI PT',
       termsAndConditions: [
         isPpnIncluded ? 'Harga sudah termasuk PPN 11%.' : 'Harga belum termasuk PPN 11%.',
@@ -454,7 +637,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
         'Apabila terdapat penambahan alat pada saat kalibrasi, segera dimutakhirkan BO (Bukti Order) dan di setujui pelanggan.',
         'Pekerjaan dianggap selesai setelah berita acara/BO (Bukti Order) di tanda tangani oleh pihak yang berwenang.',
         'Kalibrasi di atas termasuk sertifikat kalibrasi yang dikeluarkan oleh PT. Sarana Multi Kalibrasi.',
-        'Pembayaran : Bank Mandiri Cab. Surakarta No. Rek : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)'
+        paymentTermText
       ],
       status,
       discountAmount: calculatedDiscountAmount,
@@ -476,7 +659,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
       <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-5xl my-6 overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
         
-        {/* Header Modal - Flux Theme */}
+        {/* Header Modal */}
         <div className="px-6 py-4 bg-[#1C658C] border-b border-[#144966] text-white flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-white/10 border border-white/20 rounded-xl text-white">
@@ -484,13 +667,13 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>{initialSph ? 'Edit Surat Penawaran Harga (SPH)' : 'Pembuatan SPH Otomatis & Download PDF'}</span>
+                <span>{initialSph ? 'Edit Surat Penawaran Harga (SPH)' : 'Pembuatan Surat Penawaran Harga (SPH)'}</span>
                 <span className="text-xs bg-white/20 text-white border border-white/30 px-2 py-0.5 rounded font-mono font-bold">
                   {sphNumber}
                 </span>
               </h2>
               <p className="text-xs text-[#D8D2CB]">
-                Isi form lengkap, kalkulasi negosiasi otomatis, dan langsung download PDF resmi 2 halaman dengan Kop Surat
+                Pilih format penawaran, kalkulasi negosiasi otomatis, dan unduh PDF resmi ber-Kop Surat
               </p>
             </div>
           </div>
@@ -510,6 +693,59 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
             >
               <X className="w-5 h-5" />
             </button>
+          </div>
+        </div>
+
+        {/* SPH Type Selector Banner */}
+        <div className="bg-slate-100 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Jenis SPH:</span>
+            <div className="flex items-center bg-white p-1 rounded-xl border border-slate-300 shadow-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setSphType('non_ecatalogue');
+                  setCatalogTab('brochure');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  sphType === 'non_ecatalogue'
+                    ? 'bg-[#1C658C] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Non E-Catalogue (Reguler)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSphType('ecatalogue');
+                  setCatalogTab('ecatalogue');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  sphType === 'ecatalogue'
+                    ? 'bg-[#1C658C] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5 text-cyan-300" />
+                <span>E-Catalogue (Inaproc LKPP)</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="text-xs text-slate-500">
+            {sphType === 'ecatalogue' ? (
+              <span className="flex items-center gap-1.5 text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 font-medium">
+                <Check className="w-3.5 h-3.5 text-blue-600" />
+                Otomatis Lampiran Lembar Link E-Catalogue Inaproc LKPP (139 Item)
+              </span>
+            ) : (
+              <span className="text-slate-600 font-medium">
+                Katalog Tarif Standar Brosur Resmi (121 Alat Medis)
+              </span>
+            )}
           </div>
         </div>
 
@@ -674,6 +910,82 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 <span className="font-semibold text-[#1C658C]">{formattedDateStr}</span>
               </div>
 
+              {/* PILIHAN PEMBAYARAN BANK (Poin 9 SPH) */}
+              <div className="pt-1 border-t border-[#D8D2CB]/60">
+                <label className="block text-xs font-semibold text-slate-800 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-[#1C658C]">
+                    <CreditCard className="w-3.5 h-3.5 text-[#398AB9]" />
+                    <span>Pilihan Rekening Pembayaran (Poin 9)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-normal">Rekening Resmi PT SMK</span>
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption('both')}
+                    className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-center ${
+                      paymentOption === 'both'
+                        ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-xs'
+                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#D8D2CB] hover:bg-[#EEEEEE]'
+                    }`}
+                  >
+                    <span className="leading-tight">2 Bank (Keduanya)</span>
+                    <span className={`text-[10px] ${paymentOption === 'both' ? 'text-cyan-100' : 'text-slate-500'}`}>Jateng & Mandiri</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption('jateng')}
+                    className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-center ${
+                      paymentOption === 'jateng'
+                        ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-xs'
+                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#D8D2CB] hover:bg-[#EEEEEE]'
+                    }`}
+                  >
+                    <span className="leading-tight">Bank Jateng Saja</span>
+                    <span className={`text-[10px] font-mono ${paymentOption === 'jateng' ? 'text-cyan-100' : 'text-slate-500'}`}>1-002-01495-1</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption('mandiri')}
+                    className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-center ${
+                      paymentOption === 'mandiri'
+                        ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-xs'
+                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#D8D2CB] hover:bg-[#EEEEEE]'
+                    }`}
+                  >
+                    <span className="leading-tight">Bank Mandiri Saja</span>
+                    <span className={`text-[10px] font-mono ${paymentOption === 'mandiri' ? 'text-cyan-100' : 'text-slate-500'}`}>138-00-2610846-9</span>
+                  </button>
+                </div>
+
+                {/* Box Detail Rekening Terpilih */}
+                <div className="p-2.5 bg-blue-50/70 border border-blue-200/80 rounded-lg text-xs space-y-1">
+                  <div className="text-[11px] font-bold text-blue-900 flex items-center gap-1">
+                    <Check className="w-3 h-3 text-emerald-600" />
+                    <span>Rekening yang tercantum pada surat SPH:</span>
+                  </div>
+                  {paymentOption === 'both' && (
+                    <div className="space-y-0.5 text-[11px] text-slate-800">
+                      <div>1. <strong>Bank Jateng:</strong> <span className="font-mono font-bold">1-002-01495-1</span> <span className="text-slate-600">(a.n. SARANA MULTI KALIBRASI PT)</span></div>
+                      <div>2. <strong>Bank Mandiri:</strong> <span className="font-mono font-bold">138-00-2610846-9</span> <span className="text-slate-600">(a.n. SARANA MULTI KALIBRASI PT)</span></div>
+                    </div>
+                  )}
+                  {paymentOption === 'jateng' && (
+                    <div className="text-[11px] text-slate-800">
+                      <strong>Bank Jateng:</strong> <span className="font-mono font-bold">1-002-01495-1</span> <span className="text-slate-600">(a.n. SARANA MULTI KALIBRASI PT)</span>
+                    </div>
+                  )}
+                  {paymentOption === 'mandiri' && (
+                    <div className="text-[11px] text-slate-800">
+                      <strong>Bank Mandiri:</strong> <span className="font-mono font-bold">138-00-2610846-9</span> <span className="text-slate-600">(a.n. SARANA MULTI KALIBRASI PT)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Catatan (Opsional)
@@ -708,7 +1020,9 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   <option value="Draft">Draft</option>
                   <option value="Terkirim ke RS">Terkirim ke RS</option>
                   <option value="Negosiasi">Proses Negosiasi</option>
-                  <option value="Disetujui (Deal)">Disetujui (Deal)</option>
+                  {(canMarkDeal || status === 'Disetujui (Deal)') && (
+                    <option value="Disetujui (Deal)">Disetujui (Deal)</option>
+                  )}
                   <option value="Ditolak">Ditolak</option>
                 </select>
               </div>
@@ -749,21 +1063,21 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
               {/* Signer TTD */}
               <div className="sm:col-span-3">
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Nama Penanda Tangan (TTD)
+                  Nama Penanda Tangan
                 </label>
                 <input
                   type="text"
                   value={directorName}
                   onChange={(e) => setDirectorName(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-medium"
                   placeholder="Ahmad Fajar Ariyanto"
                 />
               </div>
 
-              {/* Signer Title */}
+              {/* Signer Role */}
               <div className="sm:col-span-3">
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Jabatan
+                  Jabatan Penanda Tangan
                 </label>
                 <input
                   type="text"
@@ -776,52 +1090,37 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
             </div>
           </div>
 
-          {/* BAGIAN 3: KALKULATOR NEGOSIASI CERDAS (SMART NEGOTIATION ENGINE) */}
-          <div className="bg-white border-2 border-[#1C658C] rounded-xl p-5 space-y-4 shadow-md">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#D8D2CB] pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-[#1C658C]/10 border border-[#1C658C]/30 rounded-xl text-[#1C658C]">
-                  <Calculator className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-[#1C658C] flex items-center gap-2">
-                    <span>Kalkulator Negosiasi & Target Deal Rumah Sakit</span>
-                    <span className="bg-[#398AB9]/20 text-[#1C658C] text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border border-[#398AB9]/30">
-                      Otomatis Distribusi Proporsional
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Masukkan nominal deal yang disepakati pihak RS — seluruh harga satuan alat otomatis dihitung ulang & disesuaikan presisi
-                  </p>
-                </div>
+          {/* BAGIAN 3: KALKULASI & SIMULASI NEGOSIASI HARGA */}
+          <div className="bg-white border border-[#D8D2CB] rounded-xl p-5 space-y-4 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#D8D2CB]/60 pb-2.5">
+              <div>
+                <h3 className="text-xs font-bold text-[#1C658C] flex items-center gap-2 uppercase tracking-wide">
+                  <Calculator className="w-4 h-4 text-[#398AB9]" />
+                  <span>Kalkulasi Negosiasi Harga Deal (Otomatis)</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Target deal rumah sakit akan diproporsionalkan otomatis ke masing-masing item alat
+                </p>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={resetToBrochurePrices}
-                  className="px-3 py-1.5 bg-[#EEEEEE] hover:bg-[#D8D2CB]/60 text-slate-700 text-xs font-medium rounded-lg border border-[#D8D2CB] flex items-center gap-1.5 transition-all cursor-pointer"
-                  title="Kembalikan semua harga ke tarif resmi katalog brosur"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Reset Harga Normal</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={resetToBrochurePrices}
+                className="px-3 py-1 bg-[#EEEEEE] hover:bg-[#D8D2CB]/60 text-slate-700 text-xs font-medium rounded-lg border border-[#D8D2CB] flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Reset kembali ke harga katalog standar"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset ke Harga Standar</span>
+              </button>
             </div>
 
-            {/* Negotiation Input Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-              
-              {/* Target Deal Nominal Input */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              {/* Input Target Deal */}
               <div className="md:col-span-5">
-                <label className="block text-xs font-semibold text-[#1C658C] mb-1.5 flex items-center justify-between">
-                  <span>Nominal Deal yang Diminta Pihak RS (Rp)</span>
-                  <span className="text-[11px] text-slate-500 font-normal">Contoh: 15000000 atau 20000000</span>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Target Nominal Deal (Ketik angka saja):
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#1C658C] font-bold text-xs">
-                    Rp
-                  </div>
+                  <span className="absolute left-3 top-2.5 text-slate-400 font-mono text-xs font-bold">Rp</span>
                   <input
                     type="number"
                     value={negotiationTarget}
@@ -925,24 +1224,48 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   <span className="text-xs bg-[#EEEEEE] text-slate-700 px-2 py-0.5 rounded-full font-mono border border-[#D8D2CB]">
                     {items.length} Item
                   </span>
+                  {sphType === 'ecatalogue' && (
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-semibold border border-blue-200 flex items-center gap-1">
+                      <Globe className="w-3 h-3" />
+                      E-Catalogue Mode
+                    </span>
+                  )}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Daftar alat sesuai format resmi Lampiran SPH PT. Sarana Multi Kalibrasi
+                  {sphType === 'ecatalogue' 
+                    ? 'Format Penawaran E-Catalogue LKPP Inaproc (otomatis mencetak Lembar Lampiran Link E-Catalogue)' 
+                    : 'Daftar alat sesuai format resmi Lampiran SPH PT. Sarana Multi Kalibrasi'}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowCatalogModal(true)}
+                  onClick={handleLoadSampleItems}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg border border-slate-300 flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Muat contoh item siap pakai"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Muat Contoh Item</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogTab(sphType === 'ecatalogue' ? 'ecatalogue' : 'brochure');
+                    setShowCatalogModal(true);
+                  }}
                   className="px-3 py-1.5 bg-[#1C658C] hover:bg-[#398AB9] text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Search className="w-3.5 h-3.5" />
-                  <span>Katalog Brosur (121 Alat)</span>
+                  <span>
+                    {sphType === 'ecatalogue' ? 'Katalog Inaproc (139 Item)' : 'Katalog Brosur (121 Alat)'}
+                  </span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => handleAddItem()}
+                  onClick={handleAddEmptyItem}
                   className="px-3 py-1.5 bg-[#EEEEEE] hover:bg-[#D8D2CB]/60 text-slate-700 text-xs font-medium rounded-lg border border-[#D8D2CB] flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -957,11 +1280,14 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 <thead>
                   <tr className="bg-[#00a2e8] text-white border-b border-black font-bold">
                     <th className="px-2 py-2 w-10 text-center border-r border-black/30">No</th>
-                    <th className="px-3 py-2 min-w-[220px] border-r border-black/30">Diskripsi (Nama Alat)</th>
+                    <th className="px-3 py-2 min-w-[220px] border-r border-black/30">Nama Alat / Diskripsi</th>
                     <th className="px-2 py-2 w-16 text-center border-r border-black/30">Qty</th>
                     <th className="px-2 py-2 w-20 text-center border-r border-black/30">Satuan</th>
                     <th className="px-3 py-2 w-32 text-right border-r border-black/30">Harga Satuan (Rp)</th>
                     <th className="px-3 py-2 w-36 text-right border-r border-black/30">Total Harga (Rp)</th>
+                    {sphType === 'ecatalogue' && (
+                      <th className="px-3 py-2 min-w-[200px] border-r border-black/30">Link E-Catalogue</th>
+                    )}
                     <th className="px-2 py-2 w-10 text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -1023,6 +1349,32 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                         Rp {formatNumber(item.totalPrice)}
                       </td>
 
+                      {/* Link E-Catalogue Column */}
+                      {sphType === 'ecatalogue' && (
+                        <td className="px-2.5 py-2 border-r border-[#D8D2CB]/40">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={item.eCatalogueUrl || ''}
+                              onChange={(e) => handleUpdateItem(item.id, 'eCatalogueUrl', e.target.value)}
+                              placeholder="https://katalog.inaproc.id/..."
+                              className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-2 py-1 text-[11px] text-blue-700 font-mono focus:ring-1 focus:ring-[#1C658C] outline-none"
+                            />
+                            {item.eCatalogueUrl && (
+                              <a 
+                                href={item.eCatalogueUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="p-1 text-blue-600 hover:text-blue-800"
+                                title="Buka Link Produk E-Katalog"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      )}
+
                       {/* Delete */}
                       <td className="px-2 py-2 text-center">
                         <button
@@ -1051,39 +1403,36 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     type="number"
                     value={accommodationFee}
                     onChange={(e) => setAccommodationFee(parseFloat(e.target.value) || 0)}
-                    className="w-36 bg-white border border-[#D8D2CB] rounded-lg px-2.5 py-1 text-right font-mono text-slate-900 text-xs"
+                    className="w-36 bg-white border border-[#D8D2CB] rounded-lg px-2.5 py-1.5 text-right font-mono font-bold text-slate-900 outline-none"
                     placeholder="0"
                   />
                 </div>
 
                 <div className="flex items-center justify-between p-3 bg-[#EEEEEE]/40 border border-[#D8D2CB] rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="ppn-toggle"
-                      checked={isPpnIncluded}
-                      onChange={(e) => setIsPpnIncluded(e.target.checked)}
-                      className="rounded border-[#D8D2CB] text-[#1C658C] focus:ring-[#1C658C] w-4 h-4 bg-white cursor-pointer"
-                    />
-                    <label htmlFor="ppn-toggle" className="text-slate-700 font-medium cursor-pointer">
-                      Kenakan Pajak Pertambahan Nilai (PPN 11%)
-                    </label>
+                  <div>
+                    <span className="font-semibold text-slate-800 block">Sertakan PPN 11%</span>
+                    <span className="text-[11px] text-slate-500">Kalkulasi pajak resmi standar Kemenkeu RI</span>
                   </div>
-                  <span className="text-[#1C658C] font-mono font-bold">
-                    {isPpnIncluded ? '11%' : '0%'}
-                  </span>
+                  <input
+                    type="checkbox"
+                    checked={isPpnIncluded}
+                    onChange={(e) => setIsPpnIncluded(e.target.checked)}
+                    className="w-4 h-4 text-[#1C658C] rounded border-slate-300 focus:ring-[#1C658C]"
+                  />
                 </div>
 
-                {/* Terbilang Preview */}
-                <div className="p-3 bg-[#EEEEEE]/40 border border-[#D8D2CB] rounded-xl">
-                  <span className="text-[11px] font-semibold text-slate-700 block mb-1">Terbilang (Otomatis):</span>
+                {/* Terbilang Box */}
+                <div className="p-3 bg-white border border-[#D8D2CB] rounded-xl space-y-1">
+                  <span className="text-[11px] font-bold text-[#1C658C] uppercase tracking-wider block">
+                    Terbilang (Angka Huruf):
+                  </span>
                   <p className="font-serif italic text-slate-700 text-xs">
                     "{angkaTerbilang(grandTotal)}"
                   </p>
                 </div>
               </div>
 
-              {/* Rekapitulasi Angka (Subtotal 1, Akomodasi, Total 2, PPN, Grand Total) */}
+              {/* Rekapitulasi Angka */}
               <div className="bg-[#EEEEEE]/50 border border-[#D8D2CB] p-4 rounded-xl space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600">
                   <span>Total 1 (Subtotal Biaya Kalibrasi):</span>
@@ -1147,7 +1496,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
 
         </form>
 
-        {/* MODAL POPUP: KATALOG BROSUR 121 ALAT MEDIS */}
+        {/* MODAL POPUP: KATALOG ALAT MEDIS (TAB E-CATALOGUE & BROSUR) */}
         {showCatalogModal && (
           <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
@@ -1156,10 +1505,10 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 <div>
                   <h3 className="font-bold text-white text-base flex items-center gap-2">
                     <Search className="w-5 h-5 text-[#EEEEEE]" />
-                    <span>Pola Tarif Brosur Resmi PT. Sarana Multi Kalibrasi</span>
+                    <span>Katalog Alat Medis PT. Sarana Multi Kalibrasi</span>
                   </h3>
                   <p className="text-xs text-[#D8D2CB]">
-                    Standar Kemenkes RI No. 26062301565850001 • Total 121 Item Alat Medis
+                    Pilih alat dari E-Katalog LKPP Inaproc (139 Item) atau Tarif Brosur Standar (121 Item)
                   </p>
                 </div>
                 <button
@@ -1170,49 +1519,119 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 </button>
               </div>
 
+              {/* Tab Switcher in Catalog Modal */}
+              <div className="px-6 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => setCatalogTab('ecatalogue')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      catalogTab === 'ecatalogue'
+                        ? 'bg-[#1C658C] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>E-Catalogue Inaproc ({filteredECatalogue.length}/139)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCatalogTab('brochure')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      catalogTab === 'brochure'
+                        ? 'bg-[#1C658C] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Brosur Standar ({filteredBrochureCatalog.length}/121)</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Filter and Search Bar */}
               <div className="p-4 bg-[#EEEEEE]/50 border-b border-[#D8D2CB] grid grid-cols-1 sm:grid-cols-12 gap-3">
-                <div className="sm:col-span-7 relative">
+                <div className="sm:col-span-8 relative">
                   <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                   <input
                     type="text"
                     value={catalogSearch}
                     onChange={(e) => setCatalogSearch(e.target.value)}
-                    placeholder="Cari nama alat (misal: Thermohygrometer, Infusion, Syringe, ECG)..."
+                    placeholder="Cari nama alat (misal: Syringe Pump, Sphygmomanometer, Autoclave)..."
                     className="w-full bg-white border border-[#D8D2CB] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-[#1C658C] outline-none"
                     autoFocus
                   />
                 </div>
-                <div className="sm:col-span-5">
-                  <select
-                    value={selectedCatalogCategory}
-                    onChange={(e) => setSelectedCatalogCategory(e.target.value)}
-                    className="w-full bg-white border border-[#D8D2CB] rounded-xl px-3 py-2 text-xs text-slate-800 focus:ring-1 focus:ring-[#1C658C] outline-none"
-                  >
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
+                {catalogTab === 'brochure' && (
+                  <div className="sm:col-span-4">
+                    <select
+                      value={selectedCatalogCategory}
+                      onChange={(e) => setSelectedCatalogCategory(e.target.value)}
+                      className="w-full bg-white border border-[#D8D2CB] rounded-xl px-3 py-2 text-xs text-slate-800 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                    >
+                      {brochureCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
-              {/* Catalog Items Grid / List */}
+              {/* Catalog Items Grid */}
               <div className="p-4 overflow-y-auto flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-[#EEEEEE]/20">
-                {filteredCatalog.map(tariff => {
-                  return (
+                {catalogTab === 'ecatalogue' ? (
+                  filteredECatalogue.map(ec => {
+                    const cleanName = extractCleanToolName(ec.name);
+                    return (
+                      <div
+                        key={ec.id}
+                        onClick={() => handleAddItemFromECatalogue(ec)}
+                        className="p-3 bg-white hover:bg-blue-50/60 border border-[#D8D2CB] hover:border-[#1C658C] rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-xs group"
+                      >
+                        <div className="space-y-1 max-w-[75%]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-mono font-bold">
+                              #{ec.id}
+                            </span>
+                            <span className="font-bold text-slate-900 group-hover:text-[#1C658C] transition-colors line-clamp-1">
+                              {cleanName}
+                            </span>
+                          </div>
+                          <p className="text-[10.5px] text-slate-500 line-clamp-1">
+                            {ec.name}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="text-[#1C658C] font-mono font-bold">
+                              {formatRupiah(ec.price)}
+                            </span>
+                            <span className="text-slate-400">•</span>
+                            <span className="text-emerald-700 text-[10px] font-semibold">Inaproc LKPP</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="px-2.5 py-1 bg-[#1C658C]/10 group-hover:bg-[#1C658C] text-[#1C658C] group-hover:text-white border border-[#1C658C]/20 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Pilih</span>
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  filteredBrochureCatalog.map(tariff => (
                     <div
                       key={tariff.id}
-                      onClick={() => {
-                        handleAddItem(tariff);
-                      }}
+                      onClick={() => handleAddItemFromBrochure(tariff)}
                       className="p-3 bg-white hover:bg-[#EEEEEE]/60 border border-[#D8D2CB] hover:border-[#398AB9] rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-xs group"
                     >
-                      <div className="space-y-0.5">
+                      <div className="space-y-0.5 max-w-[75%]">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] bg-[#EEEEEE] text-[#1C658C] border border-[#D8D2CB] px-1.5 py-0.2 rounded font-mono font-bold">
                             #{tariff.id}
                           </span>
-                          <span className="font-semibold text-slate-900 group-hover:text-[#1C658C] transition-colors">
+                          <span className="font-semibold text-slate-900 group-hover:text-[#1C658C] transition-colors line-clamp-1">
                             {tariff.name}
                           </span>
                         </div>
@@ -1227,18 +1646,20 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
 
                       <button
                         type="button"
-                        className="px-2.5 py-1 bg-[#1C658C]/10 hover:bg-[#1C658C] text-[#1C658C] hover:text-white border border-[#1C658C]/20 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                        className="px-2.5 py-1 bg-[#1C658C]/10 group-hover:bg-[#1C658C] text-[#1C658C] group-hover:text-white border border-[#1C658C]/20 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shrink-0"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Tambah</span>
+                        <span>Pilih</span>
                       </button>
                     </div>
-                  );
-                })}
+                  ))
+                )}
               </div>
 
               <div className="px-6 py-3 bg-[#EEEEEE] border-t border-[#D8D2CB] flex justify-between items-center text-xs text-slate-600">
-                <span>Ditemukan {filteredCatalog.length} alat medis</span>
+                <span>
+                  Ditemukan {catalogTab === 'ecatalogue' ? filteredECatalogue.length : filteredBrochureCatalog.length} alat medis
+                </span>
                 <button
                   onClick={() => setShowCatalogModal(false)}
                   className="px-4 py-1.5 bg-[#1C658C] hover:bg-[#398AB9] text-white font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"

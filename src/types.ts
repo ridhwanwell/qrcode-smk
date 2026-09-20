@@ -270,15 +270,17 @@ export interface SphItem {
   description: string;
   quantity: number;
   unit: string;
-  standardPrice: number;    // Harga standar katalog brosur
+  standardPrice: number;    // Harga standar katalog brosur / e-katalog
   unitPrice: number;        // Harga satuan hasil penawaran / negosiasi
   totalPrice: number;       // quantity * unitPrice
   notes?: string;           // e.g. *Hanya dilakukan Uji Keselamatan Listrik...
   category?: string;
+  eCatalogueUrl?: string;   // Link produk di E-Catalogue LKPP/Inaproc
 }
 
 export interface SphQuotation {
   id: string;
+  sphType?: 'non_ecatalogue' | 'ecatalogue'; // Tipe SPH: Non E-Catalogue (Reguler) atau E-Catalogue (Inaproc)
   sphNumber: string;           // e.g. 045/SMK-SPH/VII-2026
   subject: string;             // Surat Penawaran Harga Kalibrasi
   attachmentPages: string;     // '2 lembar'
@@ -310,6 +312,8 @@ export interface SphQuotation {
   bankName: string;            // Bank Mandiri Cab. Surakarta
   bankAccountNumber: string;   // 138-00-2610846-9
   bankAccountName: string;     // SARANA MULTI KALIBRASI PT
+  paymentOption?: 'both' | 'jateng' | 'mandiri' | 'custom'; // Pilihan rekening pembayaran pada info surat (Poin 9)
+  customBankDetails?: string;  // Keterangan rekening kustom jika memilih 'custom'
   termsAndConditions: string[];
   status: 'Draft' | 'Terkirim ke RS' | 'Negosiasi' | 'Disetujui (Deal)' | 'Ditolak';
   negotiationTarget?: number;
@@ -319,6 +323,25 @@ export interface SphQuotation {
   pdfUrl?: string;             // Link to uploaded SPH PDF
   createdAt: string;
   validUntilDate: string;
+  dealData?: SphDealData;
+}
+
+export type DealRecipient = 'Fitri Nur Aini' | 'Sheva Maresca' | 'Junior Yudha Pamungkas';
+
+export interface SphDealData {
+  dealDate: string;             // YYYY-MM-DD (e.g. 2026-09-14)
+  sequenceNumber: string;       // 3 digits e.g. "074"
+  boNumber: string;             // e.g. "074/SMK-BO/IX-2026"
+  fpNumber: string;             // e.g. "074/SMK-FP/IX-2026"
+  kwpNumber: string;            // e.g. "074/SMK-KWP/IX-2026"
+  recipientName: DealRecipient | string;
+  paymentMethod: string;        // Isi keterangan / pilihan rekening pembayaran
+  kwpPurpose?: string;          // Untuk Pembayaran e.g. "Pembayaran Pekerjaan Kalibrasi Arthroscopy Tower"
+  customerPic?: string;         // PIC / UP Pelanggan
+  certificateOwner?: string;    // a.n. Sertifikat
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BapHeaderInfo {

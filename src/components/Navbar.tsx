@@ -148,7 +148,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   ];
 
-  const allowedTabs: AppTab[] = role === 'admin_keuangan'
+  const allowedTabs: AppTab[] = role === 'hanya_sph'
+    ? ['sph']
+    : role === 'admin_keuangan'
     ? ['dashboard', 'sph', 'labels', 'financial', 'masters']
     : role === 'admin_teknik'
     ? ['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters']
@@ -271,13 +273,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2.5 shrink-0">
             {user && (
               <div className="hidden sm:flex items-center gap-2 bg-[#0F364C] px-3 py-1.5 rounded-xl border border-[#1C658C] shadow-sm text-xs">
-                <div className={`w-2 h-2 rounded-full ${role === 'admin_utama' ? 'bg-indigo-400' : role === 'admin_keuangan' ? 'bg-emerald-400' : 'bg-cyan-400'} animate-pulse`}></div>
+                <div className={`w-2 h-2 rounded-full ${
+                  role === 'admin_utama' ? 'bg-indigo-400' :
+                  role === 'admin_keuangan' ? 'bg-emerald-400' :
+                  role === 'admin_teknik' ? 'bg-cyan-400' :
+                  'bg-amber-400'
+                } animate-pulse`}></div>
                 <div className="flex flex-col text-left">
                   <span className="font-bold text-white text-[11px] leading-tight">
-                    {user.displayName || (role === 'admin_utama' ? 'Admin Utama' : role === 'admin_keuangan' ? 'Admin Keuangan' : 'Admin Teknik')}
+                    {user.displayName || user.fullName || user.username}
                   </span>
                   <span className="text-[9px] text-[#D8D2CB]/80 font-mono leading-tight">
-                    {user.email || (role === 'admin_utama' ? 'adminutama@ptsmk.com' : role === 'admin_keuangan' ? 'adminkeuangan@ptsmk.com' : 'adminteknik@ptsmk.com')}
+                    {user.email} • {user.roleLabel || (role === 'admin_utama' ? 'Admin Utama' : role === 'admin_keuangan' ? 'Admin Keuangan' : role === 'admin_teknik' ? 'Admin Teknik' : 'Hanya SPH')}
                   </span>
                 </div>
               </div>

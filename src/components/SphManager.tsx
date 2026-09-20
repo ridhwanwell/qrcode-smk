@@ -30,7 +30,7 @@ import {
   XCircle,
   FileSpreadsheet
 } from 'lucide-react';
-import { SphQuotation, Hospital, BapDocument } from '../types';
+import { SphQuotation, Hospital, BapDocument, SphDealData } from '../types';
 import { SPH_TARIFF_CATALOG } from '../data/sphTariffCatalog';
 import { formatRupiah, formatNumber } from '../utils/sphHelpers';
 import { exportSphToWord } from '../utils/sphWordExport';
@@ -38,6 +38,8 @@ import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { exportBapToExcel } from '../utils/bapExcelExport';
 import { createBapFromSph } from '../utils/bapHelpers';
 import { downloadSphPdf } from '../utils/sphPdfExport';
+import { SphDealModal } from './SphDealModal';
+import { useAuth } from '../lib/AuthContext';
 
 interface SphManagerProps {
   sphList: SphQuotation[];
@@ -47,6 +49,7 @@ interface SphManagerProps {
   onDeleteSph: (id: string) => void;
   onConvertToSpk: (sph: SphQuotation) => void;
   onUpdateStatus?: (sphId: string, newStatus: SphQuotation['status']) => void;
+  onSaveDealData?: (sphId: string, dealData: SphDealData) => void;
   onNavigateToSchedules?: () => void;
   hospitals: Hospital[];
   bapDocuments?: BapDocument[];
@@ -61,17 +64,21 @@ export const SphManager: React.FC<SphManagerProps> = ({
   onDeleteSph,
   onConvertToSpk,
   onUpdateStatus,
+  onSaveDealData,
   onNavigateToSchedules,
   hospitals,
   bapDocuments = [],
   onOpenBap
 }) => {
+  const { role } = useAuth();
+  const canMarkDeal = role === 'admin_utama' || role === 'admin_keuangan';
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [deleteTargetSph, setDeleteTargetSph] = useState<SphQuotation | null>(null);
-  const [showStatusGuide, setShowStatusGuide] = useState(true);
+  const [dealModalSph, setDealModalSph] = useState<SphQuotation | null>(null);
 
   // Quick BAP Excel exporter
   const handleDownloadBap = (sph: SphQuotation) => {
@@ -202,120 +209,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
         </div>
       </div>
 
-      {/* Panduan Alur & Arti Status SPH */}
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl overflow-hidden shadow-sm">
-        <button
-          onClick={() => setShowStatusGuide(!showStatusGuide)}
-          className="w-full px-5 py-3.5 bg-[#EEEEEE]/50 hover:bg-[#EEEEEE] flex items-center justify-between transition-colors border-b border-[#D8D2CB]"
-        >
-          <div className="flex items-center gap-2.5 text-left">
-            <div className="p-1.5 bg-[#1C658C]/10 text-[#1C658C] rounded-lg">
-              <HelpCircle className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-xs sm:text-sm font-bold text-[#1C658C] flex items-center gap-2">
-                <span>Panduan Alur & Arti Perbedaan Status SPH</span>
-                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-[#398AB9]/15 text-[#1C658C] font-mono font-semibold">
-                  SOP Penawaran ke Penjadwalan RS
-                </span>
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                Pahami tahapan status dari draf internal hingga deal dan masuk otomatis ke jadwal kalibrasi
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-[#1C658C] font-semibold">
-            <span>{showStatusGuide ? 'Tutup Panduan' : 'Lihat Panduan'}</span>
-            {showStatusGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </div>
-        </button>
 
-        {showStatusGuide && (
-          <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 bg-white">
-            {/* 1. Semua Status */}
-            <div className="p-3 rounded-xl bg-[#EEEEEE]/40 border border-[#D8D2CB] space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EEEEEE] text-slate-700 border border-[#D8D2CB]">
-                  Semua Status
-                </span>
-                <span className="text-xs font-semibold text-[#1C658C]">Rekapitulasi Lengkap</span>
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Menampilkan seluruh dokumen penawaran harga (SPH) tanpa penyaringan status, baik yang masih draf maupun yang telah selesai.
-              </p>
-            </div>
-
-            {/* 2. Draft */}
-            <div className="p-3 rounded-xl bg-[#EEEEEE]/40 border border-[#D8D2CB] space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                  Draft
-                </span>
-                <span className="text-xs font-semibold text-slate-800">Konsep Awal Internal</span>
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                SPH baru disusun oleh admin atau tim marketing. Masih berupa draf internal dan <strong className="text-slate-700">belum dikirimkan</strong> ke pihak manajemen rumah sakit.
-              </p>
-            </div>
-
-            {/* 3. Terkirim ke RS */}
-            <div className="p-3 rounded-xl bg-[#398AB9]/10 border border-[#398AB9]/30 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#398AB9]/20 text-[#1C658C] border border-[#398AB9]/30 flex items-center gap-1">
-                  <Send className="w-2.5 h-2.5" />
-                  Terkirim ke RS
-                </span>
-                <span className="text-xs font-semibold text-[#1C658C]">Menunggu Review RS</span>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                Surat penawaran resmi telah diserahkan/dikirimkan ke Direktur atau Ka. IPSRS. Sedang dalam peninjauan oleh manajemen rumah sakit.
-              </p>
-            </div>
-
-            {/* 4. Negosiasi */}
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                  <Calculator className="w-2.5 h-2.5" />
-                  Negosiasi
-                </span>
-                <span className="text-xs font-semibold text-amber-900">Penyesuaian Anggaran</span>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                Pihak RS meminta potongan tarif, diskon paket, atau plafon anggaran khusus. Gunakan fitur kalkulator pintar untuk meratakan diskon per item alkes.
-              </p>
-            </div>
-
-            {/* 5. Disetujui (Deal) */}
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 space-y-1.5 relative overflow-hidden">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                  <CheckCircle2 className="w-2.5 h-2.5" />
-                  Disetujui (Deal) ⚡
-                </span>
-                <span className="text-xs font-semibold text-emerald-900">Sepakat & Terjadwal</span>
-              </div>
-              <p className="text-[11px] text-emerald-900 leading-relaxed">
-                Penawaran telah disepakati oleh RS. <strong className="text-emerald-950 font-bold">Otomatis masuk ke Penjadwalan Kalibrasi RS</strong>, penetapan teknisi, nomor label, dan siap cetak SPK!
-              </p>
-            </div>
-
-            {/* 6. Ditolak */}
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
-                  <XCircle className="w-2.5 h-2.5" />
-                  Ditolak
-                </span>
-                <span className="text-xs font-semibold text-rose-900">Tidak Disepakati</span>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                Penawaran harga tidak disepakati atau dibatalkan oleh pihak rumah sakit (misal kendala anggaran atau memilih vendor lain).
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Filter and Search Bar */}
       <div className="bg-white border border-[#D8D2CB] rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
@@ -396,6 +290,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                           <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Status:</span>
                           <select
                             value={sph.status}
+                            disabled={!canMarkDeal && sph.status === 'Disetujui (Deal)'}
                             onChange={(e) => onUpdateStatus?.(sph.id, e.target.value as SphQuotation['status'])}
                             className={`text-xs font-semibold rounded px-2 py-0.5 outline-none cursor-pointer transition-colors ${
                               sph.status === 'Disetujui (Deal)' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold' :
@@ -404,12 +299,14 @@ export const SphManager: React.FC<SphManagerProps> = ({
                               sph.status === 'Ditolak' ? 'bg-rose-100 text-rose-800 border border-rose-300' :
                               'bg-white text-slate-700 border border-[#D8D2CB]'
                             }`}
-                            title="Admin dapat mengubah status penawaran SPH di sini"
+                            title={canMarkDeal ? "Admin dapat mengubah status penawaran SPH di sini" : "Hanya Admin Utama & Keuangan yang dapat mengubah status SPH"}
                           >
                             <option value="Draft" className="bg-white text-slate-700">Draft (Konsep Awal)</option>
                             <option value="Terkirim ke RS" className="bg-white text-[#1C658C]">Terkirim ke RS (Review)</option>
                             <option value="Negosiasi" className="bg-white text-amber-800">Negosiasi (Nego Tarif)</option>
-                            <option value="Disetujui (Deal)" className="bg-white text-emerald-800 font-bold">Disetujui (Deal) ⚡ (Masuk Jadwal)</option>
+                            {(canMarkDeal || sph.status === 'Disetujui (Deal)') && (
+                              <option value="Disetujui (Deal)" className="bg-white text-emerald-800 font-bold">Disetujui (Deal) ⚡ (Masuk Jadwal)</option>
+                            )}
                             <option value="Ditolak" className="bg-white text-rose-800">Ditolak (Batal)</option>
                           </select>
                         </div>
@@ -531,6 +428,16 @@ export const SphManager: React.FC<SphManagerProps> = ({
                       <>
                         <button
                           type="button"
+                          onClick={() => setDealModalSph(sph)}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          title="Buka Dokumen Deal Resmi (BO, FP, KWP, BAP) untuk diunduh langsung dalam bentuk PDF"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                          <span>Dokumen Deal (BO/FP/KWP)</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => handleDownloadBap(sph)}
                           className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
                           title="Unduh 1 file Excel (.xlsx) dengan 4 sheet: Rekap, BAP, Rekap Non PO, BAP Non PO"
@@ -554,16 +461,16 @@ export const SphManager: React.FC<SphManagerProps> = ({
                           <span>Jadwal RS</span>
                         </button>
                       </>
-                    ) : (
+                    ) : canMarkDeal ? (
                       <button
-                        onClick={() => onUpdateStatus?.(sph.id, 'Disetujui (Deal)')}
+                        onClick={() => setDealModalSph(sph)}
                         className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                        title="Tandai SPH ini Deal dan otomatis buat dokumen BAP 4 sheet serta jadwalkan kalibrasi"
+                        title="Tandai SPH ini Deal dan buka form nomor BO, FP, KWP, penerima, serta download PDF lengkap"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                        <span>Tandai Deal (Buat BAP)</span>
+                        <span>Tandai Deal</span>
                       </button>
-                    )}
+                    ) : null}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -693,6 +600,22 @@ export const SphManager: React.FC<SphManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Tandai Deal & Terbitkan Dokumen Resmi BO, FP, KWP, BAP */}
+      {dealModalSph && (
+        <SphDealModal
+          isOpen={dealModalSph !== null}
+          onClose={() => setDealModalSph(null)}
+          sph={dealModalSph}
+          onSaveDeal={(sphId, dealData) => {
+            if (onSaveDealData) {
+              onSaveDealData(sphId, dealData);
+            } else if (onUpdateStatus) {
+              onUpdateStatus(sphId, 'Disetujui (Deal)');
+            }
+          }}
+        />
       )}
 
     </div>

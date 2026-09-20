@@ -9,6 +9,19 @@ import { fetchTemplateConfigs } from '../lib/templateStorage';
 import { saveFolderRsToSupabase, bulkSyncLabelsToSupabase } from '../lib/supabaseSync';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 
+interface LabelBreakdown {
+  baseRangeStart: string;
+  baseRangeEnd: string;
+  baseCount: number;
+  extraLaikStart: string;
+  extraLaikEnd: string;
+  extraLaikCount: number;
+  extraTidakLaikStart: string;
+  extraTidakLaikEnd: string;
+  extraTidakLaikCount: number;
+  totalCount: number;
+}
+
 export default function AdminGenerate() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<'single' | 'bulk'>('single');
@@ -30,7 +43,8 @@ export default function AdminGenerate() {
   
   // Generated result state
   const [generatedLabels, setGeneratedLabels] = useState<string[]>([]);
-  const [labelType, setLabelType] = useState<'kecil' | 'besar'>('kecil');
+  const [breakdownInfo, setBreakdownInfo] = useState<LabelBreakdown | null>(null);
+  const labelType = 'besar'; // Always use Template Besar (5x2 cm)
   const [bulkFormat, setBulkFormat] = useState<'a3_plus' | 'individual'>('a3_plus');
   const [templateConfigs, setTemplateConfigs] = useState<any>(() => {
     try {
@@ -56,7 +70,7 @@ export default function AdminGenerate() {
       try {
         // Fetch unified template configs directly from Supabase / cache
         const tplConfigs = await fetchTemplateConfigs();
-        if (tplConfigs && (tplConfigs.kecil || tplConfigs.besar)) {
+        if (tplConfigs && (tplConfigs.besar || tplConfigs.besarTidakLaik || tplConfigs.kecil)) {
           setTemplateConfigs(tplConfigs);
         }
 
@@ -91,14 +105,19 @@ export default function AdminGenerate() {
     e.preventDefault();
     setError('');
     
-    let labelsToGenerate: string[] = [];
+    let prefix = '033.';
+    let baseStartNum = 1;
+    let baseEndNum = 1;
 
     if (mode === 'single') {
       if (!validateFormat(noLabel)) {
         setError('Format No Label tidak valid.');
         return;
       }
-      labelsToGenerate = [noLabel];
+      const parsed = parseLabel(noLabel);
+      prefix = parsed.prefix;
+      baseStartNum = parsed.number;
+      baseEndNum = parsed.number;
     } else {
       if (!validateFormat(startLabel) || !validateFormat(endLabel)) {
         setError('Format No Label tidak valid.');
@@ -121,11 +140,47 @@ export default function AdminGenerate() {
         setError('Maksimal 2000 label dalam satu kali proses.');
         return;
       }
-
-      for (let i = start.number; i <= end.number; i++) {
-        labelsToGenerate.push(`${start.prefix}${i.toString().padStart(4, '0')}`);
-      }
+      prefix = start.prefix;
+      baseStartNum = start.number;
+      baseEndNum = end.number;
     }
+
+    // 1. Primary requested Laik Pakai labels
+    const baseLabels: string[] = [];
+    for (let i = baseStartNum; i <= baseEndNum; i++) {
+      baseLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+    }
+
+    // 2. Auto append 10 extra Laik Pakai labels (cadangan non BAP)
+    const extraLaikLabels: string[] = [];
+    const extraLaikStartNum = baseEndNum + 1;
+    const extraLaikEndNum = baseEndNum + 10;
+    for (let i = extraLaikStartNum; i <= extraLaikEndNum; i++) {
+      extraLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+    }
+
+    // 3. Auto append 10 extra Tidak Laik Pakai labels
+    const extraTidakLaikLabels: string[] = [];
+    const extraTidakLaikStartNum = extraLaikEndNum + 1;
+    const extraTidakLaikEndNum = extraLaikEndNum + 10;
+    for (let i = extraTidakLaikStartNum; i <= extraTidakLaikEndNum; i++) {
+      extraTidakLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+    }
+
+    const labelsToGenerate = [...baseLabels, ...extraLaikLabels, ...extraTidakLaikLabels];
+
+    const currentBreakdown: LabelBreakdown = {
+      baseRangeStart: baseLabels[0],
+      baseRangeEnd: baseLabels[baseLabels.length - 1],
+      baseCount: baseLabels.length,
+      extraLaikStart: extraLaikLabels[0],
+      extraLaikEnd: extraLaikLabels[extraLaikLabels.length - 1],
+      extraLaikCount: extraLaikLabels.length,
+      extraTidakLaikStart: extraTidakLaikLabels[0],
+      extraTidakLaikEnd: extraTidakLaikLabels[extraTidakLaikLabels.length - 1],
+      extraTidakLaikCount: extraTidakLaikLabels.length,
+      totalCount: labelsToGenerate.length
+    };
 
     setLoading(true);
     setProgressMsg('Menyimpan ke database...');
@@ -133,13 +188,29 @@ export default function AdminGenerate() {
     try {
       const cleanNamaRs = namaRs.trim() || null;
 
-      const itemsToSave = labelsToGenerate.map(lbl => ({
-        noLabel: lbl,
-        no_label: lbl,
-        status: 'Menunggu Sertifikat',
-        namaRs: cleanNamaRs,
-        nama_rs: cleanNamaRs
-      }));
+      const itemsToSave = [
+        ...baseLabels.map(lbl => ({
+          noLabel: lbl,
+          no_label: lbl,
+          status: 'Menunggu Sertifikat',
+          namaRs: cleanNamaRs,
+          nama_rs: cleanNamaRs
+        })),
+        ...extraLaikLabels.map(lbl => ({
+          noLabel: lbl,
+          no_label: lbl,
+          status: 'Cadangan Laik Pakai',
+          namaRs: cleanNamaRs,
+          nama_rs: cleanNamaRs
+        })),
+        ...extraTidakLaikLabels.map(lbl => ({
+          noLabel: lbl,
+          no_label: lbl,
+          status: 'Tidak Laik Pakai',
+          namaRs: cleanNamaRs,
+          nama_rs: cleanNamaRs
+        }))
+      ];
 
       // 1. Direct save to Supabase with chunked batching
       const syncRes = await bulkSyncLabelsToSupabase(itemsToSave);
@@ -149,18 +220,18 @@ export default function AdminGenerate() {
 
       // If hospital name is provided, update folder metadata map in Supabase & API
       if (cleanNamaRs && labelsToGenerate.length > 0) {
-        const prefix = labelsToGenerate[0].split('.')[0];
-        if (prefix) {
-          await saveFolderRsToSupabase(prefix, cleanNamaRs);
+        const prefixVal = labelsToGenerate[0].split('.')[0];
+        if (prefixVal) {
+          await saveFolderRsToSupabase(prefixVal, cleanNamaRs);
           try {
             const currentFolderMap = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
-            currentFolderMap[prefix] = cleanNamaRs;
+            currentFolderMap[prefixVal] = cleanNamaRs;
             localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(currentFolderMap));
           } catch (_) {}
           fetch('/api/folders/nama-rs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prefix, namaRs: cleanNamaRs })
+            body: JSON.stringify({ prefix: prefixVal, namaRs: cleanNamaRs })
           }).catch(() => {});
         }
       }
@@ -209,6 +280,7 @@ export default function AdminGenerate() {
       } catch (_) {}
 
       setGeneratedLabels(labelsToGenerate);
+      setBreakdownInfo(currentBreakdown);
       setSuccess(true);
       setNoLabel('');
       setStartLabel('');
@@ -231,8 +303,11 @@ export default function AdminGenerate() {
   };
 
   const downloadPDF = async () => {
-    if (!templateConfigs || !templateConfigs[labelType] || !templateConfigs[labelType].imageUrl) {
-      alert("Template belum diatur di menu 'Desain Template'. Silakan atur terlebih dahulu.");
+    const configLaik = templateConfigs?.besar;
+    const configTidakLaik = templateConfigs?.besarTidakLaik || configLaik;
+
+    if (!configLaik || !configLaik.imageUrl) {
+      alert("Template Besar (Laik Pakai) belum diatur di menu 'Desain Template'. Silakan atur terlebih dahulu.");
       return;
     }
 
@@ -240,15 +315,12 @@ export default function AdminGenerate() {
     setProgressMsg('Menyiapkan file PDF...');
     
     try {
-      const config = templateConfigs[labelType];
-      
-      // Real physical dimensions of individual sticker
-      const isKecil = labelType === 'kecil';
-      const labelWidth = isKecil ? 30 : 50; // 3x2 cm atau 5x2 cm
-      const labelHeight = 20; // 2 cm (20 mm) untuk kedua ukuran
+      // Real physical dimensions of individual sticker (5x2 cm)
+      const labelWidth = 50; // 50 mm / 5 cm
+      const labelHeight = 20; // 20 mm / 2 cm
       
       // Preview box dimensions in pixels from template editor
-      const previewWidth = isKecil ? 450 : 750;
+      const previewWidth = 750;
       const previewHeight = 300;
       
       // Scale ratios from preview pixels to sticker mm
@@ -257,21 +329,25 @@ export default function AdminGenerate() {
 
       const isBulkA3 = (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus';
 
+      const cutoffTidakLaikIndex = breakdownInfo 
+        ? breakdownInfo.baseCount + breakdownInfo.extraLaikCount 
+        : generatedLabels.length - 10;
+
       if (isBulkA3) {
         // Standar format cetak lembaran A3+ (320 mm x 480 mm, portrait)
         const sheetWidth = 320;
         const sheetHeight = 480;
-        const cols = isKecil ? 9 : 6;
+        const cols = 6;
         const rows = 21;
-        const labelsPerSheet = cols * rows; // 189 stiker (kecil: 9x21) / 126 stiker (besar: 6x21)
+        const labelsPerSheet = cols * rows; // 126 stiker (besar: 6x21)
 
         const gapX = 2; // 2mm kiss-cut gap antar stiker
         const gapY = 2; // 2mm kiss-cut gap antar stiker
 
-        const totalGridWidth = cols * labelWidth + (cols - 1) * gapX; // kecil: 286 mm, besar: 310 mm
-        const marginLeft = (sheetWidth - totalGridWidth) / 2; // kecil: 17 mm, besar: 5 mm
+        const totalGridWidth = cols * labelWidth + (cols - 1) * gapX; // 310 mm
+        const marginLeft = (sheetWidth - totalGridWidth) / 2; // 5 mm
 
-        const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 460 mm (21 baris x 20mm + 40mm gap)
+        const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 460 mm
         const marginTop = (sheetHeight - totalGridHeight) / 2; // 10 mm margin atas & bawah
 
         const totalSheets = Math.ceil(generatedLabels.length / labelsPerSheet);
@@ -292,14 +368,14 @@ export default function AdminGenerate() {
           setProgressMsg(`Membuat lembar A3+ (${sheetIdx + 1}/${totalSheets})...`);
           await new Promise(r => setTimeout(r, 10));
 
-          // 1. Header Metadata Text (di luar area stiker/margin atas)
+          // 1. Header Metadata Text
           pdf.setFont("helvetica", "bold");
           pdf.setFontSize(7.5);
           pdf.setTextColor(110, 110, 110);
-          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  ${labelType === 'besar' ? 'Ukuran Besar 50x20 mm / 5x2 cm (Maks 126/lbr)' : 'Ukuran Kecil 30x20 mm / 3x2 cm (Maks 189/lbr)'}  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
+          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  Ukuran Besar 50x20 mm / 5x2 cm (Maks 126/lbr)  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
           pdf.text(headerText, marginLeft, Math.max(5, marginTop - 3.5));
 
-          // 2. Optical Registration Crop Marks pada 4 sudut grid untuk kamera plotter / mesin potong
+          // 2. Optical Registration Crop Marks pada 4 sudut grid
           pdf.setDrawColor(160, 160, 160);
           pdf.setLineWidth(0.2);
           const rightEdge = marginLeft + totalGridWidth;
@@ -328,8 +404,11 @@ export default function AdminGenerate() {
             const x = marginLeft + col * (labelWidth + gapX);
             const y = marginTop + row * (labelHeight + gapY);
 
+            const isTidakLaik = globalIdx >= cutoffTidakLaikIndex;
+            const activeConfig = isTidakLaik && configTidakLaik?.imageUrl ? configTidakLaik : configLaik;
+
             // A. Background Template Image
-            pdf.addImage(config.imageUrl, 'JPEG', x, y, labelWidth, labelHeight);
+            pdf.addImage(activeConfig.imageUrl, 'JPEG', x, y, labelWidth, labelHeight);
 
             // B. QR Code
             const qrUrl = getPublicUrl(labelStr);
@@ -341,24 +420,34 @@ export default function AdminGenerate() {
             pdf.addImage(
               qrDataUrl,
               'PNG',
-              x + (config.qr.x * scaleX),
-              y + (config.qr.y * scaleY),
-              config.qr.width * scaleX,
-              config.qr.height * scaleY
+              x + (activeConfig.qr.x * scaleX),
+              y + (activeConfig.qr.y * scaleY),
+              activeConfig.qr.width * scaleX,
+              activeConfig.qr.height * scaleY
             );
 
             // C. Text Nomor Label
             pdf.setFont("helvetica", "bold");
             pdf.setTextColor('#000000');
-            const ptSize = config.text.fontSize * scaleY * 2.83465;
+            const ptSize = activeConfig.text.fontSize * scaleY * 2.83465;
             pdf.setFontSize(ptSize);
             pdf.text(
               labelStr,
-              x + (config.text.x * scaleX),
-              y + (config.text.y * scaleY) + (ptSize * 0.3527)
+              x + (activeConfig.text.x * scaleX),
+              y + (activeConfig.text.y * scaleY) + (ptSize * 0.3527)
             );
 
-            // D. Hairline Kiss-Cut / Die-Cut Boundary (0.08 mm)
+            // D. Marker visual jika Tidak Laik Pakai dan belum punya template khusus
+            if (isTidakLaik && (!templateConfigs?.besarTidakLaik || !templateConfigs.besarTidakLaik.imageUrl)) {
+              pdf.setFillColor(225, 29, 72); // rose-600
+              pdf.rect(x + labelWidth - 18, y + 1, 17, 3.5, 'F');
+              pdf.setFont("helvetica", "bold");
+              pdf.setFontSize(3.8);
+              pdf.setTextColor(255, 255, 255);
+              pdf.text("TIDAK LAIK PAKAI", x + labelWidth - 17.2, y + 3.5);
+            }
+
+            // E. Hairline Kiss-Cut / Die-Cut Boundary (0.08 mm)
             pdf.setDrawColor(210, 210, 210);
             pdf.setLineWidth(0.08);
             pdf.rect(x, y, labelWidth, labelHeight);
@@ -366,7 +455,7 @@ export default function AdminGenerate() {
         }
 
         setProgressMsg('Menyimpan PDF A3+...');
-        const fileName = `Labels_A3Plus_KissCut_${labelType}_${generatedLabels[0]}_to_${generatedLabels[generatedLabels.length - 1]}.pdf`;
+        const fileName = `Labels_A3Plus_KissCut_Besar_${generatedLabels[0]}_to_${generatedLabels[generatedLabels.length - 1]}.pdf`;
         pdf.save(fileName);
       } else {
         // Mode satuan (1 label per halaman individual landscape)
@@ -385,9 +474,11 @@ export default function AdminGenerate() {
           }
 
           const labelStr = generatedLabels[i];
+          const isTidakLaik = i >= cutoffTidakLaikIndex;
+          const activeConfig = isTidakLaik && configTidakLaik?.imageUrl ? configTidakLaik : configLaik;
           
           // 1. Draw Background
-          pdf.addImage(config.imageUrl, 'JPEG', 0, 0, labelWidth, labelHeight);
+          pdf.addImage(activeConfig.imageUrl, 'JPEG', 0, 0, labelWidth, labelHeight);
           
           // 2. Draw QR Code
           const qrUrl = getPublicUrl(labelStr);
@@ -395,22 +486,31 @@ export default function AdminGenerate() {
           pdf.addImage(
             qrDataUrl, 
             'PNG', 
-            config.qr.x * scaleX, 
-            config.qr.y * scaleY, 
-            config.qr.width * scaleX, 
-            config.qr.height * scaleY
+            activeConfig.qr.x * scaleX, 
+            activeConfig.qr.y * scaleY, 
+            activeConfig.qr.width * scaleX, 
+            activeConfig.qr.height * scaleY
           );
           
           // 3. Draw Text
           pdf.setFont("helvetica", "bold");
           pdf.setTextColor('#000000');
-          const ptSize = (config.text.fontSize * scaleY * 2.83465); 
+          const ptSize = (activeConfig.text.fontSize * scaleY * 2.83465); 
           pdf.setFontSize(ptSize);
           pdf.text(
             labelStr, 
-            config.text.x * scaleX, 
-            (config.text.y * scaleY) + (ptSize * 0.3527)
+            activeConfig.text.x * scaleX, 
+            (activeConfig.text.y * scaleY) + (ptSize * 0.3527)
           );
+
+          if (isTidakLaik && (!templateConfigs?.besarTidakLaik || !templateConfigs.besarTidakLaik.imageUrl)) {
+            pdf.setFillColor(225, 29, 72);
+            pdf.rect(labelWidth - 18, 1, 17, 3.5, 'F');
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(3.8);
+            pdf.setTextColor(255, 255, 255);
+            pdf.text("TIDAK LAIK PAKAI", labelWidth - 17.2, 3.5);
+          }
         }
         
         setProgressMsg('Menyimpan PDF...');
@@ -431,6 +531,7 @@ export default function AdminGenerate() {
   const resetForm = () => {
     setSuccess(false);
     setGeneratedLabels([]);
+    setBreakdownInfo(null);
   };
 
   return (
@@ -579,129 +680,129 @@ export default function AdminGenerate() {
       ) : (
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-8 items-start">
           <div className="flex-1 space-y-6">
-            <div className="flex items-center text-emerald-600 mb-6">
+            <div className="flex items-center text-emerald-600 mb-2">
               <CheckCircle2 className="w-8 h-8 mr-3 shrink-0" />
               <div>
                 <h3 className="text-xl font-bold">Berhasil Dibuat!</h3>
                 <p className="text-sm text-emerald-700/80">
-                  {generatedLabels.length} label telah tersimpan di database.
+                  Total {generatedLabels.length} label telah tersimpan di database.
                 </p>
               </div>
             </div>
 
-            {/* Opsi Ukuran Cetak */}
-            <div className="space-y-4">
-              <h4 className="font-semibold text-slate-700">Pilih Ukuran Cetak:</h4>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setLabelType('kecil')}
-                  className={cn(
-                    "px-4 py-2.5 text-sm font-medium rounded-xl border transition-all text-left",
-                    labelType === 'kecil' ? "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20" : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  )}
-                >
-                  <div className="font-bold">Kecil (3x2 cm)</div>
-                  {(mode === 'bulk' || generatedLabels.length > 1) && (
-                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">189 stiker / lembar A3+ (9x21)</div>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLabelType('besar')}
-                  className={cn(
-                    "px-4 py-2.5 text-sm font-medium rounded-xl border transition-all text-left",
-                    labelType === 'besar' ? "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20" : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  )}
-                >
-                  <div className="font-bold">Besar (5x2 cm)</div>
-                  {(mode === 'bulk' || generatedLabels.length > 1) && (
-                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">126 stiker / lembar A3+ (6x21)</div>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Opsi Format Cetak untuk Bulk */}
-            {(mode === 'bulk' || generatedLabels.length > 1) && (
-              <div className="space-y-3">
-                <h4 className="font-semibold text-slate-700">Format Output PDF:</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setBulkFormat('a3_plus')}
-                    className={cn(
-                      "p-3.5 rounded-xl border text-left transition-all",
-                      bulkFormat === 'a3_plus'
-                        ? "border-blue-500 bg-blue-50/70 text-blue-950 ring-2 ring-blue-500/20 shadow-sm"
-                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs">Lembar Kertas A3+ Kiss-Cut / Die-Cut</span>
-                      {bulkFormat === 'a3_plus' && (
-                        <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded">Rekomendasi</span>
-                      )}
+            {/* Rincian Label Card Breakdown */}
+            {breakdownInfo && (
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
+                <h4 className="font-bold text-slate-800 text-sm flex items-center justify-between">
+                  <span>Rincian Komposisi Label</span>
+                  <span className="text-xs font-mono bg-slate-900 text-amber-400 px-2.5 py-1 rounded-lg font-bold">
+                    {breakdownInfo.totalCount} Total Stiker
+                  </span>
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-xl">
+                    <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Label Utama</div>
+                    <div className="text-sm font-extrabold text-emerald-950 font-mono mt-1">
+                      {breakdownInfo.baseRangeStart} s/d {breakdownInfo.baseRangeEnd}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Ukuran 320 x 480 mm siap cetak offset/laser digital. Lengkap dengan garis potong kiss-cut & crop marks.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setBulkFormat('individual')}
-                    className={cn(
-                      "p-3.5 rounded-xl border text-left transition-all",
-                      bulkFormat === 'individual'
-                        ? "border-amber-500 bg-amber-50/70 text-amber-950 ring-2 ring-amber-500/20 shadow-sm"
-                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                    )}
-                  >
-                    <div className="font-bold text-xs">Satuan / Thermal Roll</div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      1 stiker per halaman ({labelType === 'besar' ? '5x2 cm' : '3x2 cm'}), cocok untuk printer thermal gulungan.
-                    </p>
-                  </button>
-                </div>
-
-                {bulkFormat === 'a3_plus' && (
-                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs text-slate-700">
-                    <div className="font-bold text-slate-800 flex items-center justify-between">
-                      <span>Rincian Lembar Cetak A3+ (320 × 480 mm):</span>
-                      <span className="text-blue-700 font-mono">
-                        {Math.ceil(generatedLabels.length / (labelType === 'besar' ? 126 : 189))} Lembar A3+
-                      </span>
-                    </div>
-                    <p className="text-slate-600">
-                      Total <strong>{generatedLabels.length} stiker</strong> akan di-layout otomatis:
-                    </p>
-                    <ul className="list-disc list-inside text-slate-600 space-y-0.5 pl-1">
-                      <li>
-                        Kapasitas per lembar: <strong>{labelType === 'besar' ? '126 stiker (6 kolom × 21 baris)' : '189 stiker (9 kolom × 21 baris)'}</strong>
-                      </li>
-                      <li>
-                        Lembar 1: <strong>{Math.min(generatedLabels.length, labelType === 'besar' ? 126 : 189)} stiker</strong>
-                      </li>
-                      {generatedLabels.length > (labelType === 'besar' ? 126 : 189) && (
-                        <li>
-                          Lembar 2: <strong>
-                            {Math.min(
-                              generatedLabels.length - (labelType === 'besar' ? 126 : 189),
-                              labelType === 'besar' ? 126 : 189
-                            )} stiker
-                          </strong>
-                          {generatedLabels.length > (labelType === 'besar' ? 252 : 378) && ' (dan lembar selanjutnya)'}
-                        </li>
-                      )}
-                    </ul>
-                    <p className="text-[11px] text-slate-500 pt-1">
-                      Tersedia margin keliling aman ({labelType === 'besar' ? '5 mm' : '17 mm'}) & jarak potong pisau / kiss-cut 2 mm antarlavel.
-                    </p>
+                    <div className="text-[11px] text-emerald-700 font-medium mt-0.5">{breakdownInfo.baseCount} Label (Menunggu Sertifikat)</div>
                   </div>
-                )}
+
+                  <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-xl">
+                    <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">+10 Cadangan Laik Pakai</div>
+                    <div className="text-sm font-extrabold text-amber-950 font-mono mt-1">
+                      {breakdownInfo.extraLaikStart} s/d {breakdownInfo.extraLaikEnd}
+                    </div>
+                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">10 Label (Otomatis Tambahan)</div>
+                  </div>
+
+                  <div className="bg-rose-50/80 border border-rose-200/80 p-3.5 rounded-xl">
+                    <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">+10 Tidak Laik Pakai</div>
+                    <div className="text-sm font-extrabold text-rose-950 font-mono mt-1">
+                      {breakdownInfo.extraTidakLaikStart} s/d {breakdownInfo.extraTidakLaikEnd}
+                    </div>
+                    <div className="text-[11px] text-rose-700 font-medium mt-0.5">10 Label (Template Tidak Laik)</div>
+                  </div>
+                </div>
               </div>
             )}
+
+            {/* Opsi Format Cetak */}
+            <div className="space-y-3">
+              <h4 className="font-semibold text-slate-700 text-sm">Format Output PDF:</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBulkFormat('a3_plus')}
+                  className={cn(
+                    "p-3.5 rounded-xl border text-left transition-all",
+                    bulkFormat === 'a3_plus'
+                      ? "border-blue-500 bg-blue-50/70 text-blue-950 ring-2 ring-blue-500/20 shadow-sm"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs">Lembar Kertas A3+ Kiss-Cut / Die-Cut</span>
+                    {bulkFormat === 'a3_plus' && (
+                      <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded">Rekomendasi</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Ukuran 320 x 480 mm siap cetak offset/laser digital. Lengkap dengan garis potong kiss-cut & crop marks.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBulkFormat('individual')}
+                  className={cn(
+                    "p-3.5 rounded-xl border text-left transition-all",
+                    bulkFormat === 'individual'
+                      ? "border-amber-500 bg-amber-50/70 text-amber-950 ring-2 ring-amber-500/20 shadow-sm"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  <div className="font-bold text-xs">Satuan / Thermal Roll</div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    1 stiker per halaman (Ukuran Besar 5x2 cm), cocok untuk printer thermal gulungan.
+                  </p>
+                </button>
+              </div>
+
+              {bulkFormat === 'a3_plus' && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs text-slate-700">
+                  <div className="font-bold text-slate-800 flex items-center justify-between">
+                    <span>Rincian Lembar Cetak A3+ (320 × 480 mm):</span>
+                    <span className="text-blue-700 font-mono">
+                      {Math.ceil(generatedLabels.length / 126)} Lembar A3+
+                    </span>
+                  </div>
+                  <p className="text-slate-600">
+                    Total <strong>{generatedLabels.length} stiker</strong> akan di-layout otomatis:
+                  </p>
+                  <ul className="list-disc list-inside text-slate-600 space-y-0.5 pl-1">
+                    <li>
+                      Kapasitas per lembar: <strong>126 stiker (6 kolom × 21 baris)</strong>
+                    </li>
+                    <li>
+                      Lembar 1: <strong>{Math.min(generatedLabels.length, 126)} stiker</strong>
+                    </li>
+                    {generatedLabels.length > 126 && (
+                      <li>
+                        Lembar 2: <strong>
+                          {Math.min(generatedLabels.length - 126, 126)} stiker
+                        </strong>
+                        {generatedLabels.length > 252 && ' (dan lembar selanjutnya)'}
+                      </li>
+                    )}
+                  </ul>
+                  <p className="text-[11px] text-slate-500 pt-1">
+                    Tersedia margin keliling aman (5 mm) & jarak potong pisau / kiss-cut 2 mm antarstiker.
+                  </p>
+                </div>
+              )}
+            </div>
 
             <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 text-amber-800 text-sm">
                <strong>Catatan Warna (CMYK):</strong> File PDF yang dihasilkan aplikasi ini secara bawaan berformat RGB (standar web). Namun jangan khawatir, ketika file ini dikirim ke mesin cetak digital offset/laser, <strong>RIP software pada mesin cetak akan otomatis mengkonversinya ke warna CMYK</strong> dengan sangat baik. 
@@ -716,8 +817,8 @@ export default function AdminGenerate() {
                 {loading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Printer className="w-4 h-4 mr-2" />} 
                 {loading 
                   ? progressMsg 
-                  : (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus'
-                    ? `Download PDF Lembar A3+ (${Math.ceil(generatedLabels.length / (labelType === 'besar' ? 126 : 189))} Lembar • ${generatedLabels.length} Stiker)`
+                  : bulkFormat === 'a3_plus'
+                    ? `Download PDF Lembar A3+ (${Math.ceil(generatedLabels.length / 126)} Lembar • ${generatedLabels.length} Stiker)`
                     : `Download Label PDF (${generatedLabels.length} Halaman)`
                 }
               </button>

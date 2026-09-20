@@ -38,6 +38,7 @@ import { PDFDocument } from 'pdf-lib';
 import { getFullTemplatesConfig, DocumentTemplatesConfig } from '../lib/templateService';
 import { getLocalBlob } from '../lib/localBlobStorage';
 import { saveUserKopSuratPdf } from '../lib/kopSuratService';
+import { extractCleanToolName, getECatalogueTariff } from '../data/sphECatalogueData';
 
 interface SphPrintModalProps {
   sph: SphQuotation;
@@ -54,7 +55,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
   onConvertToSpk,
   onOpenBap
 }) => {
-  const [activeViewTab, setActiveViewTab] = useState<'all' | 'page1' | 'page2'>('all');
+  const [activeViewTab, setActiveViewTab] = useState<'all' | 'page1' | 'page2' | 'page3'>('all');
   const [docViewMode, setDocViewMode] = useState<'template' | 'web'>('template');
   const [templatesConfig, setTemplatesConfig] = useState<DocumentTemplatesConfig | null>(null);
 
@@ -154,6 +155,8 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
       grandTotal: formatNumber(sph.grandTotal),
       terbilang: sph.terbilang || 'Nol Rupiah',
       attachmentPages: dynamicAttachmentText,
+      paymentOption: sph.paymentOption || 'both',
+      customBankDetails: sph.customBankDetails || '',
       bankName: sph.bankName || 'Bank Mandiri Cab. Surakarta',
       bankAccountNumber: sph.bankAccountNumber || '138-00-2610846-9',
       bankAccountName: sph.bankAccountName || 'SARANA MULTI KALIBRASI PT',
@@ -475,7 +478,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                   activeViewTab === 'all' ? 'bg-[#1C658C] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Semua Halaman (1 & 2)
+                {sph.sphType === 'ecatalogue' ? 'Semua Lembar (1, 2, 3)' : 'Semua Halaman (1 & 2)'}
               </button>
               <button
                 onClick={() => setActiveViewTab('page1')}
@@ -493,6 +496,16 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
               >
                 Hal 2: Rincian Alat
               </button>
+              {sph.sphType === 'ecatalogue' && (
+                <button
+                  onClick={() => setActiveViewTab('page3')}
+                  className={`px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1 ${
+                    activeViewTab === 'page3' ? 'bg-[#1C658C] text-white shadow-xs' : 'text-blue-700 hover:text-blue-900 bg-blue-50'
+                  }`}
+                >
+                  <span>Hal 3: Lampiran E-Catalogue</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -758,9 +771,21 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                       <li>Pekerjaan dianggap selesai setelah berita acara/BO (Bukti Order) di tanda tangani oleh pihak yang berwenang.</li>
                       <li>Kalibrasi di atas termasuk sertifikat kalibrasi yang dikeluarkan oleh PT. Sarana Multi Kalibrasi.</li>
                       <li>
-                        <div>Pembayaran : {sph.bankName || 'Bank Mandiri Cab. Surakarta'}</div>
-                        {/* Jarak 1 baris kosong */}
-                        <div className="pt-2 pl-0 sm:pl-[85px] font-bold">No. Rek : {sph.bankAccountNumber || '138-00-2610846-9'} ({sph.bankAccountName || 'SARANA MULTI KALIBRASI PT'})</div>
+                        <div>Pembayaran :</div>
+                        <div className="pt-1.5 pl-0 sm:pl-[24px] font-bold space-y-0.5">
+                          {sph.paymentOption === 'jateng' ? (
+                            <div>Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)</div>
+                          ) : sph.paymentOption === 'mandiri' ? (
+                            <div>Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)</div>
+                          ) : sph.paymentOption === 'custom' && sph.customBankDetails ? (
+                            <div>{sph.customBankDetails}</div>
+                          ) : (
+                            <>
+                              <div>1. Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)</div>
+                              <div>2. Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)</div>
+                            </>
+                          )}
+                        </div>
                       </li>
                     </ol>
 
@@ -1032,6 +1057,145 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
 
               </div>
             ))}
+
+            {/* ========================================================================= */}
+            {/* HALAMAN 3: LAMPIRAN LINK E-CATALOGUE INAPROC (1 FILE TAPI BERBEDA LEMBAR) */}
+            {/* Urutan tabel dari kiri ke kanan: No, Nama Alat, Qty, Satuan Harga, Total Harga, Link E-Catalogue */}
+            {/* ========================================================================= */}
+            {sph.sphType === 'ecatalogue' && (activeViewTab === 'all' || activeViewTab === 'page3') && (
+              <div 
+                style={{ fontFamily: 'Calibri, Carlito, "Segoe UI", Arial, sans-serif' }}
+                className="bg-white text-slate-900 p-6 sm:p-8 rounded-xl shadow-xl max-w-[210mm] mx-auto min-h-[297mm] relative overflow-hidden flex flex-col justify-between print:shadow-none print:rounded-none print:p-0 print:m-0 print:w-full print:min-h-0 print-page-clean print-break-before"
+              >
+                <div>
+                  {/* KOP SURAT LAMPIRAN E-CATALOGUE */}
+                  <OfficialLetterhead customLetterheadUrl={templatesConfig?.kop_surat?.activeUrl} className="mb-4" />
+
+                  {/* Header Meta SPH Lampiran E-Catalogue */}
+                  <div className="flex justify-between items-start mb-2 text-xs sm:text-[13.5px] leading-relaxed">
+                    <div className="space-y-0.5">
+                      <div className="grid grid-cols-[75px_12px_1fr]">
+                        <span className="font-bold text-slate-950">Nomor</span>
+                        <span className="font-bold">:</span>
+                        <span className="font-normal text-slate-900">{sph.sphNumber}</span>
+                      </div>
+                      <div className="grid grid-cols-[75px_12px_1fr]">
+                        <span className="font-bold text-slate-950">Perihal</span>
+                        <span className="font-bold">:</span>
+                        <span className="font-normal text-slate-900">{sph.subject || 'Surat Penawaran Harga Kalibrasi'}</span>
+                      </div>
+                      <div className="grid grid-cols-[75px_12px_1fr]">
+                        <span className="font-bold text-slate-950">Lampiran</span>
+                        <span className="font-bold">:</span>
+                        <span className="font-normal text-slate-900">{dynamicAttachmentText}</span>
+                      </div>
+                    </div>
+                    <div className="text-right text-xs sm:text-[13.5px] font-normal text-slate-900">
+                      {sph.city || 'Surakarta'}, {formattedDate}
+                    </div>
+                  </div>
+
+                  {/* Judul Dokumen Lampiran E-Catalogue */}
+                  <div className="text-center my-3 pb-1">
+                    <span className="text-sm sm:text-base font-bold text-slate-950 tracking-wide">
+                      Surat Penawaran Harga
+                    </span>
+                  </div>
+
+                  {/* Tabel E-Catalogue (Urutan: No, Nama Alat, Qty, Satuan Harga, Total Harga, Link E-Catalogue) */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse border border-black text-xs sm:text-[13px]">
+                      <thead>
+                        <tr className="bg-[#00A2E8] text-white font-bold border-b border-black text-center">
+                          <th className="border border-black px-2 py-2 w-10 text-center text-white">No</th>
+                          <th className="border border-black px-3 py-2 w-36 text-center text-white">Nama Alat</th>
+                          <th className="border border-black px-2 py-2 w-12 text-center text-white">Qty</th>
+                          <th className="border border-black px-3 py-2 w-28 text-center text-white">Satuan Harga</th>
+                          <th className="border border-black px-3 py-2 w-28 text-center text-white">Total Harga</th>
+                          <th className="border border-black px-3 py-2 text-center text-white">Link E-Catalogue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sph.items.map((item, index) => {
+                          const cleanToolName = extractCleanToolName(item.description || (item as any).namaAlat || '');
+                          const resolvedLink = item.eCatalogueUrl || getECatalogueTariff(item.description)?.link || getECatalogueTariff(cleanToolName)?.link || 'https://katalog.inaproc.id/sarana-multi-kalibrasi';
+
+                          return (
+                            <tr key={item.id || index} className="border-b border-black hover:bg-slate-50/50">
+                              <td className="border border-black px-2 py-1.5 text-center align-middle font-normal">
+                                {item.no || index + 1}
+                              </td>
+                              <td className="border border-black px-3 py-1.5 align-middle font-normal text-slate-950">
+                                {cleanToolName}
+                              </td>
+                              <td className="border border-black px-2 py-1.5 text-center align-middle font-normal">
+                                {item.quantity}
+                              </td>
+                              <td className="border border-black px-3 py-1.5 align-middle font-mono">
+                                <div className="flex justify-between items-center">
+                                  <span>Rp</span>
+                                  <span>{formatNumber(item.unitPrice)}</span>
+                                </div>
+                              </td>
+                              <td className="border border-black px-3 py-1.5 align-middle font-mono">
+                                <div className="flex justify-between items-center">
+                                  <span>Rp</span>
+                                  <span>{formatNumber(item.totalPrice)}</span>
+                                </div>
+                              </td>
+                              <td className="border border-black px-3 py-1.5 align-middle text-xs sm:text-[13px] text-blue-700 break-all">
+                                <a 
+                                  href={resolvedLink} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="underline hover:text-blue-900 flex items-center gap-1"
+                                >
+                                  <span>{resolvedLink}</span>
+                                  <ExternalLink className="w-3 h-3 inline-block shrink-0" />
+                                </a>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        {/* Baris Jumlah Unit & Sub Total */}
+                        <tr className="border-b border-black font-bold">
+                          <td colSpan={2} className="border border-black px-3 py-2 text-center bg-[#00A2E8] text-white">
+                            Jumlah Unit
+                          </td>
+                          <td className="border border-black px-2 py-2 text-center bg-[#00A2E8] text-white font-mono">
+                            {totalUnits}
+                          </td>
+                          <td className="border border-black px-3 py-2 text-right bg-white text-slate-950 pr-3">
+                            Sub Total
+                          </td>
+                          <td className="border border-black px-3 py-2 font-mono bg-white">
+                            <div className="flex justify-between items-center">
+                              <span>Rp</span>
+                              <span>{formatNumber(sph.subtotal1)}</span>
+                            </div>
+                          </td>
+                          <td className="border border-black px-3 py-2 bg-white"></td>
+                        </tr>
+
+                        {/* Baris Terbilang Box */}
+                        {sph.terbilang && (
+                          <tr className="border-b border-black">
+                            <td colSpan={6} className="border border-black px-4 py-2.5 bg-white text-center font-bold italic text-slate-950">
+                              Terbilang: "{sph.terbilang.replace(/^["']|["']$/g, '')}"
+                            </td>
+                          </tr>
+                        )}
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Footer Resmi PT SMK */}
+                <OfficialLetterFooter className="mt-6" />
+              </div>
+            )}
 
           </div>
         )}

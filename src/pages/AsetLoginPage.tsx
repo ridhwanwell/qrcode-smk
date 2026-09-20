@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
-import { useAuth, UserRole } from '../lib/AuthContext';
+import { useAuth } from '../lib/AuthContext';
 import { CompanyLogo } from '../components/CompanyLogo';
 import { 
-  LogIn, 
   KeyRound, 
   User as UserIcon, 
   Eye, 
   EyeOff, 
-  ShieldCheck, 
-  Wrench, 
-  Wallet, 
   AlertTriangle,
   ArrowRight,
   Sparkles,
@@ -21,19 +17,6 @@ export const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<UserRole>('admin_utama');
-
-  const handleSelectRole = (role: UserRole) => {
-    setSelectedRole(role);
-    setError(null);
-    if (role === 'admin_utama') {
-      setUsername('admin.utama@smk.co.id');
-    } else if (role === 'admin_teknik') {
-      setUsername('admin.teknik@smk.co.id');
-    } else {
-      setUsername('admin.keuangan@smk.co.id');
-    }
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,60 +48,6 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Role Preset Switcher */}
-        <div className="w-full mb-6">
-          <p className="text-xs font-semibold text-slate-500 mb-2 text-center uppercase tracking-wider">
-            Pilih Peran Masuk:
-          </p>
-          <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-slate-100 rounded-2xl border border-slate-200/60">
-            <button
-              type="button"
-              onClick={() => handleSelectRole('admin_utama')}
-              className={`py-2 px-2 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all ${
-                selectedRole === 'admin_utama'
-                  ? 'bg-[#1C658C] text-white shadow-md shadow-[#1C658C]/20 scale-[1.02]'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Admin Utama</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectRole('admin_teknik')}
-              className={`py-2 px-2 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all ${
-                selectedRole === 'admin_teknik'
-                  ? 'bg-[#1C658C] text-white shadow-md shadow-[#1C658C]/20 scale-[1.02]'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Wrench className="w-3.5 h-3.5" />
-              <span>Admin Teknik</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectRole('admin_keuangan')}
-              className={`py-2 px-2 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all ${
-                selectedRole === 'admin_keuangan'
-                  ? 'bg-[#1C658C] text-white shadow-md shadow-[#1C658C]/20 scale-[1.02]'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>Admin Keuangan</span>
-            </button>
-          </div>
-
-          {/* Scope details for chosen role */}
-          <div className="mt-2.5 px-3 py-2 bg-blue-50/60 border border-blue-100 rounded-xl text-left">
-            <p className="text-[10px] font-bold text-[#1C658C] uppercase tracking-wide">
-              {selectedRole === 'admin_utama' && 'Hak Akses: Seluruh Modul & Konfigurasi (Super Admin)'}
-              {selectedRole === 'admin_teknik' && 'Hak Akses: Dashboard, Label Stiker, Penjadwalan RS, Selia, Aset Kalibrator, Tablet, Master Data'}
-              {selectedRole === 'admin_keuangan' && 'Hak Akses: Dashboard, Penawaran SPH, Label Stiker, Penjadwalan RS, Aset Keuangan, Master Data'}
-            </p>
-          </div>
-        </div>
-
         {/* Error Notification */}
         {error && (
           <div className="w-full mb-5 p-3.5 bg-rose-50 text-rose-800 text-xs font-medium rounded-2xl border border-rose-200 flex items-start gap-2.5">
@@ -138,7 +67,7 @@ export const LoginPage: React.FC = () => {
             <div className="relative">
               <input
                 type="text"
-                placeholder="admin.utama@smk.co.id"
+                placeholder="Masukkan email atau username"
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value);
@@ -159,7 +88,7 @@ export const LoginPage: React.FC = () => {
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Masukkan password akun Supabase"
+                placeholder="Masukkan password akun Anda"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);

@@ -288,3 +288,63 @@ export const OFFICIAL_MARKETING_STAFF = [
   { name: 'Sulis', phone: '0821-3670-7421' },
 ];
 
+/**
+ * 3 Pilihan Penerima / Pembuat Dokumen Deal Resmi (BO, FP, KWP)
+ */
+export const DEAL_RECIPIENT_OPTIONS = [
+  'Fitri Nur Aini',
+  'Sheva Maresca',
+  'Junior Yudha Pamungkas'
+] as const;
+
+/**
+ * Rekening Resmi PT. SARANA MULTI KALIBRASI
+ */
+export const BANK_MANDIRI_SMK = {
+  bankName: 'Bank Mandiri',
+  accountNumber: '138-00-2610846-9',
+  accountName: 'SARANA MULTI KALIBRASI PT',
+  segment: 'RS Swasta / Umum'
+};
+
+export const BANK_JATENG_SMK = {
+  bankName: 'Bank Jateng',
+  accountNumber: '1-002-01495-1',
+  accountName: 'SARANA MULTI KALIBRASI PT',
+  segment: 'RS Negeri / Pemerintah'
+};
+
+/**
+ * Konversi angka bulan (1-12) ke angka romawi (I - XII)
+ */
+export function getRomanMonth(monthIndex1to12: number): string {
+  const romanMonths = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+  return romanMonths[monthIndex1to12] || 'I';
+}
+
+/**
+ * Helper untuk men-generate nomor BO, FP, dan KWP dengan 3 digit depan yang sama,
+ * serta bulan romawi dan tahun yang mengikuti tanggal Deal.
+ * Contoh: 074 -> 074/SMK-BO/IX-2026, 074/SMK-FP/IX-2026, 074/SMK-KWP/IX-2026
+ */
+export function generateDealNumbers(sequence: string | number, dealDateStr?: string) {
+  const d = dealDateStr ? new Date(dealDateStr) : new Date();
+  const validDate = isNaN(d.getTime()) ? new Date() : d;
+  const month = validDate.getMonth() + 1; // 1-12
+  const year = validDate.getFullYear();
+  const romanMonth = getRomanMonth(month);
+  
+  // Format 3 digit prefix
+  const cleanSeq = String(sequence || '074').trim().padStart(3, '0').slice(-3);
+
+  return {
+    sequenceNumber: cleanSeq,
+    romanMonth,
+    year,
+    boNumber: `${cleanSeq}/SMK-BO/${romanMonth}-${year}`,
+    fpNumber: `${cleanSeq}/SMK-FP/${romanMonth}-${year}`,
+    kwpNumber: `${cleanSeq}/SMK-KWP/${romanMonth}-${year}`
+  };
+}
+
+
