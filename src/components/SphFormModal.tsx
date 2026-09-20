@@ -305,46 +305,60 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
           : config.kop_surat.activeUrl;
       }
 
-      const calculatedTerbilang = angkaTerbilang(grandTotal);
-      const dynamicAttachmentPages = items.length > 0 ? (items.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
+    const calculatedTerbilang = angkaTerbilang(grandTotal);
+    const dynamicAttachmentPages = items.length > 0 ? (items.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
 
-      const sphData = {
-        sphNumber: sphNumber || generateSphNumber(existingSphCount),
-        subject,
-        attachmentPages: dynamicAttachmentPages,
-        date,
-        city,
-        formattedDate: formattedDateStr,
-        hospitalName,
-        hospitalAddress,
-        recipientRole: customerUp || 'Direktur',
-        tembusan,
-        notes,
-        items: items.map((it, idx) => ({
-          no: idx + 1,
-          description: it.description,
-          quantity: it.quantity,
-          unit: it.unit || 'Unit',
-          unitPrice: it.unitPrice,
-          totalPrice: it.totalPrice
-        })),
-        subtotalOriginal,
-        subtotal1,
-        accommodationFee: Number(accommodationFee) || 0,
-        subtotal2,
-        ppnPercent: isPpnIncluded ? 11 : 0,
-        isPpnIncluded,
-        ppnAmount,
-        grandTotal,
-        terbilang: calculatedTerbilang,
-        marketingStaffName,
-        marketingStaffPhone,
-        directorName,
-        directorTitle,
-        bankName: 'Bank Mandiri Cab. Surakarta',
-        bankAccountNumber: '138-00-2610846-9',
-        bankAccountName: 'SARANA MULTI KALIBRASI PT'
+    // Bersihkan dan amankan item sesuai input manual pengguna
+    const cleanItems: SphItem[] = items.map((it, idx) => {
+      const q = Math.max(1, Number(it.quantity) || 1);
+      const uPrice = Math.max(0, Number(it.unitPrice) || 0);
+      return {
+        ...it,
+        no: it.no || (idx + 1),
+        quantity: q,
+        unitPrice: uPrice,
+        totalPrice: q * uPrice,
+        standardPrice: (it.standardPrice !== undefined && it.standardPrice > 0) ? it.standardPrice : uPrice
       };
+    });
+
+    const sphData = {
+      sphNumber: sphNumber || generateSphNumber(existingSphCount),
+      subject,
+      attachmentPages: dynamicAttachmentPages,
+      date,
+      city,
+      formattedDate: formattedDateStr,
+      hospitalName,
+      hospitalAddress,
+      recipientRole: customerUp || 'Direktur',
+      tembusan,
+      notes,
+      items: cleanItems.map((it, idx) => ({
+        no: idx + 1,
+        description: it.description,
+        quantity: it.quantity,
+        unit: it.unit || 'Unit',
+        unitPrice: it.unitPrice,
+        totalPrice: it.totalPrice
+      })),
+      subtotalOriginal,
+      subtotal1,
+      accommodationFee: Number(accommodationFee) || 0,
+      subtotal2,
+      ppnPercent: isPpnIncluded ? 11 : 0,
+      isPpnIncluded,
+      ppnAmount,
+      grandTotal,
+      terbilang: calculatedTerbilang,
+      marketingStaffName,
+      marketingStaffPhone,
+      directorName,
+      directorTitle,
+      bankName: 'Bank Mandiri Cab. Surakarta',
+      bankAccountNumber: '138-00-2610846-9',
+      bankAccountName: 'SARANA MULTI KALIBRASI PT'
+    };
 
       const pdfBytes = await createAuthenticSphPdf(sphData, undefined, resolvedLh);
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
@@ -372,15 +386,33 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       return;
     }
 
-    const calculated = calculateNegotiation({
-      items,
-      targetAmount: negotiationTarget ? Number(negotiationTarget) : undefined,
-      targetType: negotiationTarget ? negotiationType : 'NONE',
-      includePpn: isPpnIncluded,
-      accommodationFee: Number(accommodationFee) || 0
+    // Pastikan item yang disimpan adalah harga dan kuantitas yang diketik manual pengguna
+    const cleanItems: SphItem[] = items.map((it, idx) => {
+      const q = Math.max(1, Number(it.quantity) || 1);
+      const uPrice = Math.max(0, Number(it.unitPrice) || 0);
+      return {
+        ...it,
+        no: it.no || (idx + 1),
+        quantity: q,
+        unitPrice: uPrice,
+        totalPrice: q * uPrice,
+        standardPrice: (it.standardPrice !== undefined && it.standardPrice > 0) ? it.standardPrice : uPrice
+      };
     });
 
-    const dynamicAttachmentPages = items.length > 0 ? (items.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
+    const calculatedSubtotalOriginal = cleanItems.reduce(
+      (acc, it) => acc + (it.quantity * (it.standardPrice || it.unitPrice)),
+      0
+    );
+    const calculatedSubtotal1 = cleanItems.reduce((acc, it) => acc + it.totalPrice, 0);
+    const calculatedSubtotal2 = calculatedSubtotal1 + (Number(accommodationFee) || 0);
+    const calculatedPpn = isPpnIncluded ? Math.round(calculatedSubtotal2 * 0.11) : 0;
+    const calculatedGrand = calculatedSubtotal2 + calculatedPpn;
+    const calculatedTerbilang = angkaTerbilang(calculatedGrand);
+    const calculatedDiscountAmount = Math.max(0, calculatedSubtotalOriginal - calculatedSubtotal1);
+    const calculatedDiscountPercent = calculatedSubtotalOriginal > 0 ? (calculatedDiscountAmount / calculatedSubtotalOriginal) * 100 : 0;
+
+    const dynamicAttachmentPages = cleanItems.length > 0 ? (cleanItems.length > 18 ? '2 Lembar' : '1 Lembar') : '-';
 
     const newSph: SphQuotation = {
       id: initialSph?.id || `SPH-${Date.now()}`,
@@ -396,16 +428,16 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       recipientRole: customerUp || 'Direktur',
       tembusan,
       notes,
-      items: calculated.items,
-      subtotalOriginal,
-      subtotal1,
+      items: cleanItems,
+      subtotalOriginal: calculatedSubtotalOriginal > 0 ? calculatedSubtotalOriginal : calculatedSubtotal1,
+      subtotal1: calculatedSubtotal1,
       accommodationFee: Number(accommodationFee) || 0,
-      subtotal2,
+      subtotal2: calculatedSubtotal2,
       ppnPercent: isPpnIncluded ? 11 : 0,
       isPpnIncluded,
-      ppnAmount,
-      grandTotal,
-      terbilang: calculated.terbilang,
+      ppnAmount: calculatedPpn,
+      grandTotal: calculatedGrand,
+      terbilang: calculatedTerbilang,
       marketingStaffName,
       marketingStaffPhone,
       directorName,
@@ -425,8 +457,8 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
         'Pembayaran : Bank Mandiri Cab. Surakarta No. Rek : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)'
       ],
       status,
-      discountAmount,
-      discountPercent,
+      discountAmount: calculatedDiscountAmount,
+      discountPercent: calculatedDiscountPercent,
       createdAt: initialSph?.createdAt || date,
       validUntilDate: new Date(new Date(date).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       ...(negotiationTarget ? { negotiationTarget: Number(negotiationTarget) } : {}),

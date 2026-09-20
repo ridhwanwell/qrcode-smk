@@ -265,6 +265,7 @@ export interface AutomaticReminder {
 
 export interface SphItem {
   id: string;
+  no?: number;
   catalogNumber?: number;
   description: string;
   quantity: number;

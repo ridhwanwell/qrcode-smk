@@ -874,19 +874,19 @@ export async function createAuthenticSphPdf(
         });
       });
 
-      // Header Text: Hitam Bold 12pt, terpusat rapi (konsisten dengan baris Jumlah & GRAND TOTAL)
+      // Header Text: Putih Bold 12pt, terpusat rapi di atas latar belakang biru
       const noHeaderW = fontBold.widthOfTextAtSize('No.', 12);
-      pageN.drawText('No.', { x: colX.no + (30 - noHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('No.', { x: colX.no + (30 - noHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_WHITE });
       const descHeaderW = fontBold.widthOfTextAtSize('Diskripsi', 12);
-      pageN.drawText('Diskripsi', { x: colX.desc + (205 - descHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('Diskripsi', { x: colX.desc + (205 - descHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_WHITE });
       const qtyHeaderW = fontBold.widthOfTextAtSize('Qty', 12);
-      pageN.drawText('Qty', { x: colX.qty + (38 - qtyHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('Qty', { x: colX.qty + (38 - qtyHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_WHITE });
       const unitHeaderW = fontBold.widthOfTextAtSize('Satuan', 12);
-      pageN.drawText('Satuan', { x: colX.unit + (48 - unitHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('Satuan', { x: colX.unit + (48 - unitHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_WHITE });
       const priceHeaderW = fontBold.widthOfTextAtSize('Satuan Harga', 12);
-      pageN.drawText('Satuan Harga', { x: colX.price + (107 - priceHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('Satuan Harga', { x: colX.price + (107 - priceHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_WHITE });
       const totalHeaderW = fontBold.widthOfTextAtSize('Total Harga', 12);
-      pageN.drawText('Total Harga', { x: colX.total + (110.59 - totalHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('Total Harga', { x: colX.total + (110.59 - totalHeaderW) / 2, y: tableY - 15.5, size: 12, font: fontBold, color: COLOR_WHITE });
 
       tableY -= thH;
     } else {
@@ -1034,12 +1034,12 @@ export async function createAuthenticSphPdf(
       });
 
       const jmlLblW = fontBold.widthOfTextAtSize('Jumlah', 12);
-      pageN.drawText('Jumlah', { x: colX.desc + (205 - jmlLblW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('Jumlah', { x: colX.desc + (205 - jmlLblW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_WHITE });
       const totalQtyStr = String(totalQty);
       const tqW = fontBold.widthOfTextAtSize(totalQtyStr, 12);
-      pageN.drawText(totalQtyStr, { x: colX.qty + (38 - tqW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText(totalQtyStr, { x: colX.qty + (38 - tqW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_WHITE });
       const unitLblW = fontBold.widthOfTextAtSize('Unit', 12);
-      pageN.drawText('Unit', { x: colX.unit + (48 - unitLblW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_BLACK });
+      pageN.drawText('Unit', { x: colX.unit + (48 - unitLblW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_WHITE });
       
       // Total 1 label (RATA KANAN) & value (12pt font)
       const t1Label = 'Total 1';
@@ -1093,7 +1093,7 @@ export async function createAuthenticSphPdf(
           y: tableY - 15,
           size: 12,
           font: fontBold,
-          color: COLOR_BLACK
+          color: isGrand ? COLOR_WHITE : COLOR_BLACK
         });
 
         // "Rp" and right-aligned amount (12pt font)
@@ -1102,7 +1102,7 @@ export async function createAuthenticSphPdf(
           y: tableY - 15,
           size: 12,
           font: fontBold,
-          color: COLOR_BLACK
+          color: isGrand ? COLOR_WHITE : COLOR_BLACK
         });
 
         const valW = fontBold.widthOfTextAtSize(sr.valStr, 12);
@@ -1111,7 +1111,7 @@ export async function createAuthenticSphPdf(
           y: tableY - 15,
           size: 12,
           font: fontBold,
-          color: COLOR_BLACK
+          color: isGrand ? COLOR_WHITE : COLOR_BLACK
         });
 
         tableY -= summaryRowH;

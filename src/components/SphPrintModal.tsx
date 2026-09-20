@@ -886,13 +886,13 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                     <table className="w-full text-left border-collapse border border-black text-xs sm:text-[13.5px]">
                       {chunkIndex === 0 && (
                         <thead>
-                          <tr className="bg-[#00A2E8] text-slate-950 font-bold border-b border-black text-center">
-                            <th className="border border-black px-2 py-2 w-10 text-center text-slate-950">No.</th>
-                            <th className="border border-black px-3 py-2 text-center text-slate-950">Diskripsi</th>
-                            <th className="border border-black px-2 py-2 w-12 text-center text-slate-950">Qty</th>
-                            <th className="border border-black px-2 py-2 w-14 text-center text-slate-950">Satuan</th>
-                            <th className="border border-black px-3 py-2 w-28 text-center text-slate-950">Harga Satuan</th>
-                            <th className="border border-black px-3 py-2 w-32 text-center text-slate-950">Total Harga</th>
+                          <tr className="bg-[#00A2E8] text-white font-bold border-b border-black text-center">
+                            <th className="border border-black px-2 py-2 w-10 text-center text-white">No.</th>
+                            <th className="border border-black px-3 py-2 text-center text-white">Diskripsi</th>
+                            <th className="border border-black px-2 py-2 w-12 text-center text-white">Qty</th>
+                            <th className="border border-black px-2 py-2 w-14 text-center text-white">Satuan</th>
+                            <th className="border border-black px-3 py-2 w-28 text-center text-white">Harga Satuan</th>
+                            <th className="border border-black px-3 py-2 w-32 text-center text-white">Total Harga</th>
                           </tr>
                         </thead>
                       )}
@@ -932,13 +932,13 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                         <tfoot className="font-bold border-t-2 border-black text-xs sm:text-[13.5px]">
                           {/* Row 1: Jumlah (Biru Muda) & Total 1 (Putih Polos) */}
                           <tr className="border-b border-black">
-                            <td colSpan={2} className="border border-black px-3 py-2 text-center font-bold text-slate-950 bg-[#00A2E8]">
+                            <td colSpan={2} className="border border-black px-3 py-2 text-center font-bold text-white bg-[#00A2E8]">
                               Jumlah
                             </td>
-                            <td className="border border-black px-2 py-2 text-center font-bold text-slate-950 bg-[#00A2E8]">
+                            <td className="border border-black px-2 py-2 text-center font-bold text-white bg-[#00A2E8]">
                               {totalUnits}
                             </td>
-                            <td className="border border-black px-2 py-2 text-center text-slate-950 font-bold bg-[#00A2E8]">
+                            <td className="border border-black px-2 py-2 text-center text-white font-bold bg-[#00A2E8]">
                               Unit
                             </td>
                             <td className="border border-black px-3 py-2 text-right font-bold text-slate-950 bg-white pr-3">
@@ -1000,11 +1000,11 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                           </tr>
 
                           {/* GRAND TOTAL */}
-                          <tr className="bg-[#00A2E8] text-slate-950 border-b border-black font-extrabold text-sm sm:text-base">
-                            <td className="border border-black px-3 py-2.5 text-right tracking-wide font-bold text-slate-950 pr-3">
+                          <tr className="bg-[#00A2E8] text-white border-b border-black font-extrabold text-sm sm:text-base">
+                            <td className="border border-black px-3 py-2.5 text-right tracking-wide font-bold text-white pr-3">
                               GRAND TOTAL
                             </td>
-                            <td className="border border-black px-3 py-2.5 font-mono font-bold text-slate-950">
+                            <td className="border border-black px-3 py-2.5 font-mono font-bold text-white">
                               <div className="flex justify-between items-center">
                                 <span>Rp</span>
                                 <span>{formatNumber(sph.grandTotal)}</span>

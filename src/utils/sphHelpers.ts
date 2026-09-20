@@ -104,10 +104,13 @@ export function calculateNegotiation({
   ppnRate?: number;
   accommodationFee?: number;
 }): NegotiationResult {
-  // 1. Hitung total original berdasarkan standardPrice brosur
-  const totalOriginalSubtotal = items.reduce((acc, it) => acc + (it.quantity * it.standardPrice), 0);
+  // 1. Hitung total original berdasarkan standardPrice brosur (atau unitPrice jika standardPrice 0)
+  const totalOriginalSubtotal = items.reduce(
+    (acc, it) => acc + (it.quantity * (it.standardPrice !== undefined && it.standardPrice > 0 ? it.standardPrice : (it.unitPrice || 0))),
+    0
+  );
 
-  if (items.length === 0 || totalOriginalSubtotal === 0) {
+  if (items.length === 0) {
     return {
       items: [],
       subtotalOriginal: 0,
@@ -120,6 +123,36 @@ export function calculateNegotiation({
       terbilang: 'Nol Rupiah',
       discountAmount: 0,
       discountPercent: 0
+    };
+  }
+
+  // Jika tidak ada target nego atau mode NONE / MANUAL, pertahankan harga yang diketik manual persis apa adanya!
+  if (!targetAmount || targetAmount <= 0 || targetType === 'NONE' || targetType === 'MANUAL') {
+    const subtotal1 = items.reduce((acc, it) => acc + (it.quantity * (Number(it.unitPrice) || 0)), 0);
+    const subtotal2 = subtotal1 + accommodationFee;
+    const ppnAmount = includePpn ? Math.round(subtotal2 * ppnRate) : 0;
+    const grandTotal = subtotal2 + ppnAmount;
+    const discountAmount = Math.max(0, totalOriginalSubtotal - subtotal1);
+    const discountPercent = totalOriginalSubtotal > 0 ? (discountAmount / totalOriginalSubtotal) * 100 : 0;
+
+    return {
+      items: items.map(it => ({
+        ...it,
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        unitPrice: Math.max(0, Number(it.unitPrice) || 0),
+        totalPrice: (Math.max(1, Number(it.quantity) || 1)) * (Math.max(0, Number(it.unitPrice) || 0)),
+        standardPrice: it.standardPrice !== undefined ? it.standardPrice : (Number(it.unitPrice) || 0)
+      })),
+      subtotalOriginal: totalOriginalSubtotal > 0 ? totalOriginalSubtotal : subtotal1,
+      subtotal1,
+      accommodationFee,
+      subtotal2,
+      ppnPercent: includePpn ? 11 : 0,
+      ppnAmount,
+      grandTotal,
+      terbilang: angkaTerbilang(grandTotal),
+      discountAmount,
+      discountPercent
     };
   }
 
@@ -139,21 +172,27 @@ export function calculateNegotiation({
     targetNetSubtotal = totalOriginalSubtotal * (1 - discountRatio);
   }
 
+  // Base harga yang akan diskalakan: gunakan standardPrice jika ada, atau unitPrice saat ini
+  const baseForScale = totalOriginalSubtotal > 0
+    ? totalOriginalSubtotal
+    : items.reduce((acc, it) => acc + (it.quantity * (it.unitPrice || 0)), 0);
+
   // Ratio penyesuaian harga
-  const adjustmentRatio = totalOriginalSubtotal > 0 ? (targetNetSubtotal / totalOriginalSubtotal) : 1;
+  const adjustmentRatio = baseForScale > 0 ? (targetNetSubtotal / baseForScale) : 1;
 
   // Hitung harga satuan baru per item
   let runningSubtotal = 0;
   const updatedItems: SphItem[] = items.map((it) => {
-    // Unit price dihitung proporsional dari standardPrice
-    const newUnitPrice = Math.round(it.standardPrice * adjustmentRatio);
+    const basePrice = (it.standardPrice !== undefined && it.standardPrice > 0) ? it.standardPrice : (it.unitPrice || 0);
+    const newUnitPrice = Math.round(basePrice * adjustmentRatio);
     const newTotal = newUnitPrice * it.quantity;
     runningSubtotal += newTotal;
 
     return {
       ...it,
       unitPrice: newUnitPrice,
-      totalPrice: newTotal
+      totalPrice: newTotal,
+      standardPrice: it.standardPrice !== undefined ? it.standardPrice : basePrice
     };
   });
 
@@ -179,8 +218,6 @@ export function calculateNegotiation({
   // Jika mode INCLUDE_PPN dan ada targetAmount, pastikan Grand Total bulat sama persis dengan targetAmount
   if (targetType === 'INCLUDE_PPN' && targetAmount && targetAmount > 0) {
     grandTotal = targetAmount;
-    // Sesuaikan PPN amount agar subtotal2 + ppnAmount = grandTotal
-    // ppnAmount = grandTotal - subtotal2;
   }
 
   const discountAmount = Math.max(0, totalOriginalSubtotal - subtotal1);

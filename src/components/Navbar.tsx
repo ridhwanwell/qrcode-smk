@@ -12,8 +12,6 @@ import {
   FileCheck,
   Tags,
   RotateCcw,
-  ChevronLeft,
-  ChevronRight,
   CloudUpload,
   CloudDownload
 } from 'lucide-react';
@@ -162,15 +160,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navScrollRef = useRef<HTMLDivElement>(null);
 
-  const scrollNav = (direction: 'left' | 'right') => {
-    if (navScrollRef.current) {
-      const scrollAmount = 260;
-      navScrollRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth'
-      });
+  useEffect(() => {
+    const activeBtn = document.getElementById(`nav-${activeTab}-tab`);
+    if (activeBtn && navScrollRef.current) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
-  };
+  }, [activeTab]);
 
   const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (navScrollRef.current && e.deltaY !== 0) {
@@ -305,22 +300,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* DIRECT NAVIGATION BAR: Clean, flat navigation bar for all permitted tabs */}
       {/* ========================================================================= */}
       <div className="bg-[#144966] border-t border-[#1C658C] px-2 sm:px-4 py-1.5 shadow-inner">
-        <div className="max-w-7xl mx-auto flex items-center gap-1.5">
-          {/* Tombol Geser Kiri */}
-          <button
-            type="button"
-            onClick={() => scrollNav('left')}
-            className="p-1.5 text-[#398AB9] hover:text-white bg-[#0F364C] hover:bg-[#1C658C] rounded-lg border border-[#1C658C] transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
-            title="Geser Menu ke Kiri"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-
+        <div className="max-w-7xl mx-auto flex items-center">
           {/* Container Tab dengan Slide Bar & Mouse Wheel Scroll */}
           <div
             ref={navScrollRef}
             onWheel={handleWheelScroll}
-            className="flex-1 flex items-center gap-2 overflow-x-auto nav-scroll-bar pb-2 pt-1 px-1 scroll-smooth"
+            className="w-full flex items-center gap-2 overflow-x-auto nav-scroll-bar pb-2 pt-1 px-1 scroll-smooth"
           >
             {visibleNavTabs.map((tab) => {
               const Icon = tab.icon;
@@ -349,16 +334,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               );
             })}
           </div>
-
-          {/* Tombol Geser Kanan */}
-          <button
-            type="button"
-            onClick={() => scrollNav('right')}
-            className="p-1.5 text-[#398AB9] hover:text-white bg-[#0F364C] hover:bg-[#1C658C] rounded-lg border border-[#1C658C] transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
-            title="Geser Menu ke Kanan"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
