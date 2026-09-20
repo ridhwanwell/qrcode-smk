@@ -30,7 +30,12 @@ export default function AdminDashboard() {
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlModal, setShowSqlModal] = useState(false);
 
-  const supabaseSqlScript = `-- Jalankan query ini di Dashboard Supabase > SQL Editor:
+  const supabaseSqlScript = `-- ==============================================================================
+-- SQL SUPABASE LENGKAP UNTUK SINKRONISASI DATA SEMUA DEVICE & AKUN
+-- Jalankan query ini di Dashboard Supabase > SQL Editor > Klik RUN
+-- ==============================================================================
+
+-- 1. Buat Tabel public.labels jika belum ada
 CREATE TABLE IF NOT EXISTS public.labels (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   no_label TEXT NOT NULL UNIQUE,
@@ -49,10 +54,15 @@ CREATE TABLE IF NOT EXISTS public.labels (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
+-- 2. Pastikan Semua Kolom Wajib Tersedia
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS nama_rs TEXT;
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS nama_alat TEXT;
 ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS ruangan TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_source TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_url TEXT;
+ALTER TABLE public.labels ADD COLUMN IF NOT EXISTS pdf_name TEXT;
 
+-- 3. Aktifkan Row Level Security (RLS) & Berikan Izin Akses Penuh
 ALTER TABLE public.labels ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public can view labels" ON public.labels;
@@ -61,8 +71,24 @@ DROP POLICY IF EXISTS "Allow full access on labels" ON public.labels;
 
 CREATE POLICY "Allow full access on labels" 
 ON public.labels FOR ALL 
+TO public, anon, authenticated
 USING (true)
-WITH CHECK (true);`;
+WITH CHECK (true);
+
+-- 4. AKTIFKAN SUPABASE REALTIME (WAJIB: Agar Sinkron Otomatis ke HP / Device Lain)
+ALTER TABLE public.labels REPLICA IDENTITY FULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'labels'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.labels;
+  END IF;
+END $$;`;
 
   const fetchLabels = useCallback(async () => {
     try {

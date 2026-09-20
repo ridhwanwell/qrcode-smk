@@ -83,6 +83,7 @@ async function startServer() {
         .select('*')
         .not('no_label', 'like', '__meta_%')
         .not('no_label', 'like', '__aset_%')
+        .not('no_label', 'like', '__item_%')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -401,18 +402,15 @@ async function startServer() {
     if (!a || !b) return false;
     if (a.id && b.id && String(a.id).trim() === String(b.id).trim()) return true;
     if (a.sphNumber && b.sphNumber && String(a.sphNumber).trim() === String(b.sphNumber).trim()) return true;
+    if (a.workOrderNumber && b.workOrderNumber && String(a.workOrderNumber).trim() === String(b.workOrderNumber).trim()) return true;
     if (a.noLabel && b.noLabel && String(a.noLabel).trim() === String(b.noLabel).trim()) return true;
     if (a.no_label && b.no_label && String(a.no_label).trim() === String(b.no_label).trim()) return true;
-    if (a.workOrderNumber && b.workOrderNumber && String(a.workOrderNumber).trim() === String(b.workOrderNumber).trim()) return true;
-    if (a.code && b.code && String(a.code).trim() === String(b.code).trim()) return true;
-    if (a.number && b.number && String(a.number).trim() === String(b.number).trim()) return true;
-    if (a.hospitalId && b.hospitalId && String(a.hospitalId).trim() === String(b.hospitalId).trim()) return true;
     return false;
   }
 
   function getCollectionItemKey(it: any): string {
     if (!it || typeof it !== 'object') return `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const k = it.id || it.sphNumber || it.noLabel || it.no_label || it.workOrderNumber || it.code || it.number || it.hospitalId;
+    const k = it.id || it.sphNumber || it.workOrderNumber || it.noLabel || it.no_label;
     return k ? String(k).trim().replace(/[^a-zA-Z0-9_\-\.]/g, '_') : `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   }
 

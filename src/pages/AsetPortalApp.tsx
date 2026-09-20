@@ -100,17 +100,41 @@ function AsetPortalMain() {
   };
 
   // Persistence State via Supabase with rich initial fallbacks and Supabase Realtime channel
-  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules, isRealtimeConnected } = useSupabaseData<CalibrationSchedule>('schedules', INITIAL_SCHEDULES);
-  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph } = useSupabaseData<SphQuotation>('sphDocuments', INITIAL_SPH_LIST);
-  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets', SPREADSHEET_CALIBRATORS);
-  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets } = useSupabaseData<FinancialAsset>('financialAssets', []);
-  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions } = useSupabaseData<FinancialTransaction>('financialTransactions', []);
-  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals } = useSupabaseData<Hospital>('hospitals', INITIAL_HOSPITALS);
-  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians } = useSupabaseData<Technician>('technicians', INITIAL_TECHNICIANS);
-  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets } = useSupabaseData<TabletDevice>('tabletAssets', OFFICIAL_TABLETS);
-  const { data: tabletLoans, add: addTabletLoan, update: updateTabletLoanDb, remove: removeTabletLoanDb, clearAll: clearAllTabletLoans } = useSupabaseData<TabletLoan>('tabletLoans');
-  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing } = useSupabaseData<MarketingStaff>('marketingStaff', INITIAL_MARKETING);
-  const { data: bapDocuments, add: addBapDocument, update: updateBapDocument, remove: removeBapDocument, clearAll: clearAllBapDocuments } = useSupabaseData<BapDocument>('bapDocuments');
+  const { data: schedules, add: addSchedule, update: updateSchedule, remove: removeSchedule, clearAll: clearAllSchedules, forceSyncToSupabase: forceSyncSchedules, isRealtimeConnected } = useSupabaseData<CalibrationSchedule>('schedules', INITIAL_SCHEDULES);
+  const { data: sphList, add: addSph, update: updateSph, remove: removeSph, clearAll: clearAllSph, forceSyncToSupabase: forceSyncSph } = useSupabaseData<SphQuotation>('sphDocuments', INITIAL_SPH_LIST);
+  const { data: calibrators, add: addCalibrator, update: updateCalibrator, remove: removeCalibrator, clearAll: clearAllCalibrators, forceSyncToSupabase: forceSyncCalibrators } = useSupabaseData<CalibratorAsset>('calibratorAssets', SPREADSHEET_CALIBRATORS);
+  const { data: financialAssets, add: addFinancialAsset, update: updateFinancialAsset, remove: removeFinancialAsset, clearAll: clearAllFinancialAssets, forceSyncToSupabase: forceSyncFinancial } = useSupabaseData<FinancialAsset>('financialAssets', []);
+  const { data: transactions, add: addTransaction, update: updateTransaction, remove: removeTransaction, clearAll: clearAllTransactions, forceSyncToSupabase: forceSyncTransactions } = useSupabaseData<FinancialTransaction>('financialTransactions', []);
+  const { data: hospitals, add: addHospital, update: updateHospital, remove: removeHospital, clearAll: clearAllHospitals, forceSyncToSupabase: forceSyncHospitals } = useSupabaseData<Hospital>('hospitals', INITIAL_HOSPITALS);
+  const { data: technicians, add: addTechnician, update: updateTechnician, remove: removeTechnician, clearAll: clearAllTechnicians, forceSyncToSupabase: forceSyncTechnicians } = useSupabaseData<Technician>('technicians', INITIAL_TECHNICIANS);
+  const { data: tablets, add: addTablet, update: updateTablet, remove: removeTablet, clearAll: clearAllTablets, forceSyncToSupabase: forceSyncTablets } = useSupabaseData<TabletDevice>('tabletAssets', OFFICIAL_TABLETS);
+  const { data: tabletLoans, add: addTabletLoan, update: updateTabletLoanDb, remove: removeTabletLoanDb, clearAll: clearAllTabletLoans, forceSyncToSupabase: forceSyncTabletLoans } = useSupabaseData<TabletLoan>('tabletLoans');
+  const { data: marketingList, add: addMarketing, remove: removeMarketing, clearAll: clearAllMarketing, forceSyncToSupabase: forceSyncMarketing } = useSupabaseData<MarketingStaff>('marketingStaff', INITIAL_MARKETING);
+  const { data: bapDocuments, add: addBapDocument, update: updateBapDocument, remove: removeBapDocument, clearAll: clearAllBapDocuments, forceSyncToSupabase: forceSyncBap } = useSupabaseData<BapDocument>('bapDocuments');
+
+  const handleForceSyncAll = async () => {
+    try {
+      showToast('Menyinkronkan seluruh data laptop ke database Supabase...');
+      await Promise.all([
+        forceSyncSchedules(),
+        forceSyncSph(),
+        forceSyncCalibrators(),
+        forceSyncFinancial(),
+        forceSyncTransactions(),
+        forceSyncHospitals(),
+        forceSyncTechnicians(),
+        forceSyncTablets(),
+        forceSyncTabletLoans(),
+        forceSyncMarketing(),
+        forceSyncBap()
+      ]);
+      showToast('Semua data SPH, Jadwal, Selia & Master dari laptop berhasil disinkronkan ke Supabase!');
+      confetti({ particleCount: 70, spread: 60 });
+    } catch (e) {
+      console.error('Sync error:', e);
+      showToast('Gagal menyinkronkan data.');
+    }
+  };
 
   // Authentic data collections (Filter out any legacy mock financial records so empty financial state is respected)
   const effectiveSchedules = schedules;
@@ -697,6 +721,7 @@ function AsetPortalMain() {
         sphCount={effectiveSphList.length}
         borrowedTabletsCount={effectiveTablets.filter(t => !t.isAvailable).length}
         isRealtimeConnected={isRealtimeConnected}
+        onForceSyncAll={handleForceSyncAll}
         onOpenNewSchedule={() => {
           setEditingSchedule(null);
           setShowNewScheduleModal(true);

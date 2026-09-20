@@ -13,7 +13,8 @@ import {
   Tags,
   RotateCcw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CloudUpload
 } from 'lucide-react';
 import { CalibrationSchedule, CalibratorAsset } from '../types';
 import { getUrgencyInfo } from '../utils/helpers';
@@ -31,6 +32,7 @@ interface NavbarProps {
   sphCount?: number;
   borrowedTabletsCount?: number;
   isRealtimeConnected?: boolean;
+  onForceSyncAll?: () => void;
   onOpenNewSchedule: () => void;
   onOpenNewSph?: () => void;
   onPurgeAllData?: () => void;
@@ -45,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   sphCount = 0,
   borrowedTabletsCount = 0,
   isRealtimeConnected = true,
+  onForceSyncAll,
   onOpenNewSchedule,
   onOpenNewSph,
   onPurgeAllData,
@@ -198,6 +201,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}></span>
               {isRealtimeConnected ? 'Supabase Realtime Terhubung' : 'Menghubungkan Realtime...'}
             </span>
+            {onForceSyncAll && (
+              <button
+                id="btn-sync-laptop-supabase"
+                onClick={onForceSyncAll}
+                title="Unggah dan samakan seluruh data laptop ini ke Supabase agar langsung muncul di HP/perangkat lain"
+                className="inline-flex items-center gap-1.5 bg-[#1C658C]/70 hover:bg-[#398AB9] text-[#EEEEEE] hover:text-white px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-cyan-400/40 transition-all shadow-sm active:scale-95 cursor-pointer"
+              >
+                <CloudUpload className="w-3 h-3 text-cyan-300" />
+                <span>Samakan Data Laptop ke Device Lain</span>
+              </button>
+            )}
             <span className="text-[#398AB9]/50 hidden md:inline">|</span>
             <span className="hidden md:inline text-[#D8D2CB] text-[11px]">
               Permenkes No. 54/2015 • Sertifikat Kemenkes No: 26062301565850001

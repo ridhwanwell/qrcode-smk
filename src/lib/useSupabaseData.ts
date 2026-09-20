@@ -84,9 +84,44 @@ export function useSupabaseData<T extends { id: string }>(
         if (res.ok) {
           const json = await res.json();
           if (json && json.found === true && Array.isArray(json.items)) {
-            if (isMounted) {
-              updateCache(json.items as T[]);
-              setLoading(false);
+            const serverItems = json.items as T[];
+            
+            // Check if local cache has items that the server does not have (e.g. entered on laptop)
+            let localItems: T[] = [];
+            try {
+              const raw = localStorage.getItem(storageKey);
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) localItems = parsed;
+              }
+            } catch (_) {}
+
+            const getItemKey = (i: any) => i?.id || i?.sphNumber || i?.workOrderNumber || i?.noLabel || i?.no_label;
+            
+            const localOnlyItems = localItems.filter(loc => {
+              const lk = getItemKey(loc);
+              return lk && !serverItems.some(srv => getItemKey(srv) === lk);
+            });
+
+            if (localOnlyItems.length > 0) {
+              console.log(`[useSupabaseData] Auto-syncing ${localOnlyItems.length} laptop-local items to Supabase for ${collectionName}...`);
+              const merged = [...serverItems, ...localOnlyItems];
+              if (isMounted) {
+                updateCache(merged);
+                setLoading(false);
+              }
+              // Push laptop-exclusive items up to Supabase so other devices receive them
+              await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: localOnlyItems })
+              });
+              broadcastSync();
+            } else {
+              if (isMounted) {
+                updateCache(serverItems);
+                setLoading(false);
+              }
             }
             return;
           }
@@ -301,5 +336,26 @@ export function useSupabaseData<T extends { id: string }>(
     }
   };
 
-  return { data, add, update, remove, clearAll, setData: updateCache, loading, isRealtimeConnected };
+  // Force push all data currently in memory/localStorage to Supabase
+  const forceSyncToSupabase = useCallback(async () => {
+    try {
+      const current = dataRef.current;
+      if (Array.isArray(current) && current.length > 0) {
+        console.log(`[useSupabaseData] Force-pushing ${current.length} items to Supabase for ${collectionName}...`);
+        await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: current, replaceAll: true })
+        });
+        broadcastSync();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.warn(`[useSupabaseData] forceSync error on ${collectionName}:`, e);
+      return false;
+    }
+  }, [collectionName, broadcastSync]);
+
+  return { data, add, update, remove, clearAll, forceSyncToSupabase, setData: updateCache, loading, isRealtimeConnected };
 }
