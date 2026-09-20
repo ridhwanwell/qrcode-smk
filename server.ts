@@ -417,6 +417,20 @@ async function startServer() {
   app.get("/api/collections/:name", async (req, res) => {
     try {
       const { name } = req.params;
+
+      // 1. Try reading from dedicated app_collections table first
+      try {
+        const { data: collRow, error: collErr } = await supabaseAdmin
+          .from('app_collections')
+          .select('data')
+          .eq('collection_name', name)
+          .maybeSingle();
+
+        if (!collErr && collRow && Array.isArray(collRow.data) && collRow.data.length > 0) {
+          return res.json({ found: true, items: collRow.data });
+        }
+      } catch (_) {}
+
       const metaKey = `__aset_coll_${name}`;
       const itemPrefix = `__item_${name}_`;
 
@@ -560,6 +574,15 @@ async function startServer() {
           pdf_url: JSON.stringify(finalItems),
           updated_at: new Date().toISOString()
         }, { onConflict: 'no_label' });
+
+      // Also persist to dedicated app_collections table if present
+      try {
+        await supabaseAdmin.from('app_collections').upsert({
+          collection_name: name,
+          data: finalItems,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'collection_name' });
+      } catch (_) {}
 
       if (error) {
         console.error(`Supabase error saving collection ${name}:`, error);
