@@ -17,6 +17,7 @@ import { TabletLoanManager } from '../components/TabletLoanManager';
 import { TemplateSettings } from '../components/TemplateSettings';
 import { SeliaDashboard } from '../components/SeliaDashboard';
 import { LabelModuleView } from '../components/LabelModuleView';
+import { CheckSyncModal } from '../components/CheckSyncModal';
 
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -225,6 +226,9 @@ function AsetPortalMain() {
     window.addEventListener('app:logout', handleLogout as EventListener);
     return () => window.removeEventListener('app:logout', handleLogout as EventListener);
   }, [logout]);
+
+  // Check Sync Modal State
+  const [showCheckSyncModal, setShowCheckSyncModal] = useState(false);
 
   // SPH Modal States
   const [showSphModal, setShowSphModal] = useState(false);
@@ -763,6 +767,7 @@ function AsetPortalMain() {
                   setShowNewScheduleModal(true);
                 }}
                 onSendAutomatedReminder={handleSendAutomatedReminder}
+                onOpenCheckSync={() => setShowCheckSyncModal(true)}
               />
             </motion.div>
           )}
@@ -1134,6 +1139,14 @@ function AsetPortalMain() {
           onSaveBap={handleSaveBap}
         />
       )}
+
+      {/* Check Sync Audit Modal */}
+      <CheckSyncModal
+        isOpen={showCheckSyncModal}
+        onClose={() => setShowCheckSyncModal(false)}
+        onShowToast={showToast}
+        onForceSyncAll={handleForceSyncAll}
+      />
 
       {/* Floating Toast Alert Notification */}
       {toastMessage && (

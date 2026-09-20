@@ -88,6 +88,41 @@ BEGIN
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.labels;
   END IF;
+END $$;
+
+-- ==============================================================================
+-- 5. TABEL UTAMA SINKRONISASI DOKUMEN & ASET (app_collections)
+-- Menampung: schedules, sphDocuments, calibratorAssets, financialAssets,
+-- financialTransactions, hospitals, technicians, tabletAssets, tabletLoans, bapDocuments
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.app_collections (
+  collection_name TEXT PRIMARY KEY,
+  data JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.app_collections ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow full access on app_collections" ON public.app_collections;
+
+CREATE POLICY "Allow full access on app_collections"
+ON public.app_collections FOR ALL
+TO public, anon, authenticated
+USING (true)
+WITH CHECK (true);
+
+ALTER TABLE public.app_collections REPLICA IDENTITY FULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'app_collections'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.app_collections;
+  END IF;
 END $$;`;
 
   const fetchLabels = useCallback(async () => {

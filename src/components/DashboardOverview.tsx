@@ -17,7 +17,10 @@ import {
   Zap,
   Activity,
   Layers,
-  Tablet
+  Tablet,
+  RefreshCw,
+  CheckCircle,
+  Database
 } from 'lucide-react';
 import { 
   CalibrationSchedule, 
@@ -47,6 +50,7 @@ interface DashboardOverviewProps {
   onNavigateToTab: (tab: 'dashboard' | 'sph' | 'schedules' | 'reminders' | 'calibrators' | 'tablets' | 'financial' | 'masters') => void;
   onOpenNewSchedule: () => void;
   onSendAutomatedReminder: (schedule: CalibrationSchedule) => void;
+  onOpenCheckSync?: () => void;
 }
 
 export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
@@ -60,7 +64,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onSelectSchedule,
   onNavigateToTab,
   onOpenNewSchedule,
-  onSendAutomatedReminder
+  onSendAutomatedReminder,
+  onOpenCheckSync
 }) => {
   // Aggregate Tablets
   const availableTabletsCount = tablets.filter(t => t.isAvailable).length;
@@ -115,6 +120,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {onOpenCheckSync && (
+              <button
+                onClick={onOpenCheckSync}
+                className="bg-[#144966] hover:bg-[#1C658C] text-cyan-300 border border-cyan-500/40 hover:border-cyan-400 px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 cursor-pointer"
+                id="dash-btn-check-sync"
+                title="Periksa perbandingan jumlah data di laptop vs database server Supabase"
+              >
+                <RefreshCw className="w-4 h-4 text-cyan-400" />
+                <span>Check Sync Server</span>
+              </button>
+            )}
+
             <button
               onClick={() => onNavigateToTab('reminders')}
               className="bg-[#0F364C] hover:bg-[#144966] text-[#EEEEEE] border border-[#398AB9]/40 px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm"
