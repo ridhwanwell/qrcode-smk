@@ -323,6 +323,32 @@ export function getRomanMonth(monthIndex1to12: number): string {
 }
 
 /**
+ * Deteksi / infer opsi pembayaran bank (both, jateng, mandiri, custom)
+ */
+export function getEffectivePaymentOption(sph?: {
+  paymentOption?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  termsAndConditions?: string[];
+} | null): 'both' | 'jateng' | 'mandiri' | 'custom' {
+  if (!sph) return 'both';
+  if (sph.paymentOption === 'jateng' || sph.paymentOption === 'mandiri' || sph.paymentOption === 'both' || sph.paymentOption === 'custom') {
+    return sph.paymentOption;
+  }
+  const bName = (sph.bankName || '').toLowerCase();
+  const bAcc = (sph.bankAccountNumber || '').trim();
+  const term9 = (sph.termsAndConditions && sph.termsAndConditions.length >= 9) ? sph.termsAndConditions[8] : '';
+
+  if (bName.includes('jateng') || bAcc === '1-002-01495-1' || (term9.includes('Bank Jateng') && !term9.includes('Bank Mandiri'))) {
+    return 'jateng';
+  }
+  if (bName.includes('mandiri') || bAcc === '138-00-2610846-9' || (term9.includes('Bank Mandiri') && !term9.includes('Bank Jateng'))) {
+    return 'mandiri';
+  }
+  return 'both';
+}
+
+/**
  * Helper untuk men-generate nomor BO, FP, dan KWP dengan 3 digit depan yang sama,
  * serta bulan romawi dan tahun yang mengikuti tanggal Deal.
  * Contoh: 074 -> 074/SMK-BO/IX-2026, 074/SMK-FP/IX-2026, 074/SMK-KWP/IX-2026

@@ -5,6 +5,7 @@ import { PDFDocument, PDFRawStream, StandardFonts, rgb } from 'pdf-lib';
 import * as fontkit from '@pdf-lib/fontkit';
 import * as pako from 'pako';
 import { fillExcelTemplate, convertExcelToPdfBytes, extractPlaceholdersFromExcel } from './excelTemplateService';
+import { getEffectivePaymentOption } from '../utils/sphHelpers';
 
 // Cached font buffers for consistent Calibri / Carlito rendering across all PDF generations
 let cachedCarlitoRegular: Uint8Array | null = null;
@@ -644,12 +645,33 @@ export async function createAuthenticSphPdf(
     }
   }
 
-  const formatNumberOnly = (val: any): string => {
-    if (val === undefined || val === null || val === '' || val === '-') return '-';
-    if (typeof val === 'string' && val.startsWith('Rp')) {
-      return val.replace('Rp', '').trim();
+  const parseNumericValue = (val: any): number => {
+    if (val === undefined || val === null || val === '' || val === '-') return 0;
+    if (typeof val === 'number') {
+      return isNaN(val) ? 0 : val;
     }
-    const num = typeof val === 'number' ? val : Number(String(val).replace(/[^0-9.-]+/g, '')) || 0;
+    let str = String(val).trim();
+    str = str.replace(/^Rp\.?\s*/i, '').trim();
+    if (!str || str === '-') return 0;
+
+    if (str.includes('.') && str.includes(',')) {
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else if (str.includes('.')) {
+      str = str.replace(/\./g, '');
+    } else if (str.includes(',')) {
+      if (/,\d{3}$/.test(str)) {
+        str = str.replace(/,/g, '');
+      } else {
+        str = str.replace(',', '.');
+      }
+    }
+
+    const num = Number(str);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const formatNumberOnly = (val: any): string => {
+    const num = parseNumericValue(val);
     if (num === 0) return '-';
     return num.toLocaleString('id-ID');
   };
@@ -835,7 +857,7 @@ export async function createAuthenticSphPdf(
     
     if (i === 8) {
       // Item 9: Pembayaran Bank (Pilihan: 2 Bank Keduanya, Bank Jateng saja, Bank Mandiri saja, atau Kustom)
-      const paymentOpt = data.paymentOption || 'both';
+      const paymentOpt = getEffectivePaymentOption(data);
       page1.drawText(numStr, { x: numX, y: contentY, size: 12, font: fontRegular, color: COLOR_BLACK });
       page1.drawText('Pembayaran :', { x: termTextX, y: contentY, size: 12, font: fontRegular, color: COLOR_BLACK });
       
@@ -1129,70 +1151,199 @@ export async function createAuthenticSphPdf(
     if (chunk.hasSummary) {
       const summaryRowH = 21; // 21pt height for 12pt font
 
-      // Row 1: Baris "Jumlah" (Background BIRU MUDA di sisi Jumlah Qty, Putih di Total 1)
+      // Construct Right Summary Rows
+      const subtotal1Num = parseNumericValue(data.subtotal1);
+      const discountAmountNum = parseNumericValue(data.discountAmount);
+      const discountPercentNum = parseNumericValue(data.discountPercent);
+      const ppnAmountNum = parseNumericValue(data.ppnAmount);
+      const accommodationFeeNum = parseNumericValue(data.accommodationFee);
+      const subtotalOriginalNum = parseNumericValue(data.subtotalOriginal);
+      const subtotal2Num = parseNumericValue(data.subtotal2);
+      const grandTotalNum = parseNumericValue(data.grandTotal);
+
+      const subtotalGross = (discountAmountNum > 0)
+        ? (subtotalOriginalNum || (subtotal1Num + discountAmountNum))
+        : subtotal1Num;
+
+      const hasDiscount = (discountAmountNum > 0) || (discountPercentNum > 0);
+      const hasAccom = (accommodationFeeNum > 0);
+
+      const rightSummaryRows: Array<{ label: string; valStr: string; isBold: boolean; isGrand: boolean }> = [];
+
+      // 1. Sub Total (BOLD)
+      rightSummaryRows.push({
+        label: 'Sub Total',
+        valStr: formatNumberOnly(subtotalGross),
+        isBold: true,
+        isGrand: false
+      });
+
+      // 2. Discount (Optional if discount > 0)
+      if (hasDiscount) {
+        const discPctStr = discountPercentNum > 0 ? ` ${Math.round(discountPercentNum)}%` : '';
+        rightSummaryRows.push({
+          label: `Discount${discPctStr}`,
+          valStr: formatNumberOnly(discountAmountNum),
+          isBold: false,
+          isGrand: false
+        });
+      }
+
+      // 3. Sequence logic:
+      if (!hasAccom) {
+        // If NO accommodation:
+        // Akomodasi (Rp 0) -> Total (BOLD) -> PPN 11% -> GRAND TOTAL (BOLD)
+        rightSummaryRows.push({
+          label: 'Akomodasi',
+          valStr: '0',
+          isBold: false,
+          isGrand: false
+        });
+        rightSummaryRows.push({
+          label: 'Total',
+          valStr: formatNumberOnly(subtotal1Num),
+          isBold: true,
+          isGrand: false
+        });
+        rightSummaryRows.push({
+          label: isPpnInc ? 'PPN 11%' : 'PPN 11% (Non)',
+          valStr: formatNumberOnly(ppnAmountNum),
+          isBold: false,
+          isGrand: false
+        });
+        rightSummaryRows.push({
+          label: 'GRAND TOTAL',
+          valStr: formatNumberOnly(grandTotalNum),
+          isBold: true,
+          isGrand: true
+        });
+      } else {
+        // If HAS accommodation (switched position between Akomodasi and PPN!):
+        // PPN 11% -> Total (BOLD) -> Akomodasi -> GRAND TOTAL (BOLD)
+        rightSummaryRows.push({
+          label: isPpnInc ? 'PPN 11%' : 'PPN 11% (Non)',
+          valStr: formatNumberOnly(ppnAmountNum),
+          isBold: false,
+          isGrand: false
+        });
+        const totalVal = subtotal2Num || (subtotal1Num + ppnAmountNum);
+        rightSummaryRows.push({
+          label: 'Total',
+          valStr: formatNumberOnly(totalVal),
+          isBold: true,
+          isGrand: false
+        });
+        rightSummaryRows.push({
+          label: 'Akomodasi',
+          valStr: formatNumberOnly(accommodationFeeNum),
+          isBold: false,
+          isGrand: false
+        });
+        rightSummaryRows.push({
+          label: 'GRAND TOTAL',
+          valStr: formatNumberOnly(grandTotalNum),
+          isBold: true,
+          isGrand: true
+        });
+      }
+
+      const totalSummaryH = rightSummaryRows.length * summaryRowH;
+
+      // 1. Col 1 & 2 - Row 1: Biru Muda `#00A2E8` for "Jumlah Unit"
       pageN.drawRectangle({
         x: colX.no,
         y: tableY - summaryRowH,
-        width: colX.price - colX.no,
+        width: colX.qty - colX.no,
         height: summaryRowH,
         borderColor: COLOR_BORDER,
         borderWidth: 0.5,
         color: COLOR_LIGHT_BLUE
       });
 
-      // Right part (Total 1: colX.price to colX.end): Background PUTIH polos, teks bold
-      pageN.drawRectangle({
-        x: colX.price,
-        y: tableY - summaryRowH,
-        width: colX.end - colX.price,
-        height: summaryRowH,
-        borderColor: COLOR_BORDER,
-        borderWidth: 0.5,
+      const jmlLblStr = 'Jumlah Unit';
+      const jmlLblW = fontBold.widthOfTextAtSize(jmlLblStr, 12);
+      pageN.drawText(jmlLblStr, {
+        x: colX.no + ((colX.qty - colX.no) - jmlLblW) / 2,
+        y: tableY - 15,
+        size: 12,
+        font: fontBold,
         color: COLOR_WHITE
       });
 
-      [colX.desc, colX.qty, colX.unit, colX.price, colX.total].forEach(vx => {
-        pageN.drawLine({ start: { x: vx, y: tableY }, end: { x: vx, y: tableY - summaryRowH }, thickness: 0.5, color: COLOR_BORDER });
+      // 2. Qty & Unit Columns (Col 3 & Col 4) - Row 1: Biru Muda `#00A2E8`
+      pageN.drawRectangle({
+        x: colX.qty,
+        y: tableY - summaryRowH,
+        width: colX.price - colX.qty,
+        height: summaryRowH,
+        borderColor: COLOR_BORDER,
+        borderWidth: 0.5,
+        color: COLOR_LIGHT_BLUE
       });
 
-      const jmlLblW = fontBold.widthOfTextAtSize('Jumlah', 12);
-      pageN.drawText('Jumlah', { x: colX.desc + (205 - jmlLblW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_WHITE });
+      pageN.drawLine({ start: { x: colX.unit, y: tableY }, end: { x: colX.unit, y: tableY - summaryRowH }, thickness: 0.5, color: COLOR_BORDER });
+
       const totalQtyStr = String(totalQty);
       const tqW = fontBold.widthOfTextAtSize(totalQtyStr, 12);
       pageN.drawText(totalQtyStr, { x: colX.qty + (38 - tqW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_WHITE });
       const unitLblW = fontBold.widthOfTextAtSize('Unit', 12);
       pageN.drawText('Unit', { x: colX.unit + (48 - unitLblW) / 2, y: tableY - 15, size: 12, font: fontBold, color: COLOR_WHITE });
-      
-      // Total 1 label (RATA KANAN) & value (12pt font)
-      const t1Label = 'Total 1';
-      const t1LblW = fontBold.widthOfTextAtSize(t1Label, 12);
-      pageN.drawText(t1Label, { x: colX.total - t1LblW - 6, y: tableY - 15, size: 12, font: fontBold, color: COLOR_BLACK });
-      
-      pageN.drawText('Rp', { x: colX.total + 5, y: tableY - 15, size: 12, font: fontBold, color: COLOR_BLACK });
-      const subtotal1NumStr = formatNumberOnly(data.subtotal1);
-      const st1W = fontBold.widthOfTextAtSize(subtotal1NumStr, 12);
-      pageN.drawText(subtotal1NumStr, { x: colX.end - st1W - 5, y: tableY - 15, size: 12, font: fontBold, color: COLOR_BLACK });
-      
-      tableY -= summaryRowH;
 
-      // Kotak Total Terpisah di Sisi Kanan Bawah:
-      // Baris Akomodasi (Putih), Total 2 (Putih), PPN 11% (Putih), GRAND TOTAL (Biru Muda)
-      // SEMUA LABEL DIRATAKAN RATA KANAN (12pt font)
-      const summaryRows = [
-        { label: 'Akomodasi', valStr: formatNumberOnly(data.accommodationFee), isGrand: false },
-        { label: 'Total 2', valStr: formatNumberOnly(data.subtotal2 || data.subtotal1), isGrand: false },
-        { label: isPpnInc ? 'PPN 11%' : 'PPN 11% (Non)', valStr: formatNumberOnly(data.ppnAmount), isGrand: false },
-        { label: 'GRAND TOTAL', valStr: formatNumberOnly(data.grandTotal), isGrand: true }
-      ];
+      // Rows 2+ for Col 1, 2, 3, 4: Merged White Background box for Terbilang (Spanning from colX.no to colX.price)
+      if (totalSummaryH > summaryRowH) {
+        const terbBoxX = colX.no;
+        const terbBoxWidth = colX.price - colX.no; // Spans full width under Col 1-4 without vertical division
+        const terbBoxH = totalSummaryH - summaryRowH;
+        const terbBoxY = tableY - totalSummaryH;
 
-      for (let s = 0; s < summaryRows.length; s++) {
-        const sr = summaryRows[s];
+        pageN.drawRectangle({
+          x: terbBoxX,
+          y: terbBoxY,
+          width: terbBoxWidth,
+          height: terbBoxH,
+          borderColor: COLOR_BORDER,
+          borderWidth: 0.5,
+          color: COLOR_WHITE
+        });
+
+        // Center Terbilang Text horizontally and vertically in the box
+        if (data.terbilang) {
+          const rawTerbilang = data.terbilang.startsWith('"') ? data.terbilang : `"${data.terbilang}"`;
+          const fullTerbilangStr = `Terbilang: ${rawTerbilang}`;
+          const terbilangLines = wrapPdfText(fullTerbilangStr, 52);
+          const fontSz = 11;
+          const lineHeight = 14;
+          const totalTextH = terbilangLines.length * lineHeight;
+          // Calculate starting Y to center text vertically inside terbBox
+          let tY = terbBoxY + (terbBoxH / 2) + (totalTextH / 2) - 10;
+
+          for (const tl of terbilangLines) {
+            const safeTl = safePdfText(tl);
+            const lineW = fontBoldOblique.widthOfTextAtSize(safeTl, fontSz);
+            const lineX = terbBoxX + (terbBoxWidth - lineW) / 2;
+            pageN.drawText(safeTl, {
+              x: Math.max(terbBoxX + 6, lineX),
+              y: tY,
+              size: fontSz,
+              font: fontBoldOblique,
+              color: COLOR_BLACK
+            });
+            tY -= lineHeight;
+          }
+        }
+      }
+
+      // 3. Right Summary Breakdown (Col 5 & Col 6)
+      let curY = tableY;
+      for (let s = 0; s < rightSummaryRows.length; s++) {
+        const sr = rightSummaryRows[s];
         const isGrand = sr.isGrand;
+        const fontToUse = sr.isBold ? fontBold : fontRegular;
 
-        // Cell background & border for summary row
+        // Background
         pageN.drawRectangle({
           x: colX.price,
-          y: tableY - summaryRowH,
+          y: curY - summaryRowH,
           width: colX.end - colX.price,
           height: summaryRowH,
           borderColor: COLOR_BORDER,
@@ -1200,83 +1351,46 @@ export async function createAuthenticSphPdf(
           color: isGrand ? COLOR_LIGHT_BLUE : COLOR_WHITE
         });
 
-        // Vertical divider between label and value
+        // Vertical divider line between label and price
         pageN.drawLine({
-          start: { x: colX.total, y: tableY },
-          end: { x: colX.total, y: tableY - summaryRowH },
+          start: { x: colX.total, y: curY },
+          end: { x: colX.total, y: curY - summaryRowH },
           thickness: 0.5,
           color: COLOR_BORDER
         });
 
-        // Label diratakan RATA KANAN sebelum garis divider (12pt font)
-        const lblW = fontBold.widthOfTextAtSize(sr.label, 12);
+        // Label right-aligned before total divider
+        const lblW = fontToUse.widthOfTextAtSize(sr.label, 12);
         pageN.drawText(sr.label, {
           x: colX.total - lblW - 6,
-          y: tableY - 15,
+          y: curY - 15,
           size: 12,
-          font: fontBold,
+          font: fontToUse,
           color: isGrand ? COLOR_WHITE : COLOR_BLACK
         });
 
-        // "Rp" and right-aligned amount (12pt font)
+        // Rp and right-aligned amount
         pageN.drawText('Rp', {
           x: colX.total + 5,
-          y: tableY - 15,
+          y: curY - 15,
           size: 12,
-          font: fontBold,
+          font: fontToUse,
           color: isGrand ? COLOR_WHITE : COLOR_BLACK
         });
 
-        const valW = fontBold.widthOfTextAtSize(sr.valStr, 12);
+        const valW = fontToUse.widthOfTextAtSize(sr.valStr, 12);
         pageN.drawText(sr.valStr, {
           x: colX.end - valW - 5,
-          y: tableY - 15,
+          y: curY - 15,
           size: 12,
-          font: fontBold,
+          font: fontToUse,
           color: isGrand ? COLOR_WHITE : COLOR_BLACK
         });
 
-        tableY -= summaryRowH;
+        curY -= summaryRowH;
       }
 
-      // Kotak Terbilang Terpisah di Sisi Kiri Bawah (spanning colX.no to colX.price, height = 4 * summaryRowH = 84 pt)
-      const terbilangBoxW = colX.price - colX.no;
-      const terbilangBoxH = 4 * summaryRowH;
-      const terbilangTopY = tableY + terbilangBoxH;
-
-      pageN.drawRectangle({
-        x: colX.no,
-        y: tableY,
-        width: terbilangBoxW,
-        height: terbilangBoxH,
-        borderColor: COLOR_BORDER,
-        borderWidth: 0.5,
-        color: COLOR_WHITE
-      });
-
-      // 1. Label "Terbilang:" -> RATA KIRI dan ITALIC (12pt font)
-      const terbilangHeaderStr = 'Terbilang:';
-      pageN.drawText(terbilangHeaderStr, { 
-        x: colX.no + 8, 
-        y: terbilangTopY - 16, 
-        size: 12, 
-        font: fontBoldOblique, 
-        color: COLOR_BLACK 
-      });
-      
-      // 2. Kalimat Angka Terbilang -> DIRATAKAN CENTER & DIMIRINGKAN (ITALIC) di baris bawah label (12pt font)
-      if (data.terbilang) {
-        const rawTerbilang = data.terbilang.startsWith('"') ? data.terbilang : `"${data.terbilang}"`;
-        const terbilangLines = wrapPdfText(rawTerbilang, 34);
-        let tY = terbilangTopY - 34;
-        for (const tl of terbilangLines.slice(0, 3)) {
-          const lineText = safePdfText(tl);
-          const lineW = fontBoldOblique.widthOfTextAtSize(lineText, 12);
-          const lineX = colX.no + (terbilangBoxW - lineW) / 2;
-          pageN.drawText(lineText, { x: lineX, y: tY, size: 12, font: fontBoldOblique, color: COLOR_BLACK });
-          tY -= 15;
-        }
-      }
+      tableY -= totalSummaryH;
 
       // Footnotes under Table (Asterisks) with italic styling (10.5pt font)
       tableY -= 14;
@@ -1307,7 +1421,7 @@ export async function createAuthenticSphPdf(
   // (1 File yang sama tapi berbeda lembar, otomatis ditambahkan jika tipe SPH adalah E-Catalogue)
   // Format tabel: No | Nama Alat | Qty | Satuan Harga | Total Harga | Link E-Catalogue
   // =========================================================================
-  const isECatalogueSph = data.sphType === 'ecatalogue';
+  const isECatalogueSph = data.sphType === 'ecatalogue' || (data.sphType !== 'non_ecatalogue' && Array.isArray(data.items) && data.items.some((it: any) => !!it.eCatalogueUrl));
 
   if (isECatalogueSph && Array.isArray(data.items) && data.items.length > 0) {
     // Paginate E-Catalogue items (accounting for multi-line URL rows)

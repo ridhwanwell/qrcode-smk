@@ -115,6 +115,115 @@ async function startServer() {
     }
   });
 
+  /**
+   * Helper to safely upsert labels to Supabase using supabaseAdmin.
+   * Handles column name variations (pdf_original_url vs pdforiginal_url) and batching.
+   */
+  async function upsertLabelsAdmin(items: any[]): Promise<{ success: boolean; count: number; error?: any }> {
+    if (!items || items.length === 0) return { success: true, count: 0 };
+
+    const tryUpsert = async (payload: any[]) => {
+      return await supabaseAdmin.from('labels').upsert(payload, { onConflict: 'no_label' });
+    };
+
+    const BATCH_SIZE = 200;
+    let totalSaved = 0;
+
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const chunk = items.slice(i, i + BATCH_SIZE);
+
+      // Variant 1: Both pdf_original_url and pdforiginal_url
+      const variantBoth = chunk.map(it => {
+        const copy = { ...it };
+        const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
+        if (origVal) {
+          copy.pdf_original_url = origVal;
+          copy.pdforiginal_url = origVal;
+        }
+        delete copy.pdfOriginalUrl;
+        return copy;
+      });
+
+      let res = await tryUpsert(variantBoth);
+      if (!res.error) {
+        totalSaved += chunk.length;
+        continue;
+      }
+
+      // Variant 2: pdf_original_url only
+      const variantOriginalOnly = chunk.map(it => {
+        const copy = { ...it };
+        const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
+        if (origVal) {
+          copy.pdf_original_url = origVal;
+        }
+        delete copy.pdforiginal_url;
+        delete copy.pdfOriginalUrl;
+        return copy;
+      });
+
+      res = await tryUpsert(variantOriginalOnly);
+      if (!res.error) {
+        totalSaved += chunk.length;
+        continue;
+      }
+
+      // Variant 3: pdforiginal_url only
+      const variantNoUnderscoreOnly = chunk.map(it => {
+        const copy = { ...it };
+        const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
+        if (origVal) {
+          copy.pdforiginal_url = origVal;
+        }
+        delete copy.pdf_original_url;
+        delete copy.pdfOriginalUrl;
+        return copy;
+      });
+
+      res = await tryUpsert(variantNoUnderscoreOnly);
+      if (!res.error) {
+        totalSaved += chunk.length;
+        continue;
+      }
+
+      // Variant 4: Strip both pdf_original_url and pdforiginal_url
+      const variantNoOriginalUrl = chunk.map(it => {
+        const copy = { ...it };
+        delete copy.pdf_original_url;
+        delete copy.pdforiginal_url;
+        delete copy.pdfOriginalUrl;
+        return copy;
+      });
+
+      res = await tryUpsert(variantNoOriginalUrl);
+      if (!res.error) {
+        totalSaved += chunk.length;
+        continue;
+      }
+
+      // Variant 5: Core fields only
+      const variantCore = chunk.map(it => ({
+        no_label: it.no_label || it.noLabel || it.id,
+        nama_rs: it.nama_rs || it.namaRs || null,
+        nama_alat: it.nama_alat || it.namaAlat || null,
+        ruangan: it.ruangan || null,
+        status: it.status || 'Menunggu Sertifikat',
+        updated_at: new Date().toISOString()
+      }));
+
+      res = await tryUpsert(variantCore);
+      if (!res.error) {
+        totalSaved += chunk.length;
+        continue;
+      }
+
+      console.error("Supabase bulk label upsert error:", res.error);
+      return { success: false, count: totalSaved, error: res.error };
+    }
+
+    return { success: true, count: totalSaved };
+  }
+
   app.post("/api/labels", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { 
@@ -148,6 +257,7 @@ async function startServer() {
         pdf_url: pdfUrl || null,
         pdf_drive_url: pdfDriveUrl || null,
         pdforiginal_url: pdfOriginalUrl || null,
+        pdf_original_url: pdfOriginalUrl || null,
         pdf_name: pdfName || finalNamaAlat || null,
         calibrated_at: calibratedAt || null,
         valid_until: validUntil || null,
@@ -159,28 +269,25 @@ async function startServer() {
         const dotIdx = noLabel.indexOf('.');
         const prefix = dotIdx > 0 ? noLabel.substring(0, dotIdx) : (noLabel.length >= 3 ? noLabel.substring(0, 3) : noLabel);
         try {
-          await supabaseAdmin.from('labels').upsert({
+          await upsertLabelsAdmin([{
             no_label: `__meta_folder_rs_${prefix}`,
             status: 'metadata',
             pdf_source: 'folder_rs_name',
             pdforiginal_url: namaRs.trim(),
+            pdf_original_url: namaRs.trim(),
             updated_at: new Date().toISOString()
-          }, { onConflict: 'no_label' });
+          }]);
         } catch (_) {}
       }
 
-      const { data, error } = await supabaseAdmin
-        .from('labels')
-        .upsert(payload)
-        .select()
-        .single();
+      const upsertRes = await upsertLabelsAdmin([payload]);
 
-      if (error) {
-        console.error("Supabase label upsert error:", error);
-        return res.status(500).json({ error: error.message });
+      if (!upsertRes.success) {
+        console.error("Supabase label upsert error:", upsertRes.error);
+        return res.status(500).json({ error: upsertRes.error?.message || "Failed to upsert label" });
       }
 
-      res.json({ success: true, label: data });
+      res.json({ success: true, label: payload });
     } catch (err: any) {
       console.error("API error in POST /api/labels:", err);
       res.status(500).json({ error: "Failed to save label" });
@@ -206,6 +313,7 @@ async function startServer() {
           pdf_url: it.pdfUrl || it.pdf_url || null,
           pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
           pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
+          pdf_original_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
           pdf_name: it.pdfName || it.pdf_name || null,
           calibrated_at: it.calibratedAt || it.calibrated_at || null,
           valid_until: it.validUntil || it.valid_until || null,
@@ -226,26 +334,25 @@ async function startServer() {
 
       for (const [prefix, rsName] of Object.entries(folderRsMap)) {
         try {
-          await supabaseAdmin.from('labels').upsert({
+          await upsertLabelsAdmin([{
             no_label: `__meta_folder_rs_${prefix}`,
             status: 'metadata',
             pdf_source: 'folder_rs_name',
             pdforiginal_url: rsName,
+            pdf_original_url: rsName,
             updated_at: new Date().toISOString()
-          }, { onConflict: 'no_label' });
+          }]);
         } catch (_) {}
       }
 
-      const { error } = await supabaseAdmin
-        .from('labels')
-        .upsert(records);
+      const result = await upsertLabelsAdmin(records);
 
-      if (error) {
-        console.error("Supabase bulk label upsert error:", error);
-        return res.status(500).json({ error: error.message });
+      if (!result.success) {
+        console.error("Supabase bulk label upsert error:", result.error);
+        return res.status(500).json({ error: result.error?.message || "Failed to bulk save labels" });
       }
 
-      res.json({ success: true, count: records.length });
+      res.json({ success: true, count: result.count });
     } catch (err: any) {
       console.error("API error in POST /api/labels/bulk:", err);
       res.status(500).json({ error: "Failed to bulk save labels" });

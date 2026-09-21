@@ -44,7 +44,8 @@ import {
   formatNumber, 
   formatIndonesianLongDate, 
   OFFICIAL_MARKETING_STAFF, 
-  angkaTerbilang 
+  angkaTerbilang,
+  getEffectivePaymentOption
 } from '../utils/sphHelpers';
 import { createAuthenticSphPdf } from '../lib/templateGenerator';
 import { getFullTemplatesConfig } from '../lib/templateService';
@@ -244,7 +245,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       setMarketingStaffPhone(initialSph.marketingStaffPhone || '0812-4484-2383');
       setDirectorName(initialSph.directorName || 'Ahmad Fajar Ariyanto');
       setDirectorTitle(initialSph.directorTitle || 'Direktur');
-      setPaymentOption(initialSph.paymentOption || 'both');
+      setPaymentOption(getEffectivePaymentOption(initialSph));
       setCustomBankDetails(initialSph.customBankDetails || '');
     } else {
       // New SPH defaults

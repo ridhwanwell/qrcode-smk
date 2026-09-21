@@ -31,7 +31,7 @@ import { SphQuotation } from '../types';
 import { CompanyLogo } from './CompanyLogo';
 import { OfficialLetterhead } from './OfficialLetterhead';
 import { OfficialLetterFooter } from './OfficialLetterFooter';
-import { formatRupiah, formatNumber } from '../utils/sphHelpers';
+import { formatRupiah, formatNumber, getEffectivePaymentOption } from '../utils/sphHelpers';
 import { exportSphToWord } from '../utils/sphWordExport';
 import { generateDocumentBytes, createAuthenticSphPdf, paginateSphTableItems } from '../lib/templateGenerator';
 import { PDFDocument } from 'pdf-lib';
@@ -129,9 +129,13 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
   const itemChunks = paginateSphTableItems(sph.items || []);
   const dynamicAttachmentText = `${itemChunks.length} Lembar`;
 
+  // Helper to check if SPH is E-Catalogue type
+  const isECatalogueSph = sph.sphType === 'ecatalogue' || (sph.sphType !== 'non_ecatalogue' && (sph.items || []).some(it => !!it.eCatalogueUrl));
+
   // Helper to build SPH data dictionary
   const buildSphData = useCallback(() => {
     return {
+      sphType: isECatalogueSph ? 'ecatalogue' : 'non_ecatalogue',
       sphNumber: sph.sphNumber,
       subject: sph.subject || 'Surat Penawaran Harga Kalibrasi',
       date: formattedDate,
@@ -144,33 +148,38 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
       marketingStaffPhone: sph.marketingStaffPhone || '0821-3670-7421',
       directorName: sph.directorName || 'Ahmad Fajar Ariyanto',
       directorTitle: sph.directorTitle || 'Direktur',
-      subtotal1: formatNumber(sph.subtotal1),
-      subtotalOriginal: formatNumber(sph.subtotalOriginal || sph.subtotal1),
-      discountAmount: formatNumber(sph.discountAmount || 0),
+      subtotal1: sph.subtotal1,
+      subtotalOriginal: sph.subtotalOriginal || sph.subtotal1,
+      discountAmount: sph.discountAmount || 0,
       discountPercent: sph.discountPercent || 0,
-      ppnAmount: formatNumber(sph.ppnAmount),
+      ppnAmount: sph.ppnAmount,
       isPpnIncluded: sph.isPpnIncluded !== false,
-      subtotal2: formatNumber(sph.subtotal2 || (sph.subtotal1 + sph.ppnAmount)),
-      accommodationFee: formatNumber(sph.accommodationFee || 0),
-      grandTotal: formatNumber(sph.grandTotal),
+      subtotal2: sph.subtotal2 || (sph.subtotal1 + sph.ppnAmount),
+      accommodationFee: sph.accommodationFee || 0,
+      grandTotal: sph.grandTotal,
       terbilang: sph.terbilang || 'Nol Rupiah',
       attachmentPages: dynamicAttachmentText,
-      paymentOption: sph.paymentOption || 'both',
+      paymentOption: getEffectivePaymentOption(sph),
       customBankDetails: sph.customBankDetails || '',
       bankName: sph.bankName || 'Bank Mandiri Cab. Surakarta',
       bankAccountNumber: sph.bankAccountNumber || '138-00-2610846-9',
       bankAccountName: sph.bankAccountName || 'SARANA MULTI KALIBRASI PT',
-      items: sph.items.map((it, i) => ({
-        no: i + 1,
-        description: it.description,
-        notes: it.notes || '',
-        quantity: it.quantity,
-        unit: it.unit || 'Unit',
-        unitPrice: formatNumber(it.unitPrice),
-        totalPrice: formatNumber(it.totalPrice)
-      }))
+      items: sph.items.map((it, i) => {
+        const cleanName = extractCleanToolName(it.description || '');
+        const autoUrl = it.eCatalogueUrl || getECatalogueTariff(it.description)?.link || getECatalogueTariff(cleanName)?.link || 'https://katalog.inaproc.id/sarana-multi-kalibrasi';
+        return {
+          no: i + 1,
+          description: it.description,
+          notes: it.notes || '',
+          quantity: it.quantity,
+          unit: it.unit || 'Unit',
+          unitPrice: it.unitPrice,
+          totalPrice: it.totalPrice,
+          eCatalogueUrl: autoUrl
+        };
+      })
     };
-  }, [sph, formattedDate, dynamicAttachmentText]);
+  }, [sph, formattedDate, dynamicAttachmentText, isECatalogueSph]);
 
   const generateTemplatePreview = useCallback(async (
     configToUse?: DocumentTemplatesConfig | null,
@@ -478,7 +487,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                   activeViewTab === 'all' ? 'bg-[#1C658C] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {sph.sphType === 'ecatalogue' ? 'Semua Lembar (1, 2, 3)' : 'Semua Halaman (1 & 2)'}
+                {isECatalogueSph ? 'Semua Lembar (1, 2, 3)' : 'Semua Halaman (1 & 2)'}
               </button>
               <button
                 onClick={() => setActiveViewTab('page1')}
@@ -496,7 +505,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
               >
                 Hal 2: Rincian Alat
               </button>
-              {sph.sphType === 'ecatalogue' && (
+              {isECatalogueSph && (
                 <button
                   onClick={() => setActiveViewTab('page3')}
                   className={`px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1 ${
@@ -773,11 +782,11 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                       <li>
                         <div>Pembayaran :</div>
                         <div className="pt-1.5 pl-0 sm:pl-[24px] font-bold space-y-0.5">
-                          {sph.paymentOption === 'jateng' ? (
+                          {getEffectivePaymentOption(sph) === 'jateng' ? (
                             <div>Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)</div>
-                          ) : sph.paymentOption === 'mandiri' ? (
+                          ) : getEffectivePaymentOption(sph) === 'mandiri' ? (
                             <div>Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)</div>
-                          ) : sph.paymentOption === 'custom' && sph.customBankDetails ? (
+                          ) : getEffectivePaymentOption(sph) === 'custom' && sph.customBankDetails ? (
                             <div>{sph.customBankDetails}</div>
                           ) : (
                             <>
@@ -953,91 +962,132 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
                       </tbody>
 
                       {/* Baris Total Biaya & Terbilang (Hanya tampil di halaman penutup summary) */}
-                      {chunk.hasSummary && (
-                        <tfoot className="font-bold border-t-2 border-black text-xs sm:text-[13.5px]">
-                          {/* Row 1: Jumlah (Biru Muda) & Total 1 (Putih Polos) */}
-                          <tr className="border-b border-black">
-                            <td colSpan={2} className="border border-black px-3 py-2 text-center font-bold text-white bg-[#00A2E8]">
-                              Jumlah
-                            </td>
-                            <td className="border border-black px-2 py-2 text-center font-bold text-white bg-[#00A2E8]">
-                              {totalUnits}
-                            </td>
-                            <td className="border border-black px-2 py-2 text-center text-white font-bold bg-[#00A2E8]">
-                              Unit
-                            </td>
-                            <td className="border border-black px-3 py-2 text-right font-bold text-slate-950 bg-white pr-3">
-                              Total 1
-                            </td>
-                            <td className="border border-black px-3 py-2 font-mono font-bold bg-white">
-                              <div className="flex justify-between items-center">
-                                <span>Rp</span>
-                                <span>{formatNumber(sph.subtotal1)}</span>
-                              </div>
-                            </td>
-                          </tr>
+                      {chunk.hasSummary && (() => {
+                        const subtotalGross = (sph.discountAmount && sph.discountAmount > 0)
+                          ? (sph.subtotalOriginal || sph.subtotal1 + sph.discountAmount)
+                          : sph.subtotal1;
 
-                          {/* Row 2+: Terbilang Box on Left (colspan 4) & Summary Breakdown on Right (colspan 2) */}
-                          <tr className="border-b border-black">
-                            {/* Terbilang Box: Label Rata Kiri & Italic, Angka Center di baris bawah & Italic */}
-                            <td colSpan={4} rowSpan={4} className="border border-black p-3 align-top bg-white">
-                              <div className="text-xs sm:text-[13.5px] font-bold italic text-slate-950 mb-1 text-left">Terbilang:</div>
-                              <div className="text-xs sm:text-[13.5px] font-bold italic text-slate-900 leading-relaxed max-w-sm mx-auto text-center pt-1">
-                                "{sph.terbilang || '-'}"
-                              </div>
-                            </td>
-                            {/* Akomodasi */}
-                            <td className="border border-black px-3 py-2 text-right font-bold text-slate-950 bg-white pr-3">
-                              Akomodasi
-                            </td>
-                            <td className="border border-black px-3 py-2 font-mono bg-white">
-                              <div className="flex justify-between items-center">
-                                <span>Rp</span>
-                                <span>{sph.accommodationFee > 0 ? formatNumber(sph.accommodationFee) : '-'}</span>
-                              </div>
-                            </td>
-                          </tr>
+                        const hasDiscount = (sph.discountAmount && sph.discountAmount > 0) || (sph.discountPercent && sph.discountPercent > 0);
+                        const hasAccom = (sph.accommodationFee && sph.accommodationFee > 0);
 
-                          {/* Total 2 */}
-                          <tr className="border-b border-black">
-                            <td className="border border-black px-3 py-2 text-right font-bold text-slate-950 bg-white pr-3">
-                              Total 2
-                            </td>
-                            <td className="border border-black px-3 py-2 font-mono bg-white">
-                              <div className="flex justify-between items-center">
-                                <span>Rp</span>
-                                <span>{formatNumber(sph.subtotal2 || (sph.subtotal1 + (sph.accommodationFee || 0)))}</span>
-                              </div>
-                            </td>
-                          </tr>
+                        const printSummaryRows: Array<{ label: string; valStr: string; isBold: boolean; isGrand: boolean }> = [];
 
-                          {/* PPN 11% */}
-                          <tr className="border-b border-black">
-                            <td className="border border-black px-3 py-2 text-right font-bold text-slate-950 bg-white pr-3">
-                              {sph.isPpnIncluded ? 'PPN 11%' : 'PPN 11% (Non)'}
-                            </td>
-                            <td className="border border-black px-3 py-2 font-mono bg-white">
-                              <div className="flex justify-between items-center">
-                                <span>Rp</span>
-                                <span>{formatNumber(sph.ppnAmount)}</span>
-                              </div>
-                            </td>
-                          </tr>
+                        printSummaryRows.push({
+                          label: 'Sub Total',
+                          valStr: formatNumber(subtotalGross),
+                          isBold: true,
+                          isGrand: false
+                        });
 
-                          {/* GRAND TOTAL */}
-                          <tr className="bg-[#00A2E8] text-white border-b border-black font-extrabold text-sm sm:text-base">
-                            <td className="border border-black px-3 py-2.5 text-right tracking-wide font-bold text-white pr-3">
-                              GRAND TOTAL
-                            </td>
-                            <td className="border border-black px-3 py-2.5 font-mono font-bold text-white">
-                              <div className="flex justify-between items-center">
-                                <span>Rp</span>
-                                <span>{formatNumber(sph.grandTotal)}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        </tfoot>
-                      )}
+                        if (hasDiscount) {
+                          const discPctStr = sph.discountPercent ? ` ${Math.round(sph.discountPercent)}%` : '';
+                          printSummaryRows.push({
+                            label: `Discount${discPctStr}`,
+                            valStr: formatNumber(sph.discountAmount || 0),
+                            isBold: false,
+                            isGrand: false
+                          });
+                        }
+
+                        if (!hasAccom) {
+                          printSummaryRows.push({
+                            label: 'Akomodasi',
+                            valStr: '0',
+                            isBold: false,
+                            isGrand: false
+                          });
+                          printSummaryRows.push({
+                            label: 'Total',
+                            valStr: formatNumber(sph.subtotal1),
+                            isBold: true,
+                            isGrand: false
+                          });
+                          printSummaryRows.push({
+                            label: sph.isPpnIncluded ? 'PPN 11%' : 'PPN 11% (Non)',
+                            valStr: formatNumber(sph.ppnAmount || 0),
+                            isBold: false,
+                            isGrand: false
+                          });
+                          printSummaryRows.push({
+                            label: 'GRAND TOTAL',
+                            valStr: formatNumber(sph.grandTotal),
+                            isBold: true,
+                            isGrand: true
+                          });
+                        } else {
+                          printSummaryRows.push({
+                            label: sph.isPpnIncluded ? 'PPN 11%' : 'PPN 11% (Non)',
+                            valStr: formatNumber(sph.ppnAmount || 0),
+                            isBold: false,
+                            isGrand: false
+                          });
+                          const totalVal = sph.subtotal2 || (sph.subtotal1 + (sph.ppnAmount || 0));
+                          printSummaryRows.push({
+                            label: 'Total',
+                            valStr: formatNumber(totalVal),
+                            isBold: true,
+                            isGrand: false
+                          });
+                          printSummaryRows.push({
+                            label: 'Akomodasi',
+                            valStr: formatNumber(sph.accommodationFee),
+                            isBold: false,
+                            isGrand: false
+                          });
+                          printSummaryRows.push({
+                            label: 'GRAND TOTAL',
+                            valStr: formatNumber(sph.grandTotal),
+                            isBold: true,
+                            isGrand: true
+                          });
+                        }
+
+                        return (
+                          <tfoot className="font-bold border-t-2 border-black text-xs sm:text-[13.5px]">
+                            {printSummaryRows.map((sr, idx) => {
+                              const isRow1 = idx === 0;
+                              const isRow2 = idx === 1;
+
+                              return (
+                                <tr key={idx} className={sr.isGrand ? 'bg-[#00A2E8] text-white border-b border-black' : 'border-b border-black'}>
+                                  {/* Col 1 & 2: Row 1 = "Jumlah Unit", Row 2+ = Terbilang Box */}
+                                  {isRow1 ? (
+                                    <>
+                                      <td colSpan={2} className="border border-black px-3 py-2 text-center font-bold text-white bg-[#00A2E8]">
+                                        Jumlah Unit
+                                      </td>
+                                      <td className="border border-black px-2 py-2 text-center font-bold text-white bg-[#00A2E8]">
+                                        {totalUnits}
+                                      </td>
+                                      <td className="border border-black px-2 py-2 text-center text-white font-bold bg-[#00A2E8]">
+                                        Unit
+                                      </td>
+                                    </>
+                                  ) : isRow2 ? (
+                                    <td colSpan={4} rowSpan={printSummaryRows.length - 1} className="border border-black p-3 align-middle text-center bg-white">
+                                      <div className="text-xs sm:text-[13.5px] font-bold italic text-slate-950 flex items-center justify-center gap-1.5 leading-relaxed text-center">
+                                        <span>Terbilang:</span>
+                                        <span>"{sph.terbilang || 'Nol Rupiah'}"</span>
+                                      </div>
+                                    </td>
+                                  ) : null}
+
+                                  {/* Col 5 & 6: Summary Row Breakdown */}
+                                  <td className={`border border-black px-3 py-2 text-right pr-3 ${sr.isGrand ? 'bg-[#00A2E8] text-white font-extrabold' : (sr.isBold ? 'font-bold text-slate-950 bg-white' : 'font-normal text-slate-800 bg-white')}`}>
+                                    {sr.label}
+                                  </td>
+                                  <td className={`border border-black px-3 py-2 font-mono ${sr.isGrand ? 'bg-[#00A2E8] text-white font-extrabold' : (sr.isBold ? 'font-bold text-slate-950 bg-white' : 'font-normal text-slate-800 bg-white')}`}>
+                                    <div className="flex justify-between items-center">
+                                      <span>Rp</span>
+                                      <span>{sr.valStr}</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tfoot>
+                        );
+                      })()}
                     </table>
                   </div>
 
@@ -1062,7 +1112,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
             {/* HALAMAN 3: LAMPIRAN LINK E-CATALOGUE INAPROC (1 FILE TAPI BERBEDA LEMBAR) */}
             {/* Urutan tabel dari kiri ke kanan: No, Nama Alat, Qty, Satuan Harga, Total Harga, Link E-Catalogue */}
             {/* ========================================================================= */}
-            {sph.sphType === 'ecatalogue' && (activeViewTab === 'all' || activeViewTab === 'page3') && (
+            {isECatalogueSph && (activeViewTab === 'all' || activeViewTab === 'page3') && (
               <div 
                 style={{ fontFamily: 'Calibri, Carlito, "Segoe UI", Arial, sans-serif' }}
                 className="bg-white text-slate-900 p-6 sm:p-8 rounded-xl shadow-xl max-w-[210mm] mx-auto min-h-[297mm] relative overflow-hidden flex flex-col justify-between print:shadow-none print:rounded-none print:p-0 print:m-0 print:w-full print:min-h-0 print-page-clean print-break-before"

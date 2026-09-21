@@ -26,7 +26,8 @@ import {
   formatIndonesianLongDate,
   DEAL_RECIPIENT_OPTIONS,
   BANK_MANDIRI_SMK,
-  BANK_JATENG_SMK
+  BANK_JATENG_SMK,
+  getEffectivePaymentOption
 } from '../utils/sphHelpers';
 import { 
   downloadBoPdf, 
@@ -73,9 +74,20 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
     (sph.dealData?.recipientName as DealRecipient) || 'Fitri Nur Aini'
   );
   
-  const [paymentMethod, setPaymentMethod] = useState<string>(
-    sph.dealData?.paymentMethod || 'Bank Mandiri : 138-00-2610846-9 & Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)'
-  );
+  const [paymentMethod, setPaymentMethod] = useState<string>(() => {
+    if (sph.dealData?.paymentMethod) return sph.dealData.paymentMethod;
+    const effOpt = getEffectivePaymentOption(sph);
+    if (effOpt === 'jateng') {
+      return `Bank Jateng : ${BANK_JATENG_SMK.accountNumber} (SARANA MULTI KALIBRASI PT)`;
+    }
+    if (effOpt === 'mandiri') {
+      return `Bank Mandiri : ${BANK_MANDIRI_SMK.accountNumber} (SARANA MULTI KALIBRASI PT)`;
+    }
+    if (effOpt === 'custom' && sph.customBankDetails) {
+      return sph.customBankDetails;
+    }
+    return `Bank Jateng : ${BANK_JATENG_SMK.accountNumber} & Bank Mandiri : ${BANK_MANDIRI_SMK.accountNumber} (SARANA MULTI KALIBRASI PT)`;
+  });
 
   const [kwpPurpose, setKwpPurpose] = useState<string>(
     sph.dealData?.kwpPurpose || 

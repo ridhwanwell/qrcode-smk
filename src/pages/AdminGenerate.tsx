@@ -44,7 +44,7 @@ export default function AdminGenerate() {
   // Generated result state
   const [generatedLabels, setGeneratedLabels] = useState<string[]>([]);
   const [breakdownInfo, setBreakdownInfo] = useState<LabelBreakdown | null>(null);
-  const labelType = 'besar'; // Always use Template Besar (6x3 cm)
+  const labelType = 'besar'; // Always use Template Besar (6x2,5 cm)
   const [bulkFormat, setBulkFormat] = useState<'a3_plus' | 'individual'>('a3_plus');
   const [templateConfigs, setTemplateConfigs] = useState<any>(() => {
     try {
@@ -315,13 +315,13 @@ export default function AdminGenerate() {
     setProgressMsg('Menyiapkan file PDF...');
     
     try {
-      // Real physical dimensions of individual sticker (6x3 cm)
+      // Real physical dimensions of individual sticker (6x2.5 cm)
       const labelWidth = 60; // 60 mm / 6 cm
-      const labelHeight = 30; // 30 mm / 3 cm
+      const labelHeight = 25; // 25 mm / 2.5 cm
       
       // Preview box dimensions in pixels from template editor
       const previewWidth = 750;
-      const previewHeight = 375;
+      const previewHeight = 312.5;
       
       // Scale ratios from preview pixels to sticker mm
       const scaleX = labelWidth / previewWidth;
@@ -338,8 +338,8 @@ export default function AdminGenerate() {
         const sheetWidth = 320;
         const sheetHeight = 480;
         const cols = 5;
-        const rows = 14;
-        const labelsPerSheet = cols * rows; // 70 stiker (besar: 5x14)
+        const rows = 17;
+        const labelsPerSheet = cols * rows; // 85 stiker (besar: 5x17)
 
         const gapX = 2; // 2mm kiss-cut gap antar stiker
         const gapY = 2; // 2mm kiss-cut gap antar stiker
@@ -347,8 +347,8 @@ export default function AdminGenerate() {
         const totalGridWidth = cols * labelWidth + (cols - 1) * gapX; // 308 mm
         const marginLeft = (sheetWidth - totalGridWidth) / 2; // 6 mm
 
-        const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 446 mm
-        const marginTop = (sheetHeight - totalGridHeight) / 2; // 17 mm margin atas & bawah
+        const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 457 mm
+        const marginTop = (sheetHeight - totalGridHeight) / 2; // 11.5 mm margin atas & bawah
 
         const totalSheets = Math.ceil(generatedLabels.length / labelsPerSheet);
 
@@ -372,7 +372,7 @@ export default function AdminGenerate() {
           pdf.setFont("helvetica", "bold");
           pdf.setFontSize(7.5);
           pdf.setTextColor(110, 110, 110);
-          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  Ukuran Besar 60x30 mm / 6x3 cm (Maks 70/lbr)  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
+          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  Ukuran Besar 60x25 mm / 6x2,5 cm (Maks 85/lbr)  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
           pdf.text(headerText, marginLeft, Math.max(5, marginTop - 3.5));
 
           // 2. Optical Registration Crop Marks pada 4 sudut grid
@@ -765,7 +765,7 @@ export default function AdminGenerate() {
                 >
                   <div className="font-bold text-xs">Satuan / Thermal Roll</div>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    1 stiker per halaman (Ukuran Besar 6x3 cm), cocok untuk printer thermal gulungan.
+                    1 stiker per halaman (Ukuran Besar 6x2,5 cm), cocok untuk printer thermal gulungan.
                   </p>
                 </button>
               </div>
@@ -775,7 +775,7 @@ export default function AdminGenerate() {
                   <div className="font-bold text-slate-800 flex items-center justify-between">
                     <span>Rincian Lembar Cetak A3+ (320 × 480 mm):</span>
                     <span className="text-blue-700 font-mono">
-                      {Math.ceil(generatedLabels.length / 70)} Lembar A3+
+                      {Math.ceil(generatedLabels.length / 85)} Lembar A3+
                     </span>
                   </div>
                   <p className="text-slate-600">
@@ -783,17 +783,17 @@ export default function AdminGenerate() {
                   </p>
                   <ul className="list-disc list-inside text-slate-600 space-y-0.5 pl-1">
                     <li>
-                      Kapasitas per lembar: <strong>70 stiker (5 kolom × 14 baris)</strong>
+                      Kapasitas per lembar: <strong>85 stiker (5 kolom × 17 baris)</strong>
                     </li>
                     <li>
-                      Lembar 1: <strong>{Math.min(generatedLabels.length, 70)} stiker</strong>
+                      Lembar 1: <strong>{Math.min(generatedLabels.length, 85)} stiker</strong>
                     </li>
-                    {generatedLabels.length > 70 && (
+                    {generatedLabels.length > 85 && (
                       <li>
                         Lembar 2: <strong>
-                          {Math.min(generatedLabels.length - 70, 70)} stiker
+                          {Math.min(generatedLabels.length - 85, 85)} stiker
                         </strong>
-                        {generatedLabels.length > 140 && ' (dan lembar selanjutnya)'}
+                        {generatedLabels.length > 170 && ' (dan lembar selanjutnya)'}
                       </li>
                     )}
                   </ul>
@@ -818,7 +818,7 @@ export default function AdminGenerate() {
                 {loading 
                   ? progressMsg 
                   : bulkFormat === 'a3_plus'
-                    ? `Download PDF Lembar A3+ (${Math.ceil(generatedLabels.length / 70)} Lembar • ${generatedLabels.length} Stiker)`
+                    ? `Download PDF Lembar A3+ (${Math.ceil(generatedLabels.length / 85)} Lembar • ${generatedLabels.length} Stiker)`
                     : `Download Label PDF (${generatedLabels.length} Halaman)`
                 }
               </button>

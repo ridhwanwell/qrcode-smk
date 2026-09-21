@@ -1,6 +1,6 @@
 import { SphQuotation } from '../types';
 import { exportHtmlToWord, getWordKopSuratHtml, getWordFooterHtml } from './wordExport';
-import { formatNumber } from './sphHelpers';
+import { formatNumber, getEffectivePaymentOption } from './sphHelpers';
 import { formatIndonesianDate } from './helpers';
 
 export function exportSphToWord(
@@ -74,11 +74,11 @@ export function exportSphToWord(
         <li style="margin-bottom: 3px;">Kalibrasi di atas termasuk sertifikat kalibrasi yang dikeluarkan oleh PT. Sarana Multi Kalibrasi.</li>
         <li style="margin-bottom: 3px;">
           Pembayaran :<br/>
-          ${sph.paymentOption === 'jateng' 
+          ${getEffectivePaymentOption(sph) === 'jateng' 
             ? '&nbsp;&nbsp;&nbsp;&nbsp;<b>Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)</b>'
-            : sph.paymentOption === 'mandiri'
+            : getEffectivePaymentOption(sph) === 'mandiri'
             ? '&nbsp;&nbsp;&nbsp;&nbsp;<b>Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)</b>'
-            : sph.paymentOption === 'custom' && sph.customBankDetails
+            : getEffectivePaymentOption(sph) === 'custom' && sph.customBankDetails
             ? `&nbsp;&nbsp;&nbsp;&nbsp;<b>${sph.customBankDetails}</b>`
             : '&nbsp;&nbsp;&nbsp;&nbsp;<b>1. Bank Jateng : 1-002-01495-1 (SARANA MULTI KALIBRASI PT)</b><br/>&nbsp;&nbsp;&nbsp;&nbsp;<b>2. Bank Mandiri : 138-00-2610846-9 (SARANA MULTI KALIBRASI PT)</b>'}
         </li>
@@ -146,74 +146,116 @@ export function exportSphToWord(
       `;
     }).join('');
 
-    const summaryRowsHtml = isLastChunk ? `
-      <tr>
-        <td colspan="2" style="text-align: center; font-weight: bold; font-size: 9pt;">Jumlah</td>
-        <td style="text-align: center; font-weight: bold; font-size: 9pt;">${totalUnits}</td>
-        <td style="text-align: center; font-weight: bold; font-size: 9pt;">Unit</td>
-        <td style="text-align: right; font-weight: bold; font-size: 9pt;">Total 1</td>
-        <td style="font-weight: bold; font-size: 9pt;">
-          <table class="no-border" style="width: 100%; margin: 0; padding: 0;">
-            <tr>
-              <td style="text-align: left; padding: 0;">Rp</td>
-              <td style="text-align: right; padding: 0;">${formatNumber(sph.subtotal1)}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-      <tr>
-        <td colspan="4" rowspan="4" style="vertical-align: top; padding: 0; background: #ffffff;">
-          <div style="background-color: #0099e6; color: #ffffff; font-weight: bold; font-size: 8pt; padding: 3px 6px;">
-            Terbilang:
-          </div>
-          <div style="padding: 12px 8px; text-align: center; font-weight: bold; font-style: italic; font-size: 9pt; color: #0f172a;">
-            "${sph.terbilang || 'Nol Rupiah'}"
-          </div>
-        </td>
-        <td style="text-align: right; font-weight: bold; font-size: 9pt;">PPN 11%</td>
-        <td style="font-weight: bold; font-size: 9pt;">
-          <table class="no-border" style="width: 100%; margin: 0; padding: 0;">
-            <tr>
-              <td style="text-align: left; padding: 0;">Rp</td>
-              <td style="text-align: right; padding: 0;">${formatNumber(sph.ppnAmount)}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-      <tr>
-        <td style="text-align: right; font-weight: bold; font-size: 9pt;">Total 2</td>
-        <td style="font-weight: bold; font-size: 9pt;">
-          <table class="no-border" style="width: 100%; margin: 0; padding: 0;">
-            <tr>
-              <td style="text-align: left; padding: 0;">Rp</td>
-              <td style="text-align: right; padding: 0;">${formatNumber(sph.subtotal2 || (sph.subtotal1 + sph.ppnAmount))}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-      <tr>
-        <td style="text-align: right; font-weight: bold; font-size: 9pt;">Akomodasi</td>
-        <td style="font-weight: bold; font-size: 9pt;">
-          <table class="no-border" style="width: 100%; margin: 0; padding: 0;">
-            <tr>
-              <td style="text-align: left; padding: 0;">Rp</td>
-              <td style="text-align: right; padding: 0;">${sph.accommodationFee > 0 ? formatNumber(sph.accommodationFee) : '-'}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-      <tr style="background-color: #0099e6; color: #ffffff;">
-        <td style="text-align: right; font-weight: bold; font-size: 9.5pt; color: #ffffff;">GRAND TOTAL</td>
-        <td style="font-weight: 900; font-size: 9.5pt; color: #ffffff;">
-          <table class="no-border" style="width: 100%; margin: 0; padding: 0; color: #ffffff;">
-            <tr style="color: #ffffff;">
-              <td style="text-align: left; padding: 0; color: #ffffff; font-weight: bold;">Rp</td>
-              <td style="text-align: right; padding: 0; color: #ffffff; font-weight: bold;">${formatNumber(sph.grandTotal)}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    ` : '';
+    const summaryRowsHtml = isLastChunk ? (() => {
+      const subtotalGross = (sph.discountAmount && sph.discountAmount > 0)
+        ? (sph.subtotalOriginal || sph.subtotal1 + sph.discountAmount)
+        : sph.subtotal1;
+
+      const hasDiscount = (sph.discountAmount && sph.discountAmount > 0) || (sph.discountPercent && sph.discountPercent > 0);
+      const hasAccom = (sph.accommodationFee && sph.accommodationFee > 0);
+
+      const wordRows: Array<{ label: string; valStr: string; isBold: boolean; isGrand: boolean }> = [];
+
+      wordRows.push({
+        label: 'Sub Total',
+        valStr: formatNumber(subtotalGross),
+        isBold: true,
+        isGrand: false
+      });
+
+      if (hasDiscount) {
+        const discPctStr = sph.discountPercent ? ` ${Math.round(sph.discountPercent)}%` : '';
+        wordRows.push({
+          label: `Discount${discPctStr}`,
+          valStr: formatNumber(sph.discountAmount || 0),
+          isBold: false,
+          isGrand: false
+        });
+      }
+
+      if (!hasAccom) {
+        wordRows.push({
+          label: 'Akomodasi',
+          valStr: '0',
+          isBold: false,
+          isGrand: false
+        });
+        wordRows.push({
+          label: 'Total',
+          valStr: formatNumber(sph.subtotal1),
+          isBold: true,
+          isGrand: false
+        });
+        wordRows.push({
+          label: sph.isPpnIncluded ? 'PPN 11%' : 'PPN 11% (Non)',
+          valStr: formatNumber(sph.ppnAmount || 0),
+          isBold: false,
+          isGrand: false
+        });
+        wordRows.push({
+          label: 'GRAND TOTAL',
+          valStr: formatNumber(sph.grandTotal),
+          isBold: true,
+          isGrand: true
+        });
+      } else {
+        wordRows.push({
+          label: sph.isPpnIncluded ? 'PPN 11%' : 'PPN 11% (Non)',
+          valStr: formatNumber(sph.ppnAmount || 0),
+          isBold: false,
+          isGrand: false
+        });
+        const totalVal = sph.subtotal2 || (sph.subtotal1 + (sph.ppnAmount || 0));
+        wordRows.push({
+          label: 'Total',
+          valStr: formatNumber(totalVal),
+          isBold: true,
+          isGrand: false
+        });
+        wordRows.push({
+          label: 'Akomodasi',
+          valStr: formatNumber(sph.accommodationFee),
+          isBold: false,
+          isGrand: false
+        });
+        wordRows.push({
+          label: 'GRAND TOTAL',
+          valStr: formatNumber(sph.grandTotal),
+          isBold: true,
+          isGrand: true
+        });
+      }
+
+      return wordRows.map((sr, idx) => {
+        const isRow1 = idx === 0;
+        const isRow2 = idx === 1;
+        const bgStyle = sr.isGrand ? 'background-color: #00A2E8; color: #ffffff;' : 'background-color: #ffffff; color: #000000;';
+        const fontStyle = sr.isBold ? 'font-weight: bold;' : 'font-weight: normal;';
+
+        return `
+          <tr style="${bgStyle}">
+            ${isRow1 ? `
+              <td colspan="2" style="text-align: center; font-weight: bold; font-size: 9pt; background-color: #00A2E8; color: #ffffff;">Jumlah Unit</td>
+              <td style="text-align: center; font-weight: bold; font-size: 9pt; background-color: #00A2E8; color: #ffffff;">${totalUnits}</td>
+              <td style="text-align: center; font-weight: bold; font-size: 9pt; background-color: #00A2E8; color: #ffffff;">Unit</td>
+            ` : (isRow2 ? `
+              <td colspan="4" rowspan="${wordRows.length - 1}" style="vertical-align: middle; text-align: center; padding: 6px; background-color: #ffffff; color: #000000;">
+                <span style="font-weight: bold; font-style: italic; font-size: 9pt;">Terbilang: "${sph.terbilang || 'Nol Rupiah'}"</span>
+              </td>
+            ` : '')}
+            <td style="text-align: right; ${fontStyle} font-size: 9pt; padding-right: 6px;">${sr.label}</td>
+            <td style="${fontStyle} font-size: 9pt;">
+              <table class="no-border" style="width: 100%; margin: 0; padding: 0;">
+                <tr>
+                  <td style="text-align: left; padding: 0; ${fontStyle}">Rp</td>
+                  <td style="text-align: right; padding: 0; ${fontStyle}">${sr.valStr}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    })() : '';
 
     return `
       ${kopHtml}

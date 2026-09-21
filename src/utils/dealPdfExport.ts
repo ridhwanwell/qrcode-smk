@@ -10,6 +10,7 @@ import {
 } from '../lib/dealPdfGenerator';
 import { createAuthenticSphPdf, paginateSphTableItems } from '../lib/templateGenerator';
 import { generateDealNumbers, formatNumber } from './sphHelpers';
+import { extractCleanToolName, getECatalogueTariff } from '../data/sphECatalogueData';
 
 /**
  * Ensures fallback deal data is populated if not yet set
@@ -119,7 +120,10 @@ export async function downloadAllDealDocumentsZip(sph: SphQuotation, customDealD
       year: 'numeric'
     });
 
+    const isECat = sph.sphType === 'ecatalogue' || (sph.sphType !== 'non_ecatalogue' && sph.items?.some(it => !!it.eCatalogueUrl));
+
     const sphData = {
+      sphType: isECat ? 'ecatalogue' : 'non_ecatalogue',
       sphNumber: sph.sphNumber,
       subject: sph.subject || 'Surat Penawaran Harga Kalibrasi',
       date: formattedDate,
@@ -146,15 +150,20 @@ export async function downloadAllDealDocumentsZip(sph: SphQuotation, customDealD
       bankName: sph.bankName || 'Bank Mandiri Cab. Surakarta',
       bankAccountNumber: sph.bankAccountNumber || '138-00-2610846-9',
       bankAccountName: sph.bankAccountName || 'SARANA MULTI KALIBRASI PT',
-      items: (sph.items || []).map((it, i) => ({
-        no: i + 1,
-        description: it.description,
-        notes: it.notes || '',
-        quantity: it.quantity,
-        unit: it.unit || 'Unit',
-        unitPrice: formatNumber(it.unitPrice),
-        totalPrice: formatNumber(it.totalPrice)
-      }))
+      items: (sph.items || []).map((it, i) => {
+        const cleanName = extractCleanToolName(it.description || '');
+        const autoUrl = it.eCatalogueUrl || getECatalogueTariff(it.description)?.link || getECatalogueTariff(cleanName)?.link || 'https://katalog.inaproc.id/sarana-multi-kalibrasi';
+        return {
+          no: i + 1,
+          description: it.description,
+          notes: it.notes || '',
+          quantity: it.quantity,
+          unit: it.unit || 'Unit',
+          unitPrice: formatNumber(it.unitPrice),
+          totalPrice: formatNumber(it.totalPrice),
+          eCatalogueUrl: autoUrl
+        };
+      })
     };
 
     const sphDoc = await PDFDocument.create();

@@ -344,7 +344,7 @@ export async function createAuthenticBoPdf(
   const totQtyW = fontRegular.widthOfTextAtSize(totQtyStr, 9);
   page.drawText(totQtyStr, { x: colX[2] + (colW[2] - totQtyW) / 2, y: contentY - 11, size: 9, font: fontRegular, color: COLOR_BLACK });
 
-  // Total 1 label cell (col 3)
+  // Total 1 / Sub Total label cell (col 3) - BOLD
   page.drawRectangle({
     x: colX[3],
     y: contentY - sumRowH,
@@ -354,11 +354,11 @@ export async function createAuthenticBoPdf(
     borderColor: COLOR_BLACK,
     borderWidth: 0.6
   });
-  const t1Label = 'Total 1';
-  const t1LabelW = fontRegular.widthOfTextAtSize(t1Label, 9);
-  page.drawText(t1Label, { x: colX[3] + colW[3] - t1LabelW - 6, y: contentY - 11, size: 9, font: fontRegular, color: COLOR_BLACK });
+  const t1Label = 'Sub Total';
+  const t1LabelW = fontBold.widthOfTextAtSize(t1Label, 9);
+  page.drawText(t1Label, { x: colX[3] + colW[3] - t1LabelW - 6, y: contentY - 11, size: 9, font: fontBold, color: COLOR_BLACK });
 
-  // Total 1 value cell (col 4)
+  // Sub Total value cell (col 4) - BOLD
   page.drawRectangle({
     x: colX[4],
     y: contentY - sumRowH,
@@ -368,30 +368,25 @@ export async function createAuthenticBoPdf(
     borderColor: COLOR_BLACK,
     borderWidth: 0.6
   });
-  page.drawText('Rp', { x: colX[4] + 4, y: contentY - 11, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+  page.drawText('Rp', { x: colX[4] + 4, y: contentY - 11, size: 8.5, font: fontBold, color: COLOR_BLACK });
   const sub1Str = formatNumber(sph.subtotal1);
-  const sub1W = fontRegular.widthOfTextAtSize(sub1Str, 9);
-  page.drawText(sub1Str, { x: colX[4] + colW[4] - sub1W - 6, y: contentY - 11, size: 9, font: fontRegular, color: COLOR_BLACK });
+  const sub1W = fontBold.widthOfTextAtSize(sub1Str, 9);
+  page.drawText(sub1Str, { x: colX[4] + colW[4] - sub1W - 6, y: contentY - 11, size: 9, font: fontBold, color: COLOR_BLACK });
 
   contentY -= sumRowH;
 
-  // Right-side summary rows calculation:
-  // 1. PPN 11% (or rate)
-  // 2. Total 2 (Subtotal after PPN)
-  // 3. Akomodasi
-  // 4. GRAND TOTAL (Cyan bg)
+  // Summary Rows: Akomodasi, Total (Bold), PPN, GRAND TOTAL (Cyan, Bold)
   const ppnRateText = sph.ppnPercent ? `PPN ${sph.ppnPercent}%` : 'PPN 11%';
   const ppnVal = sph.ppnAmount || 0;
   const total2Val = sph.subtotal2 || (sph.subtotal1 + ppnVal);
   const acomVal = sph.accommodationFee || 0;
   const grandTotalVal = sph.grandTotal;
 
-  const rightRows = [
-    { label: ppnRateText, amount: formatNumber(ppnVal), isGrand: false },
-    { label: 'Total 2', amount: formatNumber(total2Val), isGrand: false },
-    { label: 'Akomodasi', amount: formatNumber(acomVal), isGrand: false },
-    { label: 'GRAND TOTAL', amount: formatNumber(grandTotalVal), isGrand: true }
-  ];
+  const rightRows: Array<{ label: string; amount: string; isBold?: boolean; isGrand?: boolean }> = [];
+  rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
+  rightRows.push({ label: 'Total', amount: formatNumber(total2Val), isBold: true, isGrand: false });
+  rightRows.push({ label: ppnRateText, amount: formatNumber(ppnVal), isBold: false, isGrand: false });
+  rightRows.push({ label: 'GRAND TOTAL', amount: formatNumber(grandTotalVal), isBold: true, isGrand: true });
 
   const terbBoxHeight = rightRows.length * sumRowH;
   const terbBoxWidth = colW[0] + colW[1] + colW[2]; // Spanning col 0, 1, and 2
@@ -416,9 +411,10 @@ export async function createAuthenticBoPdf(
     page.drawText(tLine, { x: tX, y: terbStartY - (tIdx * 12), size: 8.5, font: fontBoldItalic, color: COLOR_BLACK });
   });
 
-  // Draw Right-side rows (PPN, Total 2, Akomodasi, GRAND TOTAL)
+  // Draw Right-side rows
   let curRightY = contentY;
   rightRows.forEach((r) => {
+    const cellFont = (r.isGrand || r.isBold) ? fontBold : fontRegular;
     // Label cell (col 3)
     page.drawRectangle({
       x: colX[3],
@@ -429,12 +425,12 @@ export async function createAuthenticBoPdf(
       borderColor: COLOR_BLACK,
       borderWidth: 0.6
     });
-    const lW = (r.isGrand ? fontBold : fontRegular).widthOfTextAtSize(r.label, 9);
+    const lW = cellFont.widthOfTextAtSize(r.label, 9);
     page.drawText(r.label, {
       x: colX[3] + colW[3] - lW - 6,
       y: curRightY - 11,
       size: 9,
-      font: r.isGrand ? fontBold : fontRegular,
+      font: cellFont,
       color: r.isGrand ? COLOR_WHITE : COLOR_BLACK
     });
 
@@ -448,13 +444,13 @@ export async function createAuthenticBoPdf(
       borderColor: COLOR_BLACK,
       borderWidth: 0.6
     });
-    page.drawText('Rp', { x: colX[4] + 4, y: curRightY - 11, size: 8.5, font: r.isGrand ? fontBold : fontRegular, color: r.isGrand ? COLOR_WHITE : COLOR_BLACK });
-    const aW = (r.isGrand ? fontBold : fontRegular).widthOfTextAtSize(r.amount, 9);
+    page.drawText('Rp', { x: colX[4] + 4, y: curRightY - 11, size: 8.5, font: cellFont, color: r.isGrand ? COLOR_WHITE : COLOR_BLACK });
+    const aW = cellFont.widthOfTextAtSize(r.amount, 9);
     page.drawText(r.amount, {
       x: colX[4] + colW[4] - aW - 6,
       y: curRightY - 11,
       size: 9,
-      font: r.isGrand ? fontBold : fontRegular,
+      font: cellFont,
       color: r.isGrand ? COLOR_WHITE : COLOR_BLACK
     });
 
@@ -811,6 +807,7 @@ export async function createAuthenticFpPdf(
   const totQtyW = fontRegular.widthOfTextAtSize(totQtyStr, 9);
   page.drawText(totQtyStr, { x: colX[2] + (colW[2] - totQtyW) / 2, y: contentY - 11, size: 9, font: fontRegular, color: COLOR_BLACK });
 
+  // Sub Total label cell (col 3) - BOLD
   page.drawRectangle({
     x: colX[3],
     y: contentY - sumRowH,
@@ -820,10 +817,11 @@ export async function createAuthenticFpPdf(
     borderColor: COLOR_BLACK,
     borderWidth: 0.6
   });
-  const t1Label = 'Total 1';
-  const t1LabelW = fontRegular.widthOfTextAtSize(t1Label, 9);
-  page.drawText(t1Label, { x: colX[3] + colW[3] - t1LabelW - 6, y: contentY - 11, size: 9, font: fontRegular, color: COLOR_BLACK });
+  const t1Label = 'Sub Total';
+  const t1LabelW = fontBold.widthOfTextAtSize(t1Label, 9);
+  page.drawText(t1Label, { x: colX[3] + colW[3] - t1LabelW - 6, y: contentY - 11, size: 9, font: fontBold, color: COLOR_BLACK });
 
+  // Sub Total value cell (col 4) - BOLD
   page.drawRectangle({
     x: colX[4],
     y: contentY - sumRowH,
@@ -833,26 +831,25 @@ export async function createAuthenticFpPdf(
     borderColor: COLOR_BLACK,
     borderWidth: 0.6
   });
-  page.drawText('Rp', { x: colX[4] + 4, y: contentY - 11, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+  page.drawText('Rp', { x: colX[4] + 4, y: contentY - 11, size: 8.5, font: fontBold, color: COLOR_BLACK });
   const sub1Str = formatNumber(sph.subtotal1);
-  const sub1W = fontRegular.widthOfTextAtSize(sub1Str, 9);
-  page.drawText(sub1Str, { x: colX[4] + colW[4] - sub1W - 6, y: contentY - 11, size: 9, font: fontRegular, color: COLOR_BLACK });
+  const sub1W = fontBold.widthOfTextAtSize(sub1Str, 9);
+  page.drawText(sub1Str, { x: colX[4] + colW[4] - sub1W - 6, y: contentY - 11, size: 9, font: fontBold, color: COLOR_BLACK });
 
   contentY -= sumRowH;
 
-  // Summary Rows: PPN, Total 2, Akomodasi, GRAND TOTAL
+  // Summary Rows: Discount (if any), Akomodasi, Total (Bold), PPN, GRAND TOTAL (Cyan, Bold)
   const ppnRateText = sph.ppnPercent ? `PPN ${sph.ppnPercent}%` : 'PPN 11%';
   const ppnVal = sph.ppnAmount || 0;
   const total2Val = sph.subtotal2 || (sph.subtotal1 + ppnVal);
   const acomVal = sph.accommodationFee || 0;
   const grandTotalVal = sph.grandTotal;
 
-  const rightRows = [
-    { label: ppnRateText, amount: formatNumber(ppnVal), isGrand: false },
-    { label: 'Total 2', amount: formatNumber(total2Val), isGrand: false },
-    { label: 'Akomodasi', amount: formatNumber(acomVal), isGrand: false },
-    { label: 'GRAND TOTAL', amount: formatNumber(grandTotalVal), isGrand: true }
-  ];
+  const rightRows: Array<{ label: string; amount: string; isBold?: boolean; isGrand?: boolean }> = [];
+  rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
+  rightRows.push({ label: 'Total', amount: formatNumber(total2Val), isBold: true, isGrand: false });
+  rightRows.push({ label: ppnRateText, amount: formatNumber(ppnVal), isBold: false, isGrand: false });
+  rightRows.push({ label: 'GRAND TOTAL', amount: formatNumber(grandTotalVal), isBold: true, isGrand: true });
 
   const terbBoxHeight = rightRows.length * sumRowH;
   const terbBoxWidth = colW[0] + colW[1] + colW[2];
@@ -878,6 +875,7 @@ export async function createAuthenticFpPdf(
 
   let curRightY = contentY;
   rightRows.forEach((r) => {
+    const cellFont = (r.isGrand || r.isBold) ? fontBold : fontRegular;
     page.drawRectangle({
       x: colX[3],
       y: curRightY - sumRowH,
@@ -887,12 +885,12 @@ export async function createAuthenticFpPdf(
       borderColor: COLOR_BLACK,
       borderWidth: 0.6
     });
-    const lW = (r.isGrand ? fontBold : fontRegular).widthOfTextAtSize(r.label, 9);
+    const lW = cellFont.widthOfTextAtSize(r.label, 9);
     page.drawText(r.label, {
       x: colX[3] + colW[3] - lW - 6,
       y: curRightY - 11,
       size: 9,
-      font: r.isGrand ? fontBold : fontRegular,
+      font: cellFont,
       color: r.isGrand ? COLOR_WHITE : COLOR_BLACK
     });
 
@@ -905,13 +903,13 @@ export async function createAuthenticFpPdf(
       borderColor: COLOR_BLACK,
       borderWidth: 0.6
     });
-    page.drawText('Rp', { x: colX[4] + 4, y: curRightY - 11, size: 8.5, font: r.isGrand ? fontBold : fontRegular, color: r.isGrand ? COLOR_WHITE : COLOR_BLACK });
-    const aW = (r.isGrand ? fontBold : fontRegular).widthOfTextAtSize(r.amount, 9);
+    page.drawText('Rp', { x: colX[4] + 4, y: curRightY - 11, size: 8.5, font: cellFont, color: r.isGrand ? COLOR_WHITE : COLOR_BLACK });
+    const aW = cellFont.widthOfTextAtSize(r.amount, 9);
     page.drawText(r.amount, {
       x: colX[4] + colW[4] - aW - 6,
       y: curRightY - 11,
       size: 9,
-      font: r.isGrand ? fontBold : fontRegular,
+      font: cellFont,
       color: r.isGrand ? COLOR_WHITE : COLOR_BLACK
     });
 
@@ -1231,7 +1229,7 @@ export async function createAuthenticKwpPdf(
   contentY -= 12;
   page.drawText('PT. SARANA MULTI KALIBRASI', { x: MARGIN_X, y: contentY, size: 9.5, font: fontBold, color: COLOR_BLACK });
 
-  contentY -= 55; // Signature space
+  contentY -= 90; // Increased spacing for Materai 10.000 stamp
 
   const directorName = sph.directorName || 'Ahmad Fajar Ariyanto';
   const dirW = fontBold.widthOfTextAtSize(directorName, 9.5);
