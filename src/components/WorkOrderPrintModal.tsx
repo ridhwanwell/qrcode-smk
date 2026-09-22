@@ -505,18 +505,18 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
         {/* DOCUMENT 2: BERITA ACARA PEKERJAAN (BAP) - SESUAI FORMAT PDF SCAN 1       */}
         {/* ========================================================================= */}
         {(activeDoc === 'BAP' || activeDoc === 'ALL') && (
-          <div className={`doc-section bap-document text-slate-900 font-sans space-y-4 bg-white print:p-0 print:space-y-3 print-page-clean ${activeDoc === 'ALL' ? 'print-break-after' : 'print-no-break-after'} mb-10 pb-8 border-b-2 border-dashed border-slate-300 print:border-none print:mb-0 print:pb-0`}>
+          <div className={`doc-section bap-document text-slate-900 font-sans space-y-3 print:space-y-1.5 bg-white print:p-0 print-page-clean ${activeDoc === 'ALL' ? 'print-break-after' : 'print-no-break-after'} mb-10 pb-8 border-b-2 border-dashed border-slate-300 print:border-none print:mb-0 print:pb-0`}>
             {/* Header Nomor Halaman */}
             <div className="text-right text-xs text-slate-500 font-mono">
               Hal. 1 dari 1
             </div>
 
             {/* Judul & Nomor BAP */}
-            <div className="text-center py-1">
+            <div className="text-center py-0.5">
               <h2 className="text-base sm:text-lg font-black uppercase tracking-wider text-slate-950 underline decoration-slate-900">
                 BERITA ACARA PEKERJAAN
               </h2>
-              <p className="text-xs font-mono font-bold text-slate-800 mt-1">
+              <p className="text-xs font-mono font-bold text-slate-800 mt-0.5">
                 NO. : {bapNumber}
               </p>
             </div>
@@ -527,7 +527,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
             </p>
 
             {/* Identitas Rumah Sakit */}
-            <div className="text-xs space-y-1 pl-2">
+            <div className="text-xs space-y-0.5 pl-2">
               <div className="flex">
                 <span className="w-32 font-semibold text-slate-700">Nama RS.</span>
                 <span className="w-4">:</span>
@@ -556,19 +556,19 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
             </div>
 
             {/* Header Data Alat */}
-            <div className="pt-2">
+            <div className="pt-1">
               <h4 className="text-xs font-bold text-slate-900 mb-1">
                 Data Alat
               </h4>
               <table className="w-full text-left text-xs border border-slate-900 border-collapse">
                 <thead>
                   <tr className="bg-white text-slate-900 border-b border-slate-900 font-bold">
-                    <th className="p-1.5 border-r border-slate-900 text-center w-10">No.</th>
-                    <th className="p-1.5 border-r border-slate-900">Nama Alat</th>
-                    <th className="p-1.5 border-r border-slate-900 text-center w-20">Volume PO</th>
-                    <th className="p-1.5 border-r border-slate-900 text-center w-20">Volume Realisasi</th>
-                    <th className="p-1.5 border-r border-slate-900 text-center w-20">Volume Sisa</th>
-                    <th className="p-1.5 text-center w-28">Keterangan</th>
+                    <th className="p-1 border-r border-slate-900 text-center w-10">No.</th>
+                    <th className="p-1 border-r border-slate-900">Nama Alat</th>
+                    <th className="p-1 border-r border-slate-900 text-center w-20">Volume PO</th>
+                    <th className="p-1 border-r border-slate-900 text-center w-20">Volume Realisasi</th>
+                    <th className="p-1 border-r border-slate-900 text-center w-20">Volume Sisa</th>
+                    <th className="p-1 text-center w-28">Keterangan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-400">
@@ -581,31 +581,31 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
 
                     return (
                       <tr key={d.id} className="border-b border-slate-400">
-                        <td className="p-1.5 border-r border-slate-900 text-center font-medium">{idx + 1}</td>
-                        <td className="p-1.5 border-r border-slate-900 font-medium text-slate-950">{d.name}</td>
-                        <td className="p-1.5 border-r border-slate-900 text-center">{volPO}</td>
-                        <td className="p-1.5 border-r border-slate-900 text-center font-bold text-teal-800">{volReal}</td>
-                        <td className="p-1.5 border-r border-slate-900 text-center">{volSisa}</td>
-                        <td className="p-1.5 text-center text-[11px]">{ket}</td>
+                        <td className="p-1 border-r border-slate-900 text-center font-medium">{idx + 1}</td>
+                        <td className="p-1 border-r border-slate-900 font-medium text-slate-950">{d.name}</td>
+                        <td className="p-1 border-r border-slate-900 text-center">{volPO}</td>
+                        <td className="p-1 border-r border-slate-900 text-center font-bold text-teal-800">{volReal}</td>
+                        <td className="p-1 border-r border-slate-900 text-center">{volSisa}</td>
+                        <td className="p-1 text-center text-[11px]">{ket}</td>
                       </tr>
                     );
                   })}
                   {/* TOTAL ROW */}
                   <tr className="border-t-2 border-slate-900 font-bold bg-slate-50">
-                    <td colSpan={2} className="p-1.5 border-r border-slate-900 text-right uppercase tracking-wider">
+                    <td colSpan={2} className="p-1 border-r border-slate-900 text-right uppercase tracking-wider">
                       TOTAL UNIT
                     </td>
-                    <td className="p-1.5 border-r border-slate-900 text-center font-black">{totalVolumePO}</td>
-                    <td className="p-1.5 border-r border-slate-900 text-center font-black text-teal-800">{totalRealisasi}</td>
-                    <td className="p-1.5 border-r border-slate-900 text-center font-black">{totalSisa}</td>
-                    <td className="p-1.5 text-center text-[10px] text-slate-500">-</td>
+                    <td className="p-1 border-r border-slate-900 text-center font-black">{totalVolumePO}</td>
+                    <td className="p-1 border-r border-slate-900 text-center font-black text-teal-800">{totalRealisasi}</td>
+                    <td className="p-1 border-r border-slate-900 text-center font-black">{totalSisa}</td>
+                    <td className="p-1 text-center text-[10px] text-slate-500">-</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             {/* Footer Penandatanganan BAP */}
-            <div className="pt-4 space-y-2">
+            <div className="pt-2 print:pt-1 space-y-1">
               <div className="flex justify-between items-end text-xs text-slate-800">
                 <div className="font-bold text-center w-64">
                   <p>{schedule.hospitalName}</p>
@@ -616,9 +616,9 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-between items-end text-center text-xs mt-16">
+              <div className="flex justify-between items-end text-center text-xs mt-8 print:mt-4">
                 <div className="w-64">
-                  <div className="h-16 flex items-end justify-center border-b border-slate-900 pb-1">
+                  <div className="h-10 print:h-8 flex items-end justify-center border-b border-slate-900 pb-1">
                     {/* Empty space for hospital signature */}
                   </div>
                   <p className="mt-1 font-bold">
@@ -630,12 +630,12 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
                   <div className="absolute inset-0 flex items-center justify-center opacity-40 pointer-events-none -mt-4">
                     <CompanyLogo size="sm" variant="dark" />
                   </div>
-                  <div className="h-16 flex items-end justify-center border-b border-slate-900 pb-1 relative z-10">
+                  <div className="h-10 print:h-8 flex items-end justify-center border-b border-slate-900 pb-1 relative z-10">
                     {digitalSignatureUrl && (
                       <img 
                         src={digitalSignatureUrl} 
                         alt="Tanda Tangan PT SMK" 
-                        className="h-14 max-w-[150px] object-contain mb-1" 
+                        className="h-10 max-w-[150px] object-contain mb-1" 
                       />
                     )}
                   </div>
@@ -647,7 +647,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
             </div>
 
             {/* NB Catatan Sesuai Format PDF Scan */}
-            <div className="pt-3 border-t border-slate-300 text-[11px] text-slate-600 space-y-0.5 italic">
+            <div className="pt-2 print:pt-1 border-t border-slate-300 text-[10px] text-slate-600 space-y-0.5 italic">
               <p className="font-bold not-italic text-slate-800">NB:</p>
               <p>*Hanya dilakukan Uji Keselamatan Listrik dan/atau Uji Fungsi dan Kondisi Alat</p>
               <p>**Alat dilakukan Uji dan/atau Kalibrasi di Lab. PT. Sarana Multi Kalibrasi</p>

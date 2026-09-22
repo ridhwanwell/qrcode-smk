@@ -374,6 +374,7 @@ export interface BapDocument {
   address: string;                   // Alamat RS
   cityDistrict: string;              // Kota/Kab.
   labelNumber: string;               // No. Label (e.g. "066")
+  bapNumber?: string;                // No. BAP (e.g. "066/SMK/BAP/IX/2026")
   bastpNumber: string;               // No. BASTP (e.g. "066/SMK/BASTP/IX/2026")
   dateColumns: string[];             // Dynamic realization dates e.g. ["Tgl 03", "Tgl 04", "Tgl 05", "Tgl 06", "Tgl 07", "Tgl 08", "Tgl 09"]
   items: BapItem[];                  // Sheet Rekap & BAP

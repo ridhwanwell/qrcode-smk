@@ -13,7 +13,8 @@ import {
   Tags,
   RotateCcw,
   CloudUpload,
-  CloudDownload
+  CloudDownload,
+  Receipt
 } from 'lucide-react';
 import { CalibrationSchedule, CalibratorAsset } from '../types';
 import { getUrgencyInfo } from '../utils/helpers';
@@ -21,7 +22,7 @@ import { CompanyLogo } from './CompanyLogo';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { useAuth } from '../lib/AuthContext';
 
-export type AppTab = 'dashboard' | 'sph' | 'labels' | 'schedules' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates';
+export type AppTab = 'dashboard' | 'sph' | 'labels' | 'schedules' | 'billing' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates';
 
 interface NavbarProps {
   activeTab: AppTab;
@@ -29,6 +30,7 @@ interface NavbarProps {
   schedules: CalibrationSchedule[];
   calibrators: CalibratorAsset[];
   sphCount?: number;
+  dealSphCount?: number;
   borrowedTabletsCount?: number;
   isRealtimeConnected?: boolean;
   onForceSyncAll?: () => void;
@@ -45,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   schedules,
   calibrators,
   sphCount = 0,
+  dealSphCount = 0,
   borrowedTabletsCount = 0,
   isRealtimeConnected = true,
   onForceSyncAll,
@@ -111,6 +114,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       badgeColor: 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
     },
     {
+      id: 'billing',
+      label: 'Penagihan RS',
+      sublabel: 'Download BO, FP, KWP & Billing',
+      icon: Receipt,
+      badgeVal: dealSphCount > 0 ? dealSphCount : undefined,
+      badgeColor: 'bg-blue-950 text-blue-300 border-blue-500/40'
+    },
+    {
       id: 'selia',
       label: 'Selia Dashboard',
       sublabel: 'Proses & Cetak Sertifikat',
@@ -151,10 +162,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   const allowedTabs: AppTab[] = role === 'hanya_sph'
     ? ['sph']
     : role === 'admin_keuangan'
-    ? ['dashboard', 'labels', 'sph', 'schedules', 'financial', 'masters']
+    ? ['dashboard', 'labels', 'sph', 'schedules', 'billing', 'financial', 'masters']
     : role === 'admin_teknik'
-    ? ['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters']
-    : ['dashboard', 'labels', 'sph', 'schedules', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates'];
+    ? ['dashboard', 'labels', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'masters']
+    : ['dashboard', 'labels', 'sph', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates'];
 
   const visibleNavTabs = allNavTabs.filter(tab => allowedTabs.includes(tab.id));
 

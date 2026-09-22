@@ -23,16 +23,16 @@ export function extractSphPrefix(sphNumber?: string): string {
   return '001';
 }
 
-export function generateSpkNumberFromSph(sphNumber?: string, dateStr?: string): string {
-  if (!sphNumber) {
-    const year = dateStr ? dateStr.slice(0, 4) : '2026';
-    const month = dateStr ? dateStr.slice(5, 7) : '09';
-    return `001/SMK-SPK/${month}/${year}`;
-  }
+export function generateSpkNumberFromSph(sphOrNumber?: string | any, dateStr?: string): string {
+  const sphNumber = typeof sphOrNumber === 'string' ? sphOrNumber : sphOrNumber?.sphNumber;
+  let prefix = typeof sphOrNumber === 'object' && sphOrNumber?.dealData?.sequenceNumber
+    ? sphOrNumber.dealData.sequenceNumber
+    : extractSphPrefix(sphNumber);
 
-  const prefix = extractSphPrefix(sphNumber);
-  
-  const suffixMatch = sphNumber.match(/\/([I|V|X|L|C|D|M]+)[-\/](\d{4})/i);
+  prefix = String(prefix || '001').padStart(3, '0').slice(-3);
+
+  const refStr = (typeof sphOrNumber === 'object' && sphOrNumber?.dealData?.boNumber) || sphNumber || '';
+  const suffixMatch = refStr.match(/\/([I|V|X|L|C|D|M]+)[-\/](\d{4})/i);
   if (suffixMatch) {
     const month = suffixMatch[1].toUpperCase();
     const year = suffixMatch[2];
@@ -44,14 +44,16 @@ export function generateSpkNumberFromSph(sphNumber?: string, dateStr?: string): 
   return `${prefix}/SMK-SPK/${nowMonth}/${nowYear}`;
 }
 
-export function generateBapNumberFromSph(sphNumber?: string, dateStr?: string): string {
-  if (!sphNumber) {
-    return `001/SMK/BAP/IX/2026`;
-  }
+export function generateBapNumberFromSph(sphOrNumber?: string | any, dateStr?: string): string {
+  const sphNumber = typeof sphOrNumber === 'string' ? sphOrNumber : sphOrNumber?.sphNumber;
+  let prefix = typeof sphOrNumber === 'object' && sphOrNumber?.dealData?.sequenceNumber
+    ? sphOrNumber.dealData.sequenceNumber
+    : extractSphPrefix(sphNumber);
 
-  const prefix = extractSphPrefix(sphNumber);
-  
-  const suffixMatch = sphNumber.match(/\/([I|V|X|L|C|D|M]+)[-\/](\d{4})/i);
+  prefix = String(prefix || '001').padStart(3, '0').slice(-3);
+
+  const refStr = (typeof sphOrNumber === 'object' && sphOrNumber?.dealData?.boNumber) || sphNumber || '';
+  const suffixMatch = refStr.match(/\/([I|V|X|L|C|D|M]+)[-\/](\d{4})/i);
   if (suffixMatch) {
     const month = suffixMatch[1].toUpperCase();
     const year = suffixMatch[2];

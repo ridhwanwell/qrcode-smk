@@ -18,6 +18,7 @@ import { TabletLoanManager } from '../components/TabletLoanManager';
 import { TemplateSettings } from '../components/TemplateSettings';
 import { SeliaDashboard } from '../components/SeliaDashboard';
 import { LabelModuleView } from '../components/LabelModuleView';
+import { HospitalBillingManager } from '../components/HospitalBillingManager';
 import { CheckSyncModal } from '../components/CheckSyncModal';
 
 import { motion, AnimatePresence } from 'motion/react';
@@ -82,16 +83,16 @@ function AsetPortalMain() {
   const { user, isAdmin, role, logout } = useAuth();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'sph' | 'labels' | 'schedules' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'sph' | 'labels' | 'schedules' | 'billing' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates'>('dashboard');
   const [slideDirection, setSlideDirection] = useState<number>(1);
 
   // Auto-redirect to default permitted tab if current activeTab is restricted for the logged-in role
   useEffect(() => {
     if (role === 'hanya_sph' && activeTab !== 'sph') {
       setActiveTab('sph');
-    } else if (role === 'admin_keuangan' && !['dashboard', 'labels', 'schedules', 'sph', 'financial', 'masters'].includes(activeTab)) {
+    } else if (role === 'admin_keuangan' && !['dashboard', 'labels', 'schedules', 'sph', 'billing', 'financial', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
-    } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
+    } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
     }
   }, [role, activeTab]);
@@ -277,23 +278,30 @@ function AsetPortalMain() {
   const [selectedSphForBap, setSelectedSphForBap] = useState<SphQuotation | null>(null);
   const [showBapModal, setShowBapModal] = useState(false);
 
-  // Helper to ensure BAP exists for an approved (Deal) SPH
+  // Helper to ensure BAP exists and is synced for an approved (Deal) SPH
   const ensureBapForSph = (sph: SphQuotation): BapDocument => {
     const existing = bapDocuments.find(b => b.sphId === sph.id || b.sphNumber === sph.sphNumber);
+    const fresh = createBapFromSph(sph, existing?.labelNumber);
     if (existing) {
-      return existing;
+      const updated: BapDocument = {
+        ...existing,
+        customerName: sph.hospitalName || existing.customerName,
+        sphNumber: sph.sphNumber || existing.sphNumber,
+        address: sph.hospitalAddress || existing.address,
+        cityDistrict: fresh.cityDistrict,
+        labelNumber: fresh.labelNumber,
+        bapNumber: fresh.bapNumber,
+        bastpNumber: fresh.bastpNumber,
+      };
+      updateBapDocument(updated);
+      return updated;
     }
-    const newBap = createBapFromSph(sph);
-    addBapDocument(newBap);
-    return newBap;
+    addBapDocument(fresh);
+    return fresh;
   };
 
   const handleOpenBap = (sph: SphQuotation) => {
-    let bap = bapDocuments.find(b => b.sphId === sph.id || b.sphNumber === sph.sphNumber);
-    if (!bap) {
-      bap = createBapFromSph(sph);
-      addBapDocument(bap);
-    }
+    const bap = ensureBapForSph(sph);
     setSelectedBap(bap);
     setSelectedSphForBap(sph);
     setShowBapModal(true);
@@ -464,9 +472,38 @@ function AsetPortalMain() {
     };
 
     updateSph(updatedSph);
+
+    // Force create or update BAP to adopt the exact new deal sequence number (e.g. "081")
+    const freshBap = createBapFromSph(updatedSph);
+    const existingBap = bapDocuments.find(b => b.sphId === sphId || b.sphNumber === targetSph.sphNumber);
+    if (existingBap) {
+      const updatedBap: BapDocument = {
+        ...existingBap,
+        customerName: updatedSph.hospitalName || existingBap.customerName,
+        sphNumber: updatedSph.sphNumber,
+        address: updatedSph.hospitalAddress || existingBap.address,
+        cityDistrict: freshBap.cityDistrict,
+        labelNumber: freshBap.labelNumber,
+        bapNumber: freshBap.bapNumber,
+        bastpNumber: freshBap.bastpNumber,
+        poDate: freshBap.poDate,
+        nonPoHeader: {
+          ...existingBap.nonPoHeader,
+          customerName: updatedSph.hospitalName || existingBap.nonPoHeader?.customerName || '',
+          sphNumber: updatedSph.sphNumber,
+          address: updatedSph.hospitalAddress || existingBap.nonPoHeader?.address || '',
+          cityDistrict: freshBap.cityDistrict,
+          labelNumber: freshBap.labelNumber,
+          bastpNumber: freshBap.bastpNumber,
+        }
+      };
+      updateBapDocument(updatedBap);
+    } else {
+      addBapDocument(freshBap);
+    }
+
     syncSphToSchedule(updatedSph);
-    ensureBapForSph(updatedSph);
-    showToast(`SPH ${targetSph.sphNumber} Deal! Dokumen BO (${dealData.boNumber}), FP (${dealData.fpNumber}), KWP (${dealData.kwpNumber}), dan BAP siap diunduh PDF.`);
+    showToast(`SPH ${targetSph.sphNumber} Deal! Dokumen BO (${dealData.boNumber}), FP (${dealData.fpNumber}), KWP (${dealData.kwpNumber}), dan BAP/BASTP (${freshBap.bapNumber}) siap diunduh.`);
     confetti({ particleCount: 80, spread: 70 });
   };
 
@@ -805,6 +842,7 @@ function AsetPortalMain() {
         schedules={effectiveSchedules}
         calibrators={effectiveCalibrators}
         sphCount={effectiveSphList.length}
+        dealSphCount={effectiveSphList.filter(s => s.status === 'Disetujui (Deal)').length}
         borrowedTabletsCount={effectiveTablets.filter(t => !t.isAvailable).length}
         isRealtimeConnected={isRealtimeConnected}
         onForceSyncAll={handleForceSyncAll}
@@ -882,8 +920,10 @@ function AsetPortalMain() {
                 onUpdateStatus={handleUpdateSphStatus}
                 onSaveDealData={handleSaveDealData}
                 onNavigateToSchedules={() => setActiveTab('schedules')}
+                onNavigateToBilling={() => setActiveTab('billing')}
                 hospitals={effectiveHospitals}
                 bapDocuments={bapDocuments}
+                schedules={schedules}
                 onOpenBap={handleOpenBap}
               />
             </motion.div>
@@ -928,6 +968,23 @@ function AsetPortalMain() {
                 onSendReminder={handleSendAutomatedReminder}
                 onDeleteSchedule={handleDeleteSchedule}
                 onNavigateToSelia={() => setActiveTab('selia')}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'billing' && (
+            <motion.div
+              key="slide-billing"
+              initial={{ opacity: 0, x: slideDirection > 0 ? 30 : -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: slideDirection > 0 ? -30 : 30 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+            >
+              <HospitalBillingManager
+                sphList={effectiveSphList}
+                onSaveDealData={handleSaveDealData}
+                onNavigateToSchedules={() => setActiveTab('schedules')}
+                onOpenBapModal={handleOpenBap}
               />
             </motion.div>
           )}

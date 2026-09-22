@@ -51,7 +51,7 @@ export const BapModal: React.FC<BapModalProps> = ({
       cityDistrict: '',
       labelNumber: '066',
       bastpNumber: '066/SMK/BASTP/IX/2026',
-      dateColumns: ['Tgl 03', 'Tgl …', 'Tgl …', 'Tgl …', 'Tgl …', 'Tgl …', 'Tgl …'],
+      dateColumns: ['Tgl 03', 'Tgl 04', 'Tgl 05', 'Tgl 06', 'Tgl 07', 'Tgl 08', 'Tgl 09'],
       items: [],
       nonPoHeader: {
         customerName: '',
@@ -62,7 +62,7 @@ export const BapModal: React.FC<BapModalProps> = ({
         labelNumber: '',
         bastpNumber: ''
       },
-      nonPoDateColumns: ['Tgl 03', 'Tgl …', 'Tgl …', 'Tgl …', 'Tgl …', 'Tgl …', 'Tgl …'],
+      nonPoDateColumns: ['Tgl 03', 'Tgl 04', 'Tgl 05', 'Tgl 06', 'Tgl 07', 'Tgl 08', 'Tgl 09'],
       nonPoItems: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -71,10 +71,24 @@ export const BapModal: React.FC<BapModalProps> = ({
 
   // Keep state in sync if props change
   useEffect(() => {
-    if (bapDocument) {
+    if (sph) {
+      const freshFromSph = createBapFromSph(sph, bapDocument?.labelNumber);
+      if (bapDocument) {
+        setBap({
+          ...bapDocument,
+          customerName: sph.hospitalName || bapDocument.customerName,
+          address: sph.hospitalAddress || bapDocument.address,
+          cityDistrict: freshFromSph.cityDistrict || bapDocument.cityDistrict,
+          sphNumber: sph.sphNumber || bapDocument.sphNumber,
+          labelNumber: freshFromSph.labelNumber,
+          bapNumber: freshFromSph.bapNumber,
+          bastpNumber: freshFromSph.bastpNumber,
+        });
+      } else {
+        setBap(freshFromSph);
+      }
+    } else if (bapDocument) {
       setBap(bapDocument);
-    } else if (sph) {
-      setBap(createBapFromSph(sph));
     }
   }, [bapDocument, sph]);
 
@@ -669,9 +683,9 @@ export const BapModal: React.FC<BapModalProps> = ({
             </span>
             
             <div className="flex items-center gap-1 flex-wrap">
-              {activeDateColumns.map(dCol => (
+              {activeDateColumns.map((dCol, colIdx) => (
                 <span 
-                  key={dCol} 
+                  key={`col-pill-${colIdx}-${dCol}`} 
                   className="inline-flex items-center gap-1 text-[11px] bg-white border border-slate-300 text-slate-800 px-2 py-0.5 rounded-md font-medium shadow-2xs"
                 >
                   <span>{dCol}</span>
@@ -780,8 +794,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                     </tr>
                     {/* Header Row 2 (Date Columns) */}
                     <tr className="bg-amber-50/50 text-amber-950 text-[11px] font-bold border-b border-slate-400">
-                      {bap.dateColumns.map(dCol => (
-                        <th key={dCol} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">
+                      {bap.dateColumns.map((dCol, colIdx) => (
+                        <th key={`th-dcol-${colIdx}`} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">
                           {dCol}
                         </th>
                       ))}
@@ -802,8 +816,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                         </td>
 
                         {/* Realisasi Date Inputs */}
-                        {bap.dateColumns.map(dCol => (
-                          <td key={dCol} className="px-1.5 py-1 text-center border-r border-slate-200 bg-amber-50/10">
+                        {bap.dateColumns.map((dCol, colIdx) => (
+                          <td key={`td-dcol-${colIdx}`} className="px-1.5 py-1 text-center border-r border-slate-200 bg-amber-50/10">
                             <input
                               type="number"
                               min="0"
@@ -854,8 +868,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                       <td className="px-3 py-2.5 text-center font-mono text-blue-950 bg-blue-100/60 border-r border-slate-300 font-extrabold">
                         {rekapTotals.totalPo}
                       </td>
-                      {bap.dateColumns.map(dCol => (
-                        <td key={dCol} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
+                      {bap.dateColumns.map((dCol, colIdx) => (
+                        <td key={`td-tot-dcol-${colIdx}`} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
                           {rekapTotals.totalRealByDate[dCol] || 0}
                         </td>
                       ))}
@@ -905,8 +919,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                       <th rowSpan={2} className="px-4 py-2.5 min-w-[140px]">KETERANGAN</th>
                     </tr>
                     <tr className="bg-amber-50/50 text-amber-950 text-[11px] font-bold border-b border-slate-400">
-                      {bap.dateColumns.map(dCol => (
-                        <th key={dCol} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">{dCol}</th>
+                      {bap.dateColumns.map((dCol, colIdx) => (
+                        <th key={`th-bap-dcol-${colIdx}`} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">{dCol}</th>
                       ))}
                     </tr>
                   </thead>
@@ -916,8 +930,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                         <td className="px-3 py-2 text-center text-slate-500 font-mono border-r border-slate-200">{idx + 1}</td>
                         <td className="px-4 py-2 font-medium text-slate-900 border-r border-slate-200">{it.namaAlat}</td>
                         <td className="px-3 py-2 text-center font-bold font-mono text-blue-950 bg-blue-50/20 border-r border-slate-200">{it.poQty}</td>
-                        {bap.dateColumns.map(dCol => (
-                          <td key={dCol} className="px-2 py-2 text-center font-mono border-r border-slate-200 bg-amber-50/5">
+                        {bap.dateColumns.map((dCol, colIdx) => (
+                          <td key={`td-bap-dcol-${colIdx}`} className="px-2 py-2 text-center font-mono border-r border-slate-200 bg-amber-50/5">
                             {it.realisasi?.[dCol] > 0 ? it.realisasi[dCol] : ''}
                           </td>
                         ))}
@@ -931,8 +945,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                     <tr className="bg-slate-100 font-bold text-slate-950 border-t-2 border-slate-400">
                       <td colSpan={2} className="px-4 py-2.5 text-center tracking-wider uppercase text-slate-900 border-r border-slate-300 font-extrabold">JUMLAH</td>
                       <td className="px-3 py-2.5 text-center font-mono text-blue-950 bg-blue-100/60 border-r border-slate-300 font-extrabold">{rekapTotals.totalPo}</td>
-                      {bap.dateColumns.map(dCol => (
-                        <td key={dCol} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
+                      {bap.dateColumns.map((dCol, colIdx) => (
+                        <td key={`td-bap-tot-dcol-${colIdx}`} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
                           {rekapTotals.totalRealByDate[dCol] || 0}
                         </td>
                       ))}
@@ -1036,8 +1050,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                       <th rowSpan={2} className="px-2 py-2.5 text-center w-10">Aksi</th>
                     </tr>
                     <tr className="bg-amber-50/50 text-amber-950 text-[11px] font-bold border-b border-slate-400">
-                      {activeDateColumns.map(dCol => (
-                        <th key={dCol} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">{dCol}</th>
+                      {activeDateColumns.map((dCol, colIdx) => (
+                        <th key={`th-npo-dcol-${colIdx}`} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">{dCol}</th>
                       ))}
                     </tr>
                   </thead>
@@ -1055,8 +1069,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                           <td className="px-3 py-2 text-center text-slate-500 font-mono border-r border-slate-200">{idx + 1}</td>
                           <td className="px-4 py-2 font-medium text-slate-900 border-r border-slate-200">{it.namaAlat}</td>
                           <td className="px-3 py-2 text-center font-bold font-mono text-blue-950 bg-blue-50/20 border-r border-slate-200">{it.poQty}</td>
-                          {activeDateColumns.map(dCol => (
-                            <td key={dCol} className="px-1.5 py-1 text-center border-r border-slate-200 bg-amber-50/10">
+                          {activeDateColumns.map((dCol, colIdx) => (
+                            <td key={`td-npo-dcol-${colIdx}`} className="px-1.5 py-1 text-center border-r border-slate-200 bg-amber-50/10">
                               <input
                                 type="number"
                                 min="0"
@@ -1096,8 +1110,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                     <tr className="bg-slate-100 font-bold text-slate-950 border-t-2 border-slate-400">
                       <td colSpan={2} className="px-4 py-2.5 text-center tracking-wider uppercase text-slate-900 border-r border-slate-300 font-extrabold">JUMLAH</td>
                       <td className="px-3 py-2.5 text-center font-mono text-blue-950 bg-blue-100/60 border-r border-slate-300 font-extrabold">{nonPoTotals.totalPo}</td>
-                      {activeDateColumns.map(dCol => (
-                        <td key={dCol} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
+                      {activeDateColumns.map((dCol, colIdx) => (
+                        <td key={`td-npo-tot-dcol-${colIdx}`} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
                           {nonPoTotals.totalRealByDate[dCol] || 0}
                         </td>
                       ))}
@@ -1143,8 +1157,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                       <th rowSpan={2} className="px-4 py-2.5 min-w-[140px]">KETERANGAN</th>
                     </tr>
                     <tr className="bg-amber-50/50 text-amber-950 text-[11px] font-bold border-b border-slate-400">
-                      {activeDateColumns.map(dCol => (
-                        <th key={dCol} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">{dCol}</th>
+                      {activeDateColumns.map((dCol, colIdx) => (
+                        <th key={`th-bapnpo-dcol-${colIdx}`} className="px-2 py-1.5 text-center border-r border-slate-300 min-w-[70px]">{dCol}</th>
                       ))}
                     </tr>
                   </thead>
@@ -1161,8 +1175,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                           <td className="px-3 py-2 text-center text-slate-500 font-mono border-r border-slate-200">{idx + 1}</td>
                           <td className="px-4 py-2 font-medium text-slate-900 border-r border-slate-200">{it.namaAlat}</td>
                           <td className="px-3 py-2 text-center font-bold font-mono text-blue-950 bg-blue-50/20 border-r border-slate-200">{it.poQty}</td>
-                          {activeDateColumns.map(dCol => (
-                            <td key={dCol} className="px-2 py-2 text-center font-mono border-r border-slate-200 bg-amber-50/5">
+                          {activeDateColumns.map((dCol, colIdx) => (
+                            <td key={`td-bapnpo-dcol-${colIdx}`} className="px-2 py-2 text-center font-mono border-r border-slate-200 bg-amber-50/5">
                               {it.realisasi?.[dCol] > 0 ? it.realisasi[dCol] : ''}
                             </td>
                           ))}
@@ -1177,8 +1191,8 @@ export const BapModal: React.FC<BapModalProps> = ({
                     <tr className="bg-slate-100 font-bold text-slate-950 border-t-2 border-slate-400">
                       <td colSpan={2} className="px-4 py-2.5 text-center tracking-wider uppercase text-slate-900 border-r border-slate-300 font-extrabold">JUMLAH</td>
                       <td className="px-3 py-2.5 text-center font-mono text-blue-950 bg-blue-100/60 border-r border-slate-300 font-extrabold">{nonPoTotals.totalPo}</td>
-                      {activeDateColumns.map(dCol => (
-                        <td key={dCol} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
+                      {activeDateColumns.map((dCol, colIdx) => (
+                        <td key={`td-bapnpo-tot-dcol-${colIdx}`} className="px-2 py-2.5 text-center font-mono text-amber-950 bg-amber-100/50 border-r border-slate-300 font-extrabold">
                           {nonPoTotals.totalRealByDate[dCol] || 0}
                         </td>
                       ))}

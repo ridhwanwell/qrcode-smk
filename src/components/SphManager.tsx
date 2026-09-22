@@ -28,9 +28,10 @@ import {
   Send,
   ThumbsUp,
   XCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Receipt
 } from 'lucide-react';
-import { SphQuotation, Hospital, BapDocument, SphDealData } from '../types';
+import { SphQuotation, Hospital, BapDocument, SphDealData, CalibrationSchedule } from '../types';
 import { SPH_TARIFF_CATALOG } from '../data/sphTariffCatalog';
 import { formatRupiah, formatNumber } from '../utils/sphHelpers';
 import { exportSphToWord } from '../utils/sphWordExport';
@@ -51,8 +52,10 @@ interface SphManagerProps {
   onUpdateStatus?: (sphId: string, newStatus: SphQuotation['status']) => void;
   onSaveDealData?: (sphId: string, dealData: SphDealData) => void;
   onNavigateToSchedules?: () => void;
+  onNavigateToBilling?: () => void;
   hospitals: Hospital[];
   bapDocuments?: BapDocument[];
+  schedules?: CalibrationSchedule[];
   onOpenBap?: (sph: SphQuotation) => void;
 }
 
@@ -66,8 +69,10 @@ export const SphManager: React.FC<SphManagerProps> = ({
   onUpdateStatus,
   onSaveDealData,
   onNavigateToSchedules,
+  onNavigateToBilling,
   hospitals,
   bapDocuments = [],
+  schedules = [],
   onOpenBap
 }) => {
   const { role } = useAuth();
@@ -83,8 +88,22 @@ export const SphManager: React.FC<SphManagerProps> = ({
   // Quick BAP Excel exporter
   const handleDownloadBap = (sph: SphQuotation) => {
     const existingBap = bapDocuments?.find(b => b.sphId === sph.id || b.sphNumber === sph.sphNumber);
-    const bapToExport = existingBap || createBapFromSph(sph);
-    exportBapToExcel(bapToExport);
+    const fresh = createBapFromSph(sph, existingBap?.labelNumber);
+    const bapToExport: BapDocument = existingBap ? {
+      ...existingBap,
+      customerName: sph.hospitalName || existingBap.customerName,
+      sphNumber: sph.sphNumber || existingBap.sphNumber,
+      address: sph.hospitalAddress || existingBap.address,
+      cityDistrict: fresh.cityDistrict,
+      labelNumber: fresh.labelNumber,
+      bapNumber: fresh.bapNumber,
+      bastpNumber: fresh.bastpNumber,
+    } : fresh;
+
+    const matchedSch = schedules?.find(s => s.hospitalName === sph.hospitalName || s.bapNumber === bapToExport.bapNumber || s.workOrderNumber === sph.sphNumber);
+    const leadTech = matchedSch?.leadTechnicianName || '';
+
+    exportBapToExcel(bapToExport, { leadTechnicianName: leadTech });
   };
 
   // Stats calculation
@@ -426,15 +445,27 @@ export const SphManager: React.FC<SphManagerProps> = ({
                   <div className="flex flex-wrap items-center gap-2">
                     {sph.status === 'Disetujui (Deal)' ? (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => setDealModalSph(sph)}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                          title="Buka Dokumen Deal Resmi (BO, FP, KWP, BAP) untuk diunduh langsung dalam bentuk PDF"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                          <span>Dokumen Deal (BO/FP/KWP)</span>
-                        </button>
+                        {onNavigateToBilling ? (
+                          <button
+                            type="button"
+                            onClick={onNavigateToBilling}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                            title="Buka menu Penagihan RS untuk mengunduh dokumen BO, FP, KWP"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-white" />
+                            <span>Penagihan RS (BO/FP/KWP)</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDealModalSph(sph)}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                            title="Buka Dokumen Deal Resmi (BO, FP, KWP, BAP)"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                            <span>Dokumen Deal (BO/FP/KWP)</span>
+                          </button>
+                        )}
 
                         <button
                           type="button"

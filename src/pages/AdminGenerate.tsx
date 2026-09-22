@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle2, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen, Building2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen, Building2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
@@ -28,6 +28,7 @@ export default function AdminGenerate() {
   
   // Single mode state
   const [noLabel, setNoLabel] = useState('');
+  const [singleType, setSingleType] = useState<'laik' | 'tidak_laik'>('laik');
   
   // Bulk mode state
   const [startLabel, setStartLabel] = useState('');
@@ -151,34 +152,41 @@ export default function AdminGenerate() {
       baseLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
     }
 
-    // 2. Auto append 10 extra Laik Pakai labels (cadangan non BAP)
+    // 2. Auto append 10 extra Laik Pakai labels (cadangan non BAP) ONLY if NOT single mode
     const extraLaikLabels: string[] = [];
-    const extraLaikStartNum = baseEndNum + 1;
-    const extraLaikEndNum = baseEndNum + 10;
-    for (let i = extraLaikStartNum; i <= extraLaikEndNum; i++) {
-      extraLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+    if (mode !== 'single') {
+      const extraLaikStartNum = baseEndNum + 1;
+      const extraLaikEndNum = baseEndNum + 10;
+      for (let i = extraLaikStartNum; i <= extraLaikEndNum; i++) {
+        extraLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+      }
     }
 
-    // 3. Auto append 10 extra Tidak Laik Pakai labels
+    // 3. Auto append 10 extra Tidak Laik Pakai labels ONLY if NOT single mode
     const extraTidakLaikLabels: string[] = [];
-    const extraTidakLaikStartNum = extraLaikEndNum + 1;
-    const extraTidakLaikEndNum = extraLaikEndNum + 10;
-    for (let i = extraTidakLaikStartNum; i <= extraTidakLaikEndNum; i++) {
-      extraTidakLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+    if (mode !== 'single') {
+      const extraLaikEndNum = baseEndNum + 10;
+      const extraTidakLaikStartNum = extraLaikEndNum + 1;
+      const extraTidakLaikEndNum = extraLaikEndNum + 10;
+      for (let i = extraTidakLaikStartNum; i <= extraTidakLaikEndNum; i++) {
+        extraTidakLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+      }
     }
 
     const labelsToGenerate = [...baseLabels, ...extraLaikLabels, ...extraTidakLaikLabels];
 
+    const isSingleTidakLaik = mode === 'single' && singleType === 'tidak_laik';
+
     const currentBreakdown: LabelBreakdown = {
-      baseRangeStart: baseLabels[0],
-      baseRangeEnd: baseLabels[baseLabels.length - 1],
-      baseCount: baseLabels.length,
-      extraLaikStart: extraLaikLabels[0],
-      extraLaikEnd: extraLaikLabels[extraLaikLabels.length - 1],
+      baseRangeStart: isSingleTidakLaik ? '' : (baseLabels[0] || ''),
+      baseRangeEnd: isSingleTidakLaik ? '' : (baseLabels[baseLabels.length - 1] || ''),
+      baseCount: isSingleTidakLaik ? 0 : baseLabels.length,
+      extraLaikStart: extraLaikLabels.length > 0 ? extraLaikLabels[0] : '',
+      extraLaikEnd: extraLaikLabels.length > 0 ? extraLaikLabels[extraLaikLabels.length - 1] : '',
       extraLaikCount: extraLaikLabels.length,
-      extraTidakLaikStart: extraTidakLaikLabels[0],
-      extraTidakLaikEnd: extraTidakLaikLabels[extraTidakLaikLabels.length - 1],
-      extraTidakLaikCount: extraTidakLaikLabels.length,
+      extraTidakLaikStart: isSingleTidakLaik ? (baseLabels[0] || '') : (extraTidakLaikLabels.length > 0 ? extraTidakLaikLabels[0] : ''),
+      extraTidakLaikEnd: isSingleTidakLaik ? (baseLabels[baseLabels.length - 1] || '') : (extraTidakLaikLabels.length > 0 ? extraTidakLaikLabels[extraTidakLaikLabels.length - 1] : ''),
+      extraTidakLaikCount: isSingleTidakLaik ? baseLabels.length : extraTidakLaikLabels.length,
       totalCount: labelsToGenerate.length
     };
 
@@ -192,7 +200,7 @@ export default function AdminGenerate() {
         ...baseLabels.map(lbl => ({
           noLabel: lbl,
           no_label: lbl,
-          status: 'Menunggu Sertifikat',
+          status: isSingleTidakLaik ? 'Tidak Laik Pakai' : 'Menunggu Sertifikat',
           namaRs: cleanNamaRs,
           nama_rs: cleanNamaRs
         })),
@@ -329,9 +337,9 @@ export default function AdminGenerate() {
 
       const isBulkA3 = (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus';
 
-      const cutoffTidakLaikIndex = breakdownInfo 
+      const cutoffTidakLaikIndex = breakdownInfo && breakdownInfo.extraTidakLaikCount > 0
         ? breakdownInfo.baseCount + breakdownInfo.extraLaikCount 
-        : generatedLabels.length - 10;
+        : (mode === 'single' ? generatedLabels.length : generatedLabels.length - 10);
 
       if (isBulkA3) {
         // Standar format cetak lembaran A3+ (320 mm x 480 mm, portrait)
@@ -573,19 +581,53 @@ export default function AdminGenerate() {
 
             <form onSubmit={handleGenerate} className="space-y-6">
               {mode === 'single' ? (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">No Label</label>
-                  <input
-                    type="text"
-                    required
-                    value={noLabel}
-                    onChange={(e) => {
-                      setNoLabel(e.target.value);
-                      setError('');
-                    }}
-                    className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none font-mono"
-                    placeholder="002.0021"
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">No Label</label>
+                    <input
+                      type="text"
+                      required
+                      value={noLabel}
+                      onChange={(e) => {
+                        setNoLabel(e.target.value);
+                        setError('');
+                      }}
+                      className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none font-mono"
+                      placeholder="002.0021"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Status / Jenis Stiker</label>
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setSingleType('laik')}
+                        className={cn(
+                          "flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-lg transition-all",
+                          singleType === 'laik'
+                            ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-700"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                        )}
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Laik Pakai</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSingleType('tidak_laik')}
+                        className={cn(
+                          "flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-lg transition-all",
+                          singleType === 'tidak_laik'
+                            ? "bg-rose-600 text-white shadow-sm ring-1 ring-rose-700"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                        )}
+                      >
+                        <XCircle className="w-4 h-4" />
+                        <span>Tidak Laik Pakai</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
@@ -700,30 +742,43 @@ export default function AdminGenerate() {
                   </span>
                 </h4>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className={cn(
+                  "grid grid-cols-1 gap-3",
+                  breakdownInfo.extraLaikCount > 0 && breakdownInfo.extraTidakLaikCount > 0 ? "sm:grid-cols-3" : "sm:grid-cols-1"
+                )}>
                   <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-xl">
                     <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Label Utama</div>
                     <div className="text-sm font-extrabold text-emerald-950 font-mono mt-1">
-                      {breakdownInfo.baseRangeStart} s/d {breakdownInfo.baseRangeEnd}
+                      {breakdownInfo.baseRangeStart === breakdownInfo.baseRangeEnd 
+                        ? breakdownInfo.baseRangeStart 
+                        : `${breakdownInfo.baseRangeStart} s/d ${breakdownInfo.baseRangeEnd}`}
                     </div>
                     <div className="text-[11px] text-emerald-700 font-medium mt-0.5">{breakdownInfo.baseCount} Label (Menunggu Sertifikat)</div>
                   </div>
 
-                  <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-xl">
-                    <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">+10 Cadangan Laik Pakai</div>
-                    <div className="text-sm font-extrabold text-amber-950 font-mono mt-1">
-                      {breakdownInfo.extraLaikStart} s/d {breakdownInfo.extraLaikEnd}
+                  {breakdownInfo.extraLaikCount > 0 && (
+                    <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-xl">
+                      <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">+{breakdownInfo.extraLaikCount} Cadangan Laik Pakai</div>
+                      <div className="text-sm font-extrabold text-amber-950 font-mono mt-1">
+                        {breakdownInfo.extraLaikStart === breakdownInfo.extraLaikEnd 
+                          ? breakdownInfo.extraLaikStart 
+                          : `${breakdownInfo.extraLaikStart} s/d ${breakdownInfo.extraLaikEnd}`}
+                      </div>
+                      <div className="text-[11px] text-amber-700 font-medium mt-0.5">{breakdownInfo.extraLaikCount} Label (Otomatis Tambahan)</div>
                     </div>
-                    <div className="text-[11px] text-amber-700 font-medium mt-0.5">10 Label (Otomatis Tambahan)</div>
-                  </div>
+                  )}
 
-                  <div className="bg-rose-50/80 border border-rose-200/80 p-3.5 rounded-xl">
-                    <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">+10 Tidak Laik Pakai</div>
-                    <div className="text-sm font-extrabold text-rose-950 font-mono mt-1">
-                      {breakdownInfo.extraTidakLaikStart} s/d {breakdownInfo.extraTidakLaikEnd}
+                  {breakdownInfo.extraTidakLaikCount > 0 && (
+                    <div className="bg-rose-50/80 border border-rose-200/80 p-3.5 rounded-xl">
+                      <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">+{breakdownInfo.extraTidakLaikCount} Tidak Laik Pakai</div>
+                      <div className="text-sm font-extrabold text-rose-950 font-mono mt-1">
+                        {breakdownInfo.extraTidakLaikStart === breakdownInfo.extraTidakLaikEnd 
+                          ? breakdownInfo.extraTidakLaikStart 
+                          : `${breakdownInfo.extraTidakLaikStart} s/d ${breakdownInfo.extraTidakLaikEnd}`}
+                      </div>
+                      <div className="text-[11px] text-rose-700 font-medium mt-0.5">{breakdownInfo.extraTidakLaikCount} Label (Template Tidak Laik)</div>
                     </div>
-                    <div className="text-[11px] text-rose-700 font-medium mt-0.5">10 Label (Template Tidak Laik)</div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
