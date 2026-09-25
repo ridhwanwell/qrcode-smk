@@ -363,6 +363,7 @@ export interface BapItem {
   total: number;                     // Sum of all realisasi quantities
   sisa: number;                      // poQty - total
   keterangan: string;                // e.g. 'Batal', 'Selesai', 'Pending'
+  unitPrice?: number;                // Tarif satuan kalibrasi per unit dari SPH
 }
 
 export interface BapDocument {

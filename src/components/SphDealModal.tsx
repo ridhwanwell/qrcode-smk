@@ -18,7 +18,7 @@ import {
   Info,
   Check
 } from 'lucide-react';
-import { SphQuotation, SphDealData, DealRecipient } from '../types';
+import { SphQuotation, SphDealData, DealRecipient, BapDocument } from '../types';
 import { 
   generateDealNumbers, 
   formatNumber, 
@@ -29,6 +29,7 @@ import {
   BANK_JATENG_SMK,
   getEffectivePaymentOption
 } from '../utils/sphHelpers';
+import { calculateBillingFromBap } from '../utils/billingHelpers';
 import { 
   downloadBoPdf, 
   downloadFpPdf, 
@@ -43,6 +44,7 @@ interface SphDealModalProps {
   isOpen: boolean;
   onClose: () => void;
   sph: SphQuotation | null;
+  bapDocument?: BapDocument | null;
   onSaveDeal: (sphId: string, dealData: SphDealData) => void;
 }
 
@@ -50,6 +52,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
   isOpen,
   onClose,
   sph,
+  bapDocument,
   onSaveDeal
 }) => {
   const { role } = useAuth();
@@ -152,6 +155,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
   };
 
   const totalUnits = (sph.items || []).reduce((sum, it) => sum + (it.quantity || 0), 0);
+  const billing = calculateBillingFromBap(sph, bapDocument);
   const dealDateFormatted = formatIndonesianLongDate(dealDate, sph.city || 'Surakarta');
 
   return (
@@ -406,15 +410,34 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
 
           {/* SECTION 3: RINGKASAN TABEL ALAT & NOMINAL DEAL */}
           <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#D8D2CB] shadow-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-[#D8D2CB] pb-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#D8D2CB] pb-2.5">
               <h4 className="font-bold text-[#1C658C] flex items-center gap-2">
                 <Layers className="w-4 h-4 text-[#398AB9]" />
-                <span>3. Rincian Item Alat & Nominal SPH (Otomatis Masuk ke BO & FP)</span>
+                <span>3. Rincian Item Alat & Nominal Penagihan (Masuk ke BO, FP, & KWP)</span>
               </h4>
-              <span className="text-xs font-bold text-emerald-700 font-mono">
-                {totalUnits} Unit • {formatRupiah(sph.grandTotal)}
-              </span>
+              <div className="flex items-center gap-2">
+                {billing.isAdjustedFromBap && (
+                  <span className="text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+                    Sesuai Realisasi BAP
+                  </span>
+                )}
+                <span className="text-xs font-bold text-emerald-700 font-mono">
+                  {billing.isAdjustedFromBap ? `${billing.totalRealizedUnits} Unit Realisasi` : `${totalUnits} Unit`} • {formatRupiah(billing.grandTotal)}
+                </span>
+              </div>
             </div>
+
+            {billing.isAdjustedFromBap && (
+              <div className="p-3 bg-amber-50/90 border border-amber-300 rounded-xl flex items-start gap-2.5 text-amber-900 text-xs">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-amber-950">Item & Nominal Menyesuaikan Form Realisasi BAP:</p>
+                  <p className="mt-0.5 text-amber-850 leading-relaxed">
+                    Tercatat <strong>{billing.totalRealizedUnits} unit</strong> terealisasi dari total penawaran <strong>{billing.totalPoUnits} unit</strong>. Dokumen Bukti Order (BO), Faktur Penjualan (FP), dan Kwitansi (KWP) akan otomatis ditagihkan sesuai realisasi pengerjaan senilai <strong>{formatRupiah(billing.grandTotal)}</strong>.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="overflow-x-auto border border-slate-300 rounded-xl">
               <table className="w-full text-left text-xs border-collapse">
@@ -424,17 +447,26 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
                     <th className="px-3 py-2 border-r border-white/20">Diskripsi</th>
                     <th className="px-3 py-1.5 text-center w-20 border-r border-white/20 leading-tight">
                       <div>Qty</div>
-                      <div className="text-[10px] font-normal text-white/90">(unit)</div>
+                      <div className="text-[10px] font-normal text-white/90">
+                        {billing.isAdjustedFromBap ? '(realisasi)' : '(unit)'}
+                      </div>
                     </th>
                     <th className="px-3 py-2 text-right w-32 border-r border-white/20">Satuan Harga</th>
                     <th className="px-3 py-2 text-right w-32">Total Harga</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
-                  {(sph.items || []).map((item, idx) => (
+                  {billing.items.map((item, idx) => (
                     <tr key={item.id || idx} className="hover:bg-slate-50">
                       <td className="px-3 py-1.5 text-center font-medium border-r border-slate-200">{idx + 1}</td>
-                      <td className="px-3 py-1.5 font-semibold text-slate-900 border-r border-slate-200">{item.description}</td>
+                      <td className="px-3 py-1.5 font-semibold text-slate-900 border-r border-slate-200">
+                        <div>{item.description}</div>
+                        {billing.isAdjustedFromBap && item.poQuantity !== undefined && item.poQuantity !== item.quantity && (
+                          <div className="text-[10px] text-amber-800 font-normal">
+                            PO: {item.poQuantity} unit → Realisasi: {item.quantity} unit
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-1.5 text-center font-bold text-slate-800 border-r border-slate-200">{item.quantity}</td>
                       <td className="px-3 py-1.5 text-right font-mono text-slate-800 border-r border-slate-200">
                         <div className="flex justify-between">
@@ -454,50 +486,54 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
                 <tfoot className="border-t border-black font-bold text-xs bg-white">
                   <tr className="border-b border-slate-200">
                     <td colSpan={2} className="px-3 py-1.5 bg-[#00A2E8] text-white italic">Terbilang:</td>
-                    <td className="px-3 py-1.5 text-center border-x border-slate-300">{totalUnits}</td>
+                    <td className="px-3 py-1.5 text-center border-x border-slate-300">
+                      {billing.isAdjustedFromBap ? billing.totalRealizedUnits : totalUnits}
+                    </td>
                     <td className="px-3 py-1.5 text-right border-r border-slate-300">Total 1</td>
                     <td className="px-3 py-1.5 text-right font-mono">
                       <div className="flex justify-between">
                         <span>Rp</span>
-                        <span>{formatNumber(sph.subtotal1)}</span>
+                        <span>{formatNumber(billing.subtotal1)}</span>
                       </div>
                     </td>
                   </tr>
-                  {sph.ppnAmount && sph.ppnAmount > 0 ? (
+                  {billing.ppnAmount && billing.ppnAmount > 0 ? (
                     <tr className="border-b border-slate-200">
-                      <td colSpan={3} rowSpan={sph.accommodationFee ? 4 : 3} className="px-4 py-2 border-r border-slate-300 text-center italic font-bold text-[11px] text-slate-700 align-middle bg-slate-50">
-                        "{sph.terbilang || 'Nol Rupiah'}"
+                      <td colSpan={3} rowSpan={billing.accommodationFee ? 4 : 3} className="px-4 py-2 border-r border-slate-300 text-center italic font-bold text-[11px] text-slate-700 align-middle bg-slate-50">
+                        "{billing.terbilang || 'Nol Rupiah'}"
                       </td>
-                      <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px] font-normal">PPN 11%</td>
+                      <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px] font-normal">
+                        {billing.ppnPercent ? `PPN ${billing.ppnPercent}%` : 'PPN 11%'}
+                      </td>
                       <td className="px-3 py-1 text-right font-mono text-[11px]">
                         <div className="flex justify-between">
                           <span>Rp</span>
-                          <span>{formatNumber(sph.ppnAmount)}</span>
+                          <span>{formatNumber(billing.ppnAmount)}</span>
                         </div>
                       </td>
                     </tr>
                   ) : null}
                   <tr className="border-b border-slate-200">
-                    {!sph.ppnAmount && (
-                      <td colSpan={3} rowSpan={sph.accommodationFee ? 3 : 2} className="px-4 py-2 border-r border-slate-300 text-center italic font-bold text-[11px] text-slate-700 align-middle bg-slate-50">
-                        "{sph.terbilang || 'Nol Rupiah'}"
+                    {!billing.ppnAmount && (
+                      <td colSpan={3} rowSpan={billing.accommodationFee ? 3 : 2} className="px-4 py-2 border-r border-slate-300 text-center italic font-bold text-[11px] text-slate-700 align-middle bg-slate-50">
+                        "{billing.terbilang || 'Nol Rupiah'}"
                       </td>
                     )}
                     <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px]">Total 2</td>
                     <td className="px-3 py-1 text-right font-mono text-[11px]">
                       <div className="flex justify-between">
                         <span>Rp</span>
-                        <span>{formatNumber(sph.subtotal2 || (sph.subtotal1 + (sph.ppnAmount || 0)))}</span>
+                        <span>{formatNumber(billing.subtotal2 || (billing.subtotal1 + (billing.ppnAmount || 0)))}</span>
                       </div>
                     </td>
                   </tr>
-                  {sph.accommodationFee ? (
+                  {billing.accommodationFee ? (
                     <tr className="border-b border-slate-200">
                       <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px]">Akomodasi</td>
                       <td className="px-3 py-1 text-right font-mono text-[11px]">
                         <div className="flex justify-between">
                           <span>Rp</span>
-                          <span>{formatNumber(sph.accommodationFee)}</span>
+                          <span>{formatNumber(billing.accommodationFee)}</span>
                         </div>
                       </td>
                     </tr>
@@ -507,7 +543,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
                     <td className="px-3 py-1.5 text-right font-mono font-bold">
                       <div className="flex justify-between">
                         <span>Rp</span>
-                        <span>{formatNumber(sph.grandTotal)}</span>
+                        <span>{formatNumber(billing.grandTotal)}</span>
                       </div>
                     </td>
                   </tr>
@@ -516,7 +552,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-500 italic pt-1">
-              Terbilang: "{sph.terbilang}"
+              Terbilang: "{billing.terbilang || sph.terbilang}"
             </p>
           </div>
 
@@ -535,7 +571,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => handleDownload('ZIP', () => downloadAllDealDocumentsZip(sph, currentDealData))}
+                onClick={() => handleDownload('ZIP', () => downloadAllDealDocumentsZip(sph, currentDealData, bapDocument))}
                 disabled={isDownloading !== null}
                 className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-slate-950 text-xs font-black rounded-xl transition-all flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
               >
@@ -561,7 +597,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
               {/* 2. PDF BO */}
               <button
                 type="button"
-                onClick={() => handleDownload('BO', () => downloadBoPdf(sph, currentDealData))}
+                onClick={() => handleDownload('BO', () => downloadBoPdf(sph, currentDealData, bapDocument))}
                 disabled={isDownloading !== null}
                 className="p-3 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer group"
               >
@@ -573,7 +609,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
               {/* 3. PDF FP */}
               <button
                 type="button"
-                onClick={() => handleDownload('FP', () => downloadFpPdf(sph, currentDealData))}
+                onClick={() => handleDownload('FP', () => downloadFpPdf(sph, currentDealData, bapDocument))}
                 disabled={isDownloading !== null}
                 className="p-3 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer group"
               >
@@ -585,7 +621,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
               {/* 4. PDF KWP */}
               <button
                 type="button"
-                onClick={() => handleDownload('KWP', () => downloadKwpPdf(sph, currentDealData))}
+                onClick={() => handleDownload('KWP', () => downloadKwpPdf(sph, currentDealData, bapDocument))}
                 disabled={isDownloading !== null}
                 className="p-3 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer group"
               >
@@ -597,7 +633,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
               {/* 5. PDF BAP */}
               <button
                 type="button"
-                onClick={() => handleDownload('BAP', () => downloadBapPdf(sph, currentDealData))}
+                onClick={() => handleDownload('BAP', () => downloadBapPdf(sph, currentDealData, bapDocument))}
                 disabled={isDownloading !== null}
                 className="p-3 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl flex flex-col items-center text-center gap-1.5 transition-all cursor-pointer group col-span-2 sm:col-span-1"
               >

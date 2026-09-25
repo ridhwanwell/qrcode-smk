@@ -67,7 +67,7 @@ import { useSupabaseData } from '../lib/useSupabaseData';
 import { useAuth } from '../lib/AuthContext';
 import { LoginPage } from './AsetLoginPage';
 import { BapModal } from '../components/BapModal';
-import { createBapFromSph } from '../utils/bapHelpers';
+import { createBapFromSph, createBapFromSchedule } from '../utils/bapHelpers';
 
 export default function App() {
   const { user } = useAuth();
@@ -304,6 +304,34 @@ function AsetPortalMain() {
     const bap = ensureBapForSph(sph);
     setSelectedBap(bap);
     setSelectedSphForBap(sph);
+    setShowBapModal(true);
+  };
+
+  const handleOpenBapFromSchedule = (schedule: CalibrationSchedule) => {
+    const matchedSph = effectiveSphList.find(s => 
+      s.hospitalName.toLowerCase() === schedule.hospitalName.toLowerCase() ||
+      (s.dealData?.boNumber && s.dealData.boNumber === schedule.workOrderNumber) ||
+      s.sphNumber === schedule.workOrderNumber
+    );
+
+    if (matchedSph) {
+      handleOpenBap(matchedSph);
+      return;
+    }
+
+    let existingBap = bapDocuments.find(b => 
+      (schedule.bapNumber && b.bapNumber === schedule.bapNumber) ||
+      b.customerName.toLowerCase() === schedule.hospitalName.toLowerCase() ||
+      b.id === `BAP-SCH-${schedule.id}`
+    );
+
+    if (!existingBap) {
+      existingBap = createBapFromSchedule(schedule);
+      addBapDocument(existingBap);
+    }
+
+    setSelectedBap(existingBap);
+    setSelectedSphForBap(null);
     setShowBapModal(true);
   };
 
@@ -954,6 +982,10 @@ function AsetPortalMain() {
                 hospitals={effectiveHospitals}
                 technicians={effectiveTechnicians}
                 calibrators={effectiveCalibrators}
+                sphList={effectiveSphList}
+                bapDocuments={bapDocuments}
+                onOpenBapModal={handleOpenBapFromSchedule}
+                onUpdateSchedule={updateSchedule}
                 onSelectSchedule={(sch) => setSelectedSchedule(sch)}
                 onOpenNewScheduleModal={() => {
                   setEditingSchedule(null);
@@ -982,6 +1014,7 @@ function AsetPortalMain() {
             >
               <HospitalBillingManager
                 sphList={effectiveSphList}
+                bapDocuments={bapDocuments}
                 onSaveDealData={handleSaveDealData}
                 onNavigateToSchedules={() => setActiveTab('schedules')}
                 onOpenBapModal={handleOpenBap}

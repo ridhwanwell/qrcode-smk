@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { SphQuotation, SphDealData, SphItem } from '../types';
+import { SphQuotation, SphDealData, SphItem, BapDocument } from '../types';
 import { formatNumber, formatIndonesianLongDate, angkaTerbilang } from '../utils/sphHelpers';
+import { calculateBillingFromBap, resolveBankDetails } from '../utils/billingHelpers';
 
 // Exact Colors Matching the Photos
 const COLOR_BLACK = rgb(0, 0, 0);
@@ -81,8 +82,10 @@ function formatShortDate(dateStr?: string): string {
 export async function createAuthenticBoPdf(
   pdfDoc: PDFDocument,
   sph: SphQuotation,
-  dealData: SphDealData
+  dealData: SphDealData,
+  bap?: BapDocument | null
 ): Promise<Uint8Array> {
+  const billing = calculateBillingFromBap(sph, bap);
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
@@ -255,7 +258,7 @@ export async function createAuthenticBoPdf(
 
   // Table Items
   let totalUnits = 0;
-  const items = sph.items || [];
+  const items = billing.items;
   items.forEach((item, index) => {
     totalUnits += (item.quantity || 1);
     const descLines = wrapText(safeText(item.description), fontRegular, 9, colW[1] - 10);
@@ -369,18 +372,18 @@ export async function createAuthenticBoPdf(
     borderWidth: 0.6
   });
   page.drawText('Rp', { x: colX[4] + 4, y: contentY - 11, size: 8.5, font: fontBold, color: COLOR_BLACK });
-  const sub1Str = formatNumber(sph.subtotal1);
+  const sub1Str = formatNumber(billing.subtotal1);
   const sub1W = fontBold.widthOfTextAtSize(sub1Str, 9);
   page.drawText(sub1Str, { x: colX[4] + colW[4] - sub1W - 6, y: contentY - 11, size: 9, font: fontBold, color: COLOR_BLACK });
 
   contentY -= sumRowH;
 
   // Summary Rows: Akomodasi, Total (Bold), PPN, GRAND TOTAL (Cyan, Bold)
-  const ppnRateText = sph.ppnPercent ? `PPN ${sph.ppnPercent}%` : 'PPN 11%';
-  const ppnVal = sph.ppnAmount || 0;
-  const total2Val = sph.subtotal2 || (sph.subtotal1 + ppnVal);
-  const acomVal = sph.accommodationFee || 0;
-  const grandTotalVal = sph.grandTotal;
+  const ppnRateText = billing.ppnPercent ? `PPN ${billing.ppnPercent}%` : 'PPN 11%';
+  const ppnVal = billing.ppnAmount || 0;
+  const total2Val = billing.subtotal2 || (billing.subtotal1 + ppnVal);
+  const acomVal = billing.accommodationFee || 0;
+  const grandTotalVal = billing.grandTotal;
 
   const rightRows: Array<{ label: string; amount: string; isBold?: boolean; isGrand?: boolean }> = [];
   rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
@@ -402,7 +405,7 @@ export async function createAuthenticBoPdf(
     borderWidth: 0.6
   });
 
-  const fullTerbilang = `"${sph.terbilang || angkaTerbilang(grandTotalVal)}"`;
+  const fullTerbilang = `"${billing.terbilang || angkaTerbilang(grandTotalVal)}"`;
   const terbLines = wrapText(fullTerbilang, fontBoldItalic, 8.5, terbBoxWidth - 16);
   const terbStartY = contentY - (terbBoxHeight / 2) + ((terbLines.length - 1) * 6);
   terbLines.forEach((tLine, tIdx) => {
@@ -479,16 +482,18 @@ export async function createAuthenticBoPdf(
   page.drawLine({ start: { x: infoColX, y: contentY - 1.5 }, end: { x: infoColX + tpW, y: contentY - 1.5 }, thickness: 0.8, color: COLOR_BLACK });
   contentY -= infoRowH;
 
+  const bankInfo = resolveBankDetails(sph, dealData);
+
   // Nama Bank
   page.drawText('Nama Bank', { x: infoColX, y: contentY, size: 8.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: infoColonX, y: contentY, size: 8.5, font: fontBold, color: COLOR_BLACK });
-  page.drawText('Mandiri', { x: infoValX, y: contentY, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+  page.drawText(bankInfo.bankName, { x: infoValX, y: contentY, size: 8.5, font: fontRegular, color: COLOR_BLACK });
   contentY -= infoRowH;
 
   // Nomor Rekening
   page.drawText('Nomor Rekening', { x: infoColX, y: contentY, size: 8.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: infoColonX, y: contentY, size: 8.5, font: fontBold, color: COLOR_BLACK });
-  page.drawText('138-00-2610846-9 (SARANA MULTI KALIBRASI PT)', { x: infoValX, y: contentY, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+  page.drawText(`${bankInfo.accountNumber} (${bankInfo.accountName})`, { x: infoValX, y: contentY, size: 8.5, font: fontRegular, color: COLOR_BLACK });
   contentY -= infoRowH;
 
   // Nama Perusahaan
@@ -558,8 +563,10 @@ export async function createAuthenticBoPdf(
 export async function createAuthenticFpPdf(
   pdfDoc: PDFDocument,
   sph: SphQuotation,
-  dealData: SphDealData
+  dealData: SphDealData,
+  bap?: BapDocument | null
 ): Promise<Uint8Array> {
+  const billing = calculateBillingFromBap(sph, bap);
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
@@ -724,7 +731,7 @@ export async function createAuthenticFpPdf(
 
   // Items
   let totalUnits = 0;
-  const items = sph.items || [];
+  const items = billing.items;
   items.forEach((item, index) => {
     totalUnits += (item.quantity || 1);
     const descLines = wrapText(safeText(item.description), fontRegular, 9, colW[1] - 10);
@@ -832,18 +839,18 @@ export async function createAuthenticFpPdf(
     borderWidth: 0.6
   });
   page.drawText('Rp', { x: colX[4] + 4, y: contentY - 11, size: 8.5, font: fontBold, color: COLOR_BLACK });
-  const sub1Str = formatNumber(sph.subtotal1);
+  const sub1Str = formatNumber(billing.subtotal1);
   const sub1W = fontBold.widthOfTextAtSize(sub1Str, 9);
   page.drawText(sub1Str, { x: colX[4] + colW[4] - sub1W - 6, y: contentY - 11, size: 9, font: fontBold, color: COLOR_BLACK });
 
   contentY -= sumRowH;
 
   // Summary Rows: Discount (if any), Akomodasi, Total (Bold), PPN, GRAND TOTAL (Cyan, Bold)
-  const ppnRateText = sph.ppnPercent ? `PPN ${sph.ppnPercent}%` : 'PPN 11%';
-  const ppnVal = sph.ppnAmount || 0;
-  const total2Val = sph.subtotal2 || (sph.subtotal1 + ppnVal);
-  const acomVal = sph.accommodationFee || 0;
-  const grandTotalVal = sph.grandTotal;
+  const ppnRateText = billing.ppnPercent ? `PPN ${billing.ppnPercent}%` : 'PPN 11%';
+  const ppnVal = billing.ppnAmount || 0;
+  const total2Val = billing.subtotal2 || (billing.subtotal1 + ppnVal);
+  const acomVal = billing.accommodationFee || 0;
+  const grandTotalVal = billing.grandTotal;
 
   const rightRows: Array<{ label: string; amount: string; isBold?: boolean; isGrand?: boolean }> = [];
   rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
@@ -864,7 +871,7 @@ export async function createAuthenticFpPdf(
     borderWidth: 0.6
   });
 
-  const fullTerbilang = `"${sph.terbilang || angkaTerbilang(grandTotalVal)}"`;
+  const fullTerbilang = `"${billing.terbilang || angkaTerbilang(grandTotalVal)}"`;
   const terbLines = wrapText(fullTerbilang, fontBoldItalic, 8.5, terbBoxWidth - 16);
   const terbStartY = contentY - (terbBoxHeight / 2) + ((terbLines.length - 1) * 6);
   terbLines.forEach((tLine, tIdx) => {
@@ -959,11 +966,13 @@ export async function createAuthenticFpPdf(
   const b2ColonX = MARGIN_X + (tpBoxW / 2) + 72;
   const b2ValX = MARGIN_X + (tpBoxW / 2) + 80;
 
+  const bankInfo = resolveBankDetails(sph, dealData);
+
   // Row 1 inside box
   const tpRow1Y = contentY - 14;
   page.drawText('Nama Bank', { x: b1X, y: tpRow1Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: b1ColonX, y: tpRow1Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
-  page.drawText('Mandiri', { x: b1ValX, y: tpRow1Y, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+  page.drawText(bankInfo.bankName, { x: b1ValX, y: tpRow1Y, size: 8.5, font: fontRegular, color: COLOR_BLACK });
 
   page.drawText('Nama Perusahaan', { x: b2X, y: tpRow1Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: b2ColonX, y: tpRow1Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
@@ -973,8 +982,8 @@ export async function createAuthenticFpPdf(
   const tpRow2Y = contentY - 28;
   page.drawText('Nomor Rekening', { x: b1X, y: tpRow2Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: b1ColonX, y: tpRow2Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
-  page.drawText('138-00-2610846-9', { x: b1ValX, y: tpRow2Y, size: 8.5, font: fontRegular, color: COLOR_BLACK });
-  page.drawText('(SARANA MULTI KALIBRASI PT)', { x: b1ValX, y: tpRow2Y - 10, size: 7.5, font: fontRegular, color: COLOR_BLACK });
+  page.drawText(bankInfo.accountNumber, { x: b1ValX, y: tpRow2Y, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+  page.drawText(`(${bankInfo.accountName})`, { x: b1ValX, y: tpRow2Y - 10, size: 7.5, font: fontRegular, color: COLOR_BLACK });
 
   page.drawText('Nomor NPWP', { x: b2X, y: tpRow2Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: b2ColonX, y: tpRow2Y, size: 8.5, font: fontBold, color: COLOR_BLACK });
@@ -1027,8 +1036,10 @@ export async function createAuthenticFpPdf(
 export async function createAuthenticKwpPdf(
   pdfDoc: PDFDocument,
   sph: SphQuotation,
-  dealData: SphDealData
+  dealData: SphDealData,
+  bap?: BapDocument | null
 ): Promise<Uint8Array> {
+  const billing = calculateBillingFromBap(sph, bap);
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
@@ -1135,7 +1146,7 @@ export async function createAuthenticKwpPdf(
   page.drawText('Untuk Pembayaran', { x: kLabelX, y: contentY, size: 9.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: kColonX, y: contentY, size: 9.5, font: fontBold, color: COLOR_BLACK });
 
-  const firstDesc = sph.items?.[0]?.description || 'Alat Kesehatan';
+  const firstDesc = billing.items?.[0]?.description || sph.items?.[0]?.description || 'Alat Kesehatan';
   const defaultPurpose = `Pembayaran Pekerjaan Kalibrasi ${firstDesc}`;
   const purposeText = dealData.kwpPurpose || defaultPurpose;
   const purpLines = wrapText(safeText(purposeText), fontRegular, 9.5, kValMaxW);
@@ -1149,7 +1160,7 @@ export async function createAuthenticKwpPdf(
   page.drawText(':', { x: kColonX, y: contentY, size: 9.5, font: fontBold, color: COLOR_BLACK });
 
   // Draw Cyan amount box dynamically sized to amount length
-  const amountStr = formatNumber(sph.grandTotal);
+  const amountStr = formatNumber(billing.grandTotal);
   const rpW = fontBold.widthOfTextAtSize('Rp', 9);
   const amountW = fontBold.widthOfTextAtSize(amountStr, 9.5);
   const badgeW = Math.max(90, rpW + amountW + 20);
@@ -1170,7 +1181,7 @@ export async function createAuthenticKwpPdf(
   page.drawText('TERBILANG', { x: kLabelX, y: contentY, size: 9.5, font: fontBold, color: COLOR_BLACK });
   page.drawText(':', { x: kColonX, y: contentY, size: 9.5, font: fontBold, color: COLOR_BLACK });
 
-  const rawTerbilang = sph.terbilang || angkaTerbilang(sph.grandTotal);
+  const rawTerbilang = billing.terbilang || angkaTerbilang(billing.grandTotal);
   const fullTerbilang = rawTerbilang.startsWith('"') ? rawTerbilang : `"${rawTerbilang}"`;
   
   const maxAvailableW = RIGHT_X - kValX - 10;
@@ -1255,8 +1266,10 @@ export async function createAuthenticKwpPdf(
 export async function createAuthenticBapPdf(
   pdfDoc: PDFDocument,
   sph: SphQuotation,
-  dealData: SphDealData
+  dealData: SphDealData,
+  bap?: BapDocument | null
 ): Promise<Uint8Array> {
+  const billing = calculateBillingFromBap(sph, bap);
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
@@ -1349,8 +1362,18 @@ export async function createAuthenticBapPdf(
   contentY -= headerH;
 
   let totalQty = 0;
-  (sph.items || []).forEach((item, index) => {
-    totalQty += (item.quantity || 1);
+  let totalRealizedQty = 0;
+  const bapDisplayItems = billing.isAdjustedFromBap ? billing.items : (sph.items || []).map((it, idx) => ({
+    no: idx + 1,
+    description: it.description,
+    poQuantity: it.quantity || 1,
+    quantity: it.quantity || 1,
+    keterangan: 'Selesai Kalibrasi'
+  }));
+
+  bapDisplayItems.forEach((item, index) => {
+    totalQty += (item.poQuantity || item.quantity || 1);
+    totalRealizedQty += (item.quantity || 1);
     const descLines = wrapText(safeText(item.description), fontRegular, 9, colW[1] - 8);
     const rowHeight = Math.max(16, descLines.length * 11 + 5);
 
@@ -1381,12 +1404,14 @@ export async function createAuthenticBapPdf(
       page.drawText(dL, { x: colX[1] + 4, y: textBaseline - (dIdx * 11), size: 9, font: fontRegular, color: COLOR_BLACK });
     });
 
-    const qtyStr = `${item.quantity || 1} Unit`;
-    page.drawText(qtyStr, { x: colX[2] + (colW[2] - fontRegular.widthOfTextAtSize(qtyStr, 8.5)) / 2, y: textBaseline, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+    const poQtyStr = `${item.poQuantity || item.quantity || 1} Unit`;
+    page.drawText(poQtyStr, { x: colX[2] + (colW[2] - fontRegular.widthOfTextAtSize(poQtyStr, 8.5)) / 2, y: textBaseline, size: 8.5, font: fontRegular, color: COLOR_BLACK });
 
-    page.drawText(qtyStr, { x: colX[3] + (colW[3] - fontRegular.widthOfTextAtSize(qtyStr, 8.5)) / 2, y: textBaseline, size: 8.5, font: fontBold, color: COLOR_BLACK });
+    const realQtyStr = `${item.quantity || 0} Unit`;
+    page.drawText(realQtyStr, { x: colX[3] + (colW[3] - fontRegular.widthOfTextAtSize(realQtyStr, 8.5)) / 2, y: textBaseline, size: 8.5, font: fontBold, color: COLOR_BLACK });
 
-    page.drawText('Selesai Kalibrasi', { x: colX[4] + (colW[4] - fontRegular.widthOfTextAtSize('Selesai Kalibrasi', 8.5)) / 2, y: textBaseline, size: 8.5, font: fontRegular, color: COLOR_BLACK });
+    const statusText = item.keterangan || (item.quantity > 0 ? 'Selesai Kalibrasi' : 'Batal / Belum');
+    page.drawText(statusText, { x: colX[4] + (colW[4] - fontRegular.widthOfTextAtSize(statusText, 8.5)) / 2, y: textBaseline, size: 8.5, font: fontRegular, color: COLOR_BLACK });
 
     contentY -= rowHeight;
   });
@@ -1418,13 +1443,25 @@ export async function createAuthenticBapPdf(
   page.drawRectangle({
     x: colX[3],
     y: contentY - totalRowH,
-    width: colW[3] + colW[4],
+    width: colW[3],
+    height: totalRowH,
+    color: COLOR_CYAN,
+    borderColor: COLOR_BLACK,
+    borderWidth: 0.6
+  });
+  page.drawText(String(totalRealizedQty), { x: colX[3] + (colW[3] - fontBold.widthOfTextAtSize(String(totalRealizedQty), 9)) / 2, y: contentY - 11.5, size: 9, font: fontBold, color: COLOR_WHITE });
+
+  page.drawRectangle({
+    x: colX[4],
+    y: contentY - totalRowH,
+    width: colW[4],
     height: totalRowH,
     color: COLOR_LIGHT_BG,
     borderColor: COLOR_BLACK,
     borderWidth: 0.6
   });
-  page.drawText(`${totalQty} Unit Telah Dikalibrasi Sesuai SOP Kemenkes`, { x: colX[3] + 6, y: contentY - 11.5, size: 8.5, font: fontBold, color: COLOR_BLACK });
+  const summaryMsg = totalRealizedQty < totalQty ? `${totalRealizedQty} dari ${totalQty} Unit Terealisasi` : `${totalRealizedQty} Unit Selesai`;
+  page.drawText(summaryMsg, { x: colX[4] + 6, y: contentY - 11.5, size: 8, font: fontBold, color: COLOR_BLACK });
 
   contentY -= totalRowH;
 

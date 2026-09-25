@@ -28,16 +28,13 @@ import {
   Send,
   ThumbsUp,
   XCircle,
-  FileSpreadsheet,
-  Receipt
+  FileSpreadsheet
 } from 'lucide-react';
 import { SphQuotation, Hospital, BapDocument, SphDealData, CalibrationSchedule } from '../types';
 import { SPH_TARIFF_CATALOG } from '../data/sphTariffCatalog';
 import { formatRupiah, formatNumber } from '../utils/sphHelpers';
 import { exportSphToWord } from '../utils/sphWordExport';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
-import { exportBapToExcel } from '../utils/bapExcelExport';
-import { createBapFromSph } from '../utils/bapHelpers';
 import { downloadSphPdf } from '../utils/sphPdfExport';
 import { SphDealModal } from './SphDealModal';
 import { useAuth } from '../lib/AuthContext';
@@ -84,27 +81,6 @@ export const SphManager: React.FC<SphManagerProps> = ({
   const [catalogSearch, setCatalogSearch] = useState('');
   const [deleteTargetSph, setDeleteTargetSph] = useState<SphQuotation | null>(null);
   const [dealModalSph, setDealModalSph] = useState<SphQuotation | null>(null);
-
-  // Quick BAP Excel exporter
-  const handleDownloadBap = (sph: SphQuotation) => {
-    const existingBap = bapDocuments?.find(b => b.sphId === sph.id || b.sphNumber === sph.sphNumber);
-    const fresh = createBapFromSph(sph, existingBap?.labelNumber);
-    const bapToExport: BapDocument = existingBap ? {
-      ...existingBap,
-      customerName: sph.hospitalName || existingBap.customerName,
-      sphNumber: sph.sphNumber || existingBap.sphNumber,
-      address: sph.hospitalAddress || existingBap.address,
-      cityDistrict: fresh.cityDistrict,
-      labelNumber: fresh.labelNumber,
-      bapNumber: fresh.bapNumber,
-      bastpNumber: fresh.bastpNumber,
-    } : fresh;
-
-    const matchedSch = schedules?.find(s => s.hospitalName === sph.hospitalName || s.bapNumber === bapToExport.bapNumber || s.workOrderNumber === sph.sphNumber);
-    const leadTech = matchedSch?.leadTechnicianName || '';
-
-    exportBapToExcel(bapToExport, { leadTechnicianName: leadTech });
-  };
 
   // Stats calculation
   const totalSphCount = sphList.length;
@@ -444,54 +420,20 @@ export const SphManager: React.FC<SphManagerProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#D8D2CB]/60">
                   <div className="flex flex-wrap items-center gap-2">
                     {sph.status === 'Disetujui (Deal)' ? (
-                      <>
-                        {onNavigateToBilling ? (
-                          <button
-                            type="button"
-                            onClick={onNavigateToBilling}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                            title="Buka menu Penagihan RS untuk mengunduh dokumen BO, FP, KWP"
-                          >
-                            <Receipt className="w-3.5 h-3.5 text-white" />
-                            <span>Penagihan RS (BO/FP/KWP)</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setDealModalSph(sph)}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                            title="Buka Dokumen Deal Resmi (BO, FP, KWP, BAP)"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                            <span>Dokumen Deal (BO/FP/KWP)</span>
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadBap(sph)}
-                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
-                          title="Unduh 1 file Excel (.xlsx) dengan 4 sheet: Rekap, BAP, Rekap Non PO, BAP Non PO"
-                        >
-                          <Download className="w-3.5 h-3.5 text-emerald-700" />
-                          <span>Excel BAP</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (onNavigateToSchedules) {
-                              onNavigateToSchedules();
-                            } else {
-                              onConvertToSpk(sph);
-                            }
-                          }}
-                          className="px-3 py-1.5 bg-[#1C658C] hover:bg-[#144966] text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                          title="Buka agenda kalibrasi RS untuk SPH ini"
-                        >
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>Jadwal RS</span>
-                        </button>
-                      </>
+                      <button
+                        onClick={() => {
+                          if (onNavigateToSchedules) {
+                            onNavigateToSchedules();
+                          } else {
+                            onConvertToSpk(sph);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-[#1C658C] hover:bg-[#144966] text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        title="Buka agenda kalibrasi RS untuk SPH ini"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Jadwal RS</span>
+                      </button>
                     ) : canMarkDeal ? (
                       <button
                         onClick={() => setDealModalSph(sph)}

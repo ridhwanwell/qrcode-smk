@@ -1,7 +1,7 @@
 import { PDFDocument } from 'pdf-lib';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
-import { SphQuotation, SphDealData } from '../types';
+import { SphQuotation, SphDealData, BapDocument } from '../types';
 import { 
   createAuthenticBoPdf, 
   createAuthenticFpPdf, 
@@ -9,17 +9,29 @@ import {
   createAuthenticBapPdf 
 } from '../lib/dealPdfGenerator';
 import { createAuthenticSphPdf, paginateSphTableItems } from '../lib/templateGenerator';
-import { generateDealNumbers, formatNumber } from './sphHelpers';
+import { generateDealNumbers, formatNumber, getEffectivePaymentOption, BANK_JATENG_SMK, BANK_MANDIRI_SMK } from './sphHelpers';
 import { extractCleanToolName, getECatalogueTariff } from '../data/sphECatalogueData';
 
 /**
- * Ensures fallback deal data is populated if not yet set
+ * Ensures fallback deal data is populated if not yet set.
+ * Honors SPH bank selection (Bank Jateng / Bank Mandiri / Keduanya).
  */
-function resolveDealData(sph: SphQuotation, customDealData?: SphDealData): SphDealData {
+export function resolveDealData(sph: SphQuotation, customDealData?: SphDealData): SphDealData {
   if (customDealData) return customDealData;
   if (sph.dealData) return sph.dealData;
 
   const defaultNumbers = generateDealNumbers('074', sph.date || new Date().toISOString());
+  const effOpt = getEffectivePaymentOption(sph);
+  let defaultPaymentMethod = `Bank Jateng : ${BANK_JATENG_SMK.accountNumber} & Bank Mandiri : ${BANK_MANDIRI_SMK.accountNumber} (SARANA MULTI KALIBRASI PT)`;
+
+  if (effOpt === 'jateng') {
+    defaultPaymentMethod = `Bank Jateng : ${BANK_JATENG_SMK.accountNumber} (SARANA MULTI KALIBRASI PT)`;
+  } else if (effOpt === 'mandiri') {
+    defaultPaymentMethod = `Bank Mandiri : ${BANK_MANDIRI_SMK.accountNumber} (SARANA MULTI KALIBRASI PT)`;
+  } else if (effOpt === 'custom' && (sph.customBankDetails || sph.bankAccountNumber)) {
+    defaultPaymentMethod = sph.customBankDetails || `${sph.bankName || 'Bank'}: ${sph.bankAccountNumber || ''} (SARANA MULTI KALIBRASI PT)`;
+  }
+
   return {
     dealDate: sph.date || new Date().toISOString().split('T')[0],
     sequenceNumber: defaultNumbers.sequenceNumber,
@@ -27,7 +39,7 @@ function resolveDealData(sph: SphQuotation, customDealData?: SphDealData): SphDe
     fpNumber: defaultNumbers.fpNumber,
     kwpNumber: defaultNumbers.kwpNumber,
     recipientName: 'Fitri Nur Aini',
-    paymentMethod: 'Bank Mandiri : 138-00-2610846-9 & Bank Jateng : 1-002-01495-1',
+    paymentMethod: defaultPaymentMethod,
     kwpPurpose: `Pembayaran Pekerjaan Kalibrasi ${sph.items?.[0]?.description || 'Alat Kesehatan'} sesuai SPH No. ${sph.sphNumber}`,
     customerPic: sph.hospitalPic || sph.recipientRole || '-',
     certificateOwner: sph.hospitalName
@@ -36,12 +48,17 @@ function resolveDealData(sph: SphQuotation, customDealData?: SphDealData): SphDe
 
 /**
  * 1. Download Bukti Order (BO) PDF
+ * Uses realized tools & amounts from Form BAP if available.
  */
-export async function downloadBoPdf(sph: SphQuotation, customDealData?: SphDealData): Promise<void> {
+export async function downloadBoPdf(
+  sph: SphQuotation, 
+  customDealData?: SphDealData,
+  bap?: BapDocument | null
+): Promise<void> {
   try {
     const dealData = resolveDealData(sph, customDealData);
     const pdfDoc = await PDFDocument.create();
-    const pdfBytes = await createAuthenticBoPdf(pdfDoc, sph, dealData);
+    const pdfBytes = await createAuthenticBoPdf(pdfDoc, sph, dealData, bap);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const cleanName = (sph.hospitalName || 'Dokumen').replace(/[^a-zA-Z0-9]/g, '_');
     saveAs(blob, `BO_${dealData.sequenceNumber}_${cleanName}.pdf`);
@@ -53,12 +70,17 @@ export async function downloadBoPdf(sph: SphQuotation, customDealData?: SphDealD
 
 /**
  * 2. Download Faktur Penjualan (FP) PDF
+ * Uses realized tools & amounts from Form BAP if available.
  */
-export async function downloadFpPdf(sph: SphQuotation, customDealData?: SphDealData): Promise<void> {
+export async function downloadFpPdf(
+  sph: SphQuotation, 
+  customDealData?: SphDealData,
+  bap?: BapDocument | null
+): Promise<void> {
   try {
     const dealData = resolveDealData(sph, customDealData);
     const pdfDoc = await PDFDocument.create();
-    const pdfBytes = await createAuthenticFpPdf(pdfDoc, sph, dealData);
+    const pdfBytes = await createAuthenticFpPdf(pdfDoc, sph, dealData, bap);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const cleanName = (sph.hospitalName || 'Dokumen').replace(/[^a-zA-Z0-9]/g, '_');
     saveAs(blob, `FP_${dealData.sequenceNumber}_${cleanName}.pdf`);
@@ -70,12 +92,17 @@ export async function downloadFpPdf(sph: SphQuotation, customDealData?: SphDealD
 
 /**
  * 3. Download Kwitansi Penjualan (KWP) PDF
+ * Uses realized amounts from Form BAP if available.
  */
-export async function downloadKwpPdf(sph: SphQuotation, customDealData?: SphDealData): Promise<void> {
+export async function downloadKwpPdf(
+  sph: SphQuotation, 
+  customDealData?: SphDealData,
+  bap?: BapDocument | null
+): Promise<void> {
   try {
     const dealData = resolveDealData(sph, customDealData);
     const pdfDoc = await PDFDocument.create();
-    const pdfBytes = await createAuthenticKwpPdf(pdfDoc, sph, dealData);
+    const pdfBytes = await createAuthenticKwpPdf(pdfDoc, sph, dealData, bap);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const cleanName = (sph.hospitalName || 'Dokumen').replace(/[^a-zA-Z0-9]/g, '_');
     saveAs(blob, `Kwitansi_${dealData.sequenceNumber}_${cleanName}.pdf`);
@@ -88,11 +115,15 @@ export async function downloadKwpPdf(sph: SphQuotation, customDealData?: SphDeal
 /**
  * 4. Download Berita Acara Pekerjaan (BAP) PDF
  */
-export async function downloadBapPdf(sph: SphQuotation, customDealData?: SphDealData): Promise<void> {
+export async function downloadBapPdf(
+  sph: SphQuotation, 
+  customDealData?: SphDealData,
+  bap?: BapDocument | null
+): Promise<void> {
   try {
     const dealData = resolveDealData(sph, customDealData);
     const pdfDoc = await PDFDocument.create();
-    const pdfBytes = await createAuthenticBapPdf(pdfDoc, sph, dealData);
+    const pdfBytes = await createAuthenticBapPdf(pdfDoc, sph, dealData, bap);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const cleanName = (sph.hospitalName || 'Dokumen').replace(/[^a-zA-Z0-9]/g, '_');
     saveAs(blob, `BAP_${dealData.sequenceNumber}_${cleanName}.pdf`);
@@ -104,8 +135,13 @@ export async function downloadBapPdf(sph: SphQuotation, customDealData?: SphDeal
 
 /**
  * 5. Download All Deal Documents (SPH, BAP, BO, FP, KWP) in 1 ZIP File
+ * All documents reflect Form BAP realization and SPH bank selection.
  */
-export async function downloadAllDealDocumentsZip(sph: SphQuotation, customDealData?: SphDealData): Promise<void> {
+export async function downloadAllDealDocumentsZip(
+  sph: SphQuotation, 
+  customDealData?: SphDealData,
+  bap?: BapDocument | null
+): Promise<void> {
   try {
     const dealData = resolveDealData(sph, customDealData);
     const zip = new JSZip();
@@ -172,22 +208,22 @@ export async function downloadAllDealDocumentsZip(sph: SphQuotation, customDealD
 
     // 2. Generate BO PDF
     const boDoc = await PDFDocument.create();
-    const boBytes = await createAuthenticBoPdf(boDoc, sph, dealData);
+    const boBytes = await createAuthenticBoPdf(boDoc, sph, dealData, bap);
     zip.file(`2_BO_${dealData.sequenceNumber}_${cleanName}.pdf`, boBytes);
 
     // 3. Generate FP PDF
     const fpDoc = await PDFDocument.create();
-    const fpBytes = await createAuthenticFpPdf(fpDoc, sph, dealData);
+    const fpBytes = await createAuthenticFpPdf(fpDoc, sph, dealData, bap);
     zip.file(`3_FP_${dealData.sequenceNumber}_${cleanName}.pdf`, fpBytes);
 
     // 4. Generate KWP PDF
     const kwpDoc = await PDFDocument.create();
-    const kwpBytes = await createAuthenticKwpPdf(kwpDoc, sph, dealData);
+    const kwpBytes = await createAuthenticKwpPdf(kwpDoc, sph, dealData, bap);
     zip.file(`4_Kwitansi_${dealData.sequenceNumber}_${cleanName}.pdf`, kwpBytes);
 
     // 5. Generate BAP PDF
     const bapDoc = await PDFDocument.create();
-    const bapBytes = await createAuthenticBapPdf(bapDoc, sph, dealData);
+    const bapBytes = await createAuthenticBapPdf(bapDoc, sph, dealData, bap);
     zip.file(`5_BAP_${dealData.sequenceNumber}_${cleanName}.pdf`, bapBytes);
 
     // Generate ZIP & Save

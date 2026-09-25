@@ -26,23 +26,31 @@ import {
   BellRing,
   Download,
   FileCode,
-  Award
+  Award,
+  FileSpreadsheet,
+  Check,
+  X
 } from 'lucide-react';
 import { 
   CalibrationSchedule, 
   Hospital, 
   Technician, 
   CalibratorAsset, 
-  UrgencyLevel 
+  UrgencyLevel,
+  BapDocument,
+  SphQuotation
 } from '../types';
 import { 
   formatRupiah, 
   formatIndonesianDate, 
   getUrgencyInfo,
   generateWhatsAppMessage,
-  TODAY_STR
+  TODAY_STR,
+  extractSphPrefix
 } from '../utils/helpers';
 import { exportSpkToWord, exportBapToWord } from '../utils/spkWordExport';
+import { exportBapToExcel } from '../utils/bapExcelExport';
+import { createBapFromSchedule, createBapFromSph, getBapPoOptionsFromSph, formatIndonesianPoDate } from '../utils/bapHelpers';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface ScheduleManagerProps {
@@ -50,6 +58,8 @@ interface ScheduleManagerProps {
   hospitals: Hospital[];
   technicians: Technician[];
   calibrators: CalibratorAsset[];
+  sphList?: SphQuotation[];
+  bapDocuments?: BapDocument[];
   onSelectSchedule: (schedule: CalibrationSchedule) => void;
   onOpenNewScheduleModal: () => void;
   onOpenSpkModal?: (schedule?: CalibrationSchedule) => void;
@@ -58,6 +68,8 @@ interface ScheduleManagerProps {
   onSendReminder: (schedule: CalibrationSchedule) => void;
   onDeleteSchedule?: (scheduleId: string) => void;
   onNavigateToSelia?: () => void;
+  onOpenBapModal?: (schedule: CalibrationSchedule) => void;
+  onUpdateSchedule?: (schedule: CalibrationSchedule) => void;
 }
 
 export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
@@ -72,7 +84,11 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   onOpenPrintModal,
   onSendReminder,
   onDeleteSchedule,
-  onNavigateToSelia
+  onNavigateToSelia,
+  sphList = [],
+  bapDocuments = [],
+  onOpenBapModal,
+  onUpdateSchedule
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -80,6 +96,124 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   const [technicianFilter, setTechnicianFilter] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [deleteTargetSchedule, setDeleteTargetSchedule] = useState<CalibrationSchedule | null>(null);
+
+  // BAP Excel Download Modal State in Penjadwalan RS
+  const [bapTargetSchedule, setBapTargetSchedule] = useState<CalibrationSchedule | null>(null);
+  const [selectedPoSource, setSelectedPoSource] = useState<'sph' | 'rs_custom'>('sph');
+  const [customRsPoInput, setCustomRsPoInput] = useState<string>('');
+  const [bapPoDateInput, setBapPoDateInput] = useState<string>('');
+  const [downloadSuccessToast, setDownloadSuccessToast] = useState<string | null>(null);
+
+  // Helper to open the BAP download dialog with initial PO matching
+  const handleOpenBapDownloadDialog = (sch: CalibrationSchedule) => {
+    setBapTargetSchedule(sch);
+
+    const matchingSph = sphList.find(s => 
+      s.hospitalName.toLowerCase() === sch.hospitalName.toLowerCase() ||
+      (s.dealData?.boNumber && s.dealData.boNumber === sch.workOrderNumber) ||
+      s.sphNumber === sch.workOrderNumber
+    );
+    const options = getBapPoOptionsFromSph(matchingSph, sch.workOrderNumber);
+
+    const existingPo = sch.poContractNumber || '';
+    if (existingPo && (existingPo === options.sphNumber || existingPo === options.boNumber)) {
+      setSelectedPoSource('sph');
+      setCustomRsPoInput('');
+    } else if (existingPo) {
+      setSelectedPoSource('rs_custom');
+      setCustomRsPoInput(existingPo);
+    } else {
+      setSelectedPoSource('sph');
+      setCustomRsPoInput('027.2/22041/2026');
+    }
+
+    // Set tanggal PO from schedule
+    setBapPoDateInput(formatIndonesianPoDate(sch.poDate || sch.scheduledDate));
+  };
+
+  // Helper to trigger Excel download
+  const handleExecuteBapExcelDownload = () => {
+    if (!bapTargetSchedule) return;
+
+    const matchingSph = sphList.find(s => 
+      s.hospitalName.toLowerCase() === bapTargetSchedule.hospitalName.toLowerCase() ||
+      (s.dealData?.boNumber && s.dealData.boNumber === bapTargetSchedule.workOrderNumber) ||
+      s.sphNumber === bapTargetSchedule.workOrderNumber
+    );
+    const options = getBapPoOptionsFromSph(matchingSph, bapTargetSchedule.workOrderNumber);
+
+    // 1. Nomor PO / Kontrak (Pilihan SPH atau dari Customer RS)
+    const effectivePo = selectedPoSource === 'sph'
+      ? options.sphNumber
+      : (customRsPoInput.trim() || '027.2/22041/2026');
+
+    // 2. Tanggal PO dari penjadwalan RS
+    const effectivePoDate = bapPoDateInput.trim() || formatIndonesianPoDate(bapTargetSchedule.scheduledDate);
+
+    // Retrieve or create BAP Document
+    const existing = bapDocuments.find(b => 
+      (bapTargetSchedule.bapNumber && b.bapNumber === bapTargetSchedule.bapNumber) ||
+      b.customerName.toLowerCase() === bapTargetSchedule.hospitalName.toLowerCase() ||
+      b.id === `BAP-SCH-${bapTargetSchedule.id}`
+    );
+
+    let bapToExport: BapDocument;
+    if (existing) {
+      bapToExport = {
+        ...existing,
+        sphNumber: effectivePo,
+        poDate: effectivePoDate,
+        customerName: bapTargetSchedule.hospitalName || existing.customerName,
+        nonPoHeader: existing.nonPoHeader ? {
+          ...existing.nonPoHeader,
+          sphNumber: effectivePo,
+          poDate: effectivePoDate,
+          customerName: bapTargetSchedule.hospitalName || existing.nonPoHeader.customerName
+        } : undefined
+      };
+    } else if (matchingSph) {
+      const fresh = createBapFromSph(matchingSph);
+      bapToExport = {
+        ...fresh,
+        sphNumber: effectivePo,
+        poDate: effectivePoDate,
+        nonPoHeader: fresh.nonPoHeader ? {
+          ...fresh.nonPoHeader,
+          sphNumber: effectivePo,
+          poDate: effectivePoDate
+        } : undefined
+      };
+    } else {
+      const freshSch = createBapFromSchedule(bapTargetSchedule);
+      bapToExport = {
+        ...freshSch,
+        sphNumber: effectivePo,
+        poDate: effectivePoDate,
+        nonPoHeader: freshSch.nonPoHeader ? {
+          ...freshSch.nonPoHeader,
+          sphNumber: effectivePo,
+          poDate: effectivePoDate
+        } : undefined
+      };
+    }
+
+    // Persist chosen PO number & PO Date back to schedule
+    if (onUpdateSchedule) {
+      onUpdateSchedule({
+        ...bapTargetSchedule,
+        poContractNumber: effectivePo,
+        poDate: effectivePoDate
+      });
+    }
+
+    // Export with Lead Technician Name mapped to PT SMK signature block
+    // RS user name is left blank so RS can handwrite
+    exportBapToExcel(bapToExport, { leadTechnicianName: bapTargetSchedule.leadTechnicianName });
+
+    setDownloadSuccessToast(`BAP Excel (.xlsx) untuk ${bapTargetSchedule.hospitalName} berhasil diunduh!`);
+    setTimeout(() => setDownloadSuccessToast(null), 4000);
+    setBapTargetSchedule(null);
+  };
 
   // Filtered schedules
   const filteredSchedules = useMemo(() => {
@@ -461,6 +595,15 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   </button>
 
                   <button
+                    onClick={() => handleOpenBapDownloadDialog(schedule)}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 py-2 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                    title="Download Excel Berita Acara Pekerjaan (BAP) 4-Sheet & Pilihan No. PO"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>BAP Excel</span>
+                  </button>
+
+                  <button
                     onClick={() => onOpenEditScheduleModal(schedule)}
                     className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#D8D2CB] p-2 rounded-lg text-xs transition-colors shadow-xs cursor-pointer"
                     title="Edit Jadwal"
@@ -551,7 +694,15 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                             title="Buka Detail & Hasil"
                           >
                             <CheckSquare className="w-3.5 h-3.5" />
-                            <span>Detail & Hasil</span>
+                            <span>Detail</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenBapDownloadDialog(sch)}
+                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Download BAP Excel (4 Sheet) & Pilihan No. PO"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>BAP Excel</span>
                           </button>
                           <button
                             onClick={() => onOpenEditScheduleModal(sch)}
@@ -596,6 +747,231 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         }}
         onClose={() => setDeleteTargetSchedule(null)}
       />
+
+      {/* Modal Download Excel BAP dengan Pilihan Nomor PO / Kontrak */}
+      {bapTargetSchedule && (() => {
+        const matchingSph = sphList.find(s => 
+          s.hospitalName.toLowerCase() === bapTargetSchedule.hospitalName.toLowerCase() ||
+          (s.dealData?.boNumber && s.dealData.boNumber === bapTargetSchedule.workOrderNumber) ||
+          s.sphNumber === bapTargetSchedule.workOrderNumber
+        );
+        const options = getBapPoOptionsFromSph(matchingSph, bapTargetSchedule.workOrderNumber);
+        const totalUnits = bapTargetSchedule.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-700 p-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center border border-white/20">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-200" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold">Download Excel BAP</h3>
+                    <p className="text-xs text-emerald-100">Berita Acara Pekerjaan 4-Sheet Resmi</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setBapTargetSchedule(null)}
+                  className="p-1 rounded-lg hover:bg-white/20 text-white/80 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-5 space-y-4 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
+                {/* Schedule Info Summary */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Rumah Sakit / Faskes:</span>
+                    <span className="font-bold text-slate-900 text-right">{bapTargetSchedule.hospitalName}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Jadwal Kalibrasi:</span>
+                    <span className="font-semibold text-slate-800 text-right">{formatIndonesianDate(bapTargetSchedule.scheduledDate)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Total Unit:</span>
+                    <span className="font-bold text-slate-900 text-right">{bapTargetSchedule.targetDevices.length} Jenis ({totalUnits} Unit)</span>
+                  </div>
+                </div>
+
+                {/* 1. Nomor PO / Kontrak Selection */}
+                <div className="space-y-2">
+                  <label className="font-bold text-slate-900 block text-xs">
+                    Nomor PO / Kontrak di Dokumen BAP:
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Pilih apakah nomor PO sama dengan nomor SPH atau mengisi nomor PO resmi dari Customer / RS:
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-2 pt-0.5">
+                    {/* Option 1: Sesuai SPH */}
+                    <label 
+                      onClick={() => setSelectedPoSource('sph')}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        selectedPoSource === 'sph'
+                          ? 'bg-emerald-50/70 border-emerald-500 ring-1 ring-emerald-400'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input 
+                        type="radio" 
+                        name="poSource" 
+                        checked={selectedPoSource === 'sph'} 
+                        onChange={() => setSelectedPoSource('sph')}
+                        className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900">1. Sesuai Nomor SPH</span>
+                          <span className="text-[10px] px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded font-semibold">SPH</span>
+                        </div>
+                        <div className="font-mono text-emerald-800 font-bold text-[11px] truncate mt-0.5">
+                          {options.sphNumber}
+                        </div>
+                      </div>
+                    </label>
+
+                    {/* Option 2: Custom PO from RS / Customer */}
+                    <div 
+                      onClick={() => setSelectedPoSource('rs_custom')}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all space-y-2 ${
+                        selectedPoSource === 'rs_custom'
+                          ? 'bg-amber-50/80 border-amber-500 ring-1 ring-amber-400'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <input 
+                          type="radio" 
+                          name="poSource" 
+                          checked={selectedPoSource === 'rs_custom'} 
+                          onChange={() => setSelectedPoSource('rs_custom')}
+                          className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900">2. Ada No. PO dari Customer / RS</span>
+                            <span className="text-[10px] px-1.5 py-0.2 bg-amber-200 text-amber-900 rounded font-semibold">No. PO RS</span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Ketik nomor PO / Kontrak yang diterbitkan oleh Rumah Sakit / Customer
+                          </p>
+                        </div>
+                      </div>
+
+                      {selectedPoSource === 'rs_custom' && (
+                        <div className="pl-6 pt-1">
+                          <input
+                            type="text"
+                            value={customRsPoInput}
+                            onChange={(e) => setCustomRsPoInput(e.target.value)}
+                            placeholder="Contoh: 027.2/22041/2026 atau PO/RS/IX/2026"
+                            className="w-full bg-white border border-amber-300 focus:border-amber-600 focus:ring-1 focus:ring-amber-600 rounded-lg px-3 py-1.5 font-mono text-xs text-slate-900 font-semibold outline-none"
+                            autoFocus
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Tanggal PO (diisi dari Penjadwalan RS) */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-900 block text-xs">
+                    Tanggal PO (Diisi dari Penjadwalan RS):
+                  </label>
+                  <input
+                    type="text"
+                    value={bapPoDateInput}
+                    onChange={(e) => setBapPoDateInput(e.target.value)}
+                    placeholder="Contoh: Selasa, 22 September 2026"
+                    className="w-full bg-white border border-slate-300 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-lg px-3 py-1.5 font-medium text-xs text-slate-900 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Otomatis mengambil hari dan tanggal dari jadwal pelaksanaan RS: <span className="font-semibold text-slate-700">{formatIndonesianDate(bapTargetSchedule.scheduledDate)}</span>
+                  </p>
+                </div>
+
+                {/* 3. Tanda Tangan & Personil BAP */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <span className="font-bold text-slate-800 block text-[11px] mb-1">
+                    Ketentuan Penandatangan Dokumen BAP:
+                  </span>
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-600 font-medium">Teknisi PT SMK:</span>
+                    <span className="font-bold text-emerald-800 text-right">{bapTargetSchedule.leadTechnicianName} (Lead Teknisi)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-600 font-medium">Nama User / RS:</span>
+                    <span className="text-amber-700 font-semibold italic text-right">(Dikosongi - untuk ditulis tangan pihak RS)</span>
+                  </div>
+                </div>
+
+                {/* Sheet information */}
+                <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-200 text-[11px] text-emerald-900">
+                  <span className="font-bold block mb-0.5">Format Sheet BAP Resmi (4 Sheet Standar):</span>
+                  <span>1. Rekap Alkes PO • 2. BAP PO • 3. Rekap Non PO • 4. BAP Non PO (format presisi sesuai PDF acuan).</span>
+                </div>
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                {onOpenBapModal ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = bapTargetSchedule;
+                      setBapTargetSchedule(null);
+                      onOpenBapModal(target);
+                    }}
+                    className="text-xs font-semibold text-slate-700 hover:text-[#1C658C] hover:underline"
+                  >
+                    Buka Editor BAP Lengkap &rarr;
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBapTargetSchedule(null)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExecuteBapExcelDownload}
+                    className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Excel (.xlsx)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Floating Success Toast */}
+      {downloadSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-800 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 border border-emerald-600 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="w-7 h-7 rounded-lg bg-emerald-600/60 flex items-center justify-center shrink-0">
+            <Check className="w-4 h-4 text-emerald-200" />
+          </div>
+          <span className="text-xs font-medium">{downloadSuccessToast}</span>
+          <button 
+            onClick={() => setDownloadSuccessToast(null)} 
+            className="text-white/70 hover:text-white text-xs p-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 };

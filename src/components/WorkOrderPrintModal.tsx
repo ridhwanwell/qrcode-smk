@@ -16,7 +16,8 @@ import {
   Edit3,
   FileCode,
   Wand2,
-  PenTool
+  PenTool,
+  FileSpreadsheet
 } from 'lucide-react';
 import { SignaturePadModal } from './SignaturePadModal';
 import { CalibrationSchedule } from '../types';
@@ -25,6 +26,8 @@ import { CompanyLogo } from './CompanyLogo';
 import { OfficialLetterhead } from './OfficialLetterhead';
 import { OfficialLetterFooter } from './OfficialLetterFooter';
 import { exportSpkToWord, exportBapToWord, exportBastpToWord } from '../utils/spkWordExport';
+import { exportBapToExcel } from '../utils/bapExcelExport';
+import { createBapFromSchedule } from '../utils/bapHelpers';
 import { generateDocument } from '../lib/templateGenerator';
 import { getFullTemplatesConfig, DocumentTemplatesConfig } from '../lib/templateService';
 
@@ -220,6 +223,21 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
               >
                 <Edit3 className="w-4 h-4 text-[#1C658C]" />
                 <span>Edit Data SPK</span>
+              </button>
+            )}
+
+            {(activeDoc === 'BAP' || activeDoc === 'ALL') && (
+              <button
+                type="button"
+                onClick={() => {
+                  const bapDoc = createBapFromSchedule(schedule);
+                  exportBapToExcel(bapDoc, { leadTechnicianName: schedule.leadTechnicianName });
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                title="Download Dokumen Berita Acara Pekerjaan (BAP) 4-Sheet format Microsoft Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                <span>BAP Excel (.xlsx)</span>
               </button>
             )}
 

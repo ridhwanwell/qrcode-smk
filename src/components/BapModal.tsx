@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { BapDocument, BapItem, SphQuotation } from '../types';
 import { exportBapToExcel } from '../utils/bapExcelExport';
-import { recalculateBapItem, createBapFromSph } from '../utils/bapHelpers';
+import { recalculateBapItem, createBapFromSph, getBapPoOptionsFromSph } from '../utils/bapHelpers';
 
 interface BapModalProps {
   isOpen: boolean;
@@ -110,6 +110,27 @@ export const BapModal: React.FC<BapModalProps> = ({
     setSavedBadge(true);
     setTimeout(() => setSavedBadge(false), 2000);
   };
+
+  // PO Number options from SPH (3 numbers: SPH, BO, FP) or Custom RS
+  const poOptions = useMemo(() => {
+    return getBapPoOptionsFromSph(sph, bap.sphNumber || bap.bapNumber);
+  }, [sph, bap.sphNumber, bap.bapNumber]);
+
+  const currentPoVal = (bap.sphNumber || '').trim();
+  const selectedPoMode: 'sph' | 'bo' | 'fp' | 'rs_custom' = useMemo(() => {
+    if (currentPoVal && currentPoVal === poOptions.sphNumber) return 'sph';
+    if (currentPoVal && currentPoVal === poOptions.boNumber) return 'bo';
+    if (currentPoVal && (currentPoVal === poOptions.fpNumber || currentPoVal === poOptions.kwpNumber)) return 'fp';
+    return 'rs_custom';
+  }, [currentPoVal, poOptions]);
+
+  const nonPoCurrentVal = (bap.nonPoHeader?.sphNumber || '').trim();
+  const selectedNonPoMode: 'sph' | 'bo' | 'fp' | 'rs_custom' = useMemo(() => {
+    if (nonPoCurrentVal && nonPoCurrentVal === poOptions.sphNumber) return 'sph';
+    if (nonPoCurrentVal && nonPoCurrentVal === poOptions.boNumber) return 'bo';
+    if (nonPoCurrentVal && (nonPoCurrentVal === poOptions.fpNumber || nonPoCurrentVal === poOptions.kwpNumber)) return 'fp';
+    return 'rs_custom';
+  }, [nonPoCurrentVal, poOptions]);
 
   // Check if current tab is Non PO
   const isNonPoTab = activeTab === 'rekap_non_po' || activeTab === 'bap_non_po';
@@ -440,14 +461,76 @@ export const BapModal: React.FC<BapModalProps> = ({
                     className="font-bold text-slate-950 text-right bg-white border border-slate-300 hover:border-slate-400 focus:border-[#1C658C] focus:ring-1 focus:ring-[#1C658C] rounded px-2 py-0.5 outline-none w-56 truncate"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-slate-700 whitespace-nowrap">No. PO :</span>
-                  <input
-                    type="text"
-                    value={bap.sphNumber}
-                    onChange={(e) => handleUpdateHeader('sphNumber', e.target.value)}
-                    className="font-mono font-bold text-[#1C658C] text-right bg-blue-50/60 border border-blue-200 hover:border-blue-300 focus:border-[#1C658C] focus:ring-1 focus:ring-[#1C658C] rounded px-2 py-0.5 outline-none w-56 truncate"
-                  />
+                <div className="space-y-1 bg-white/70 p-1.5 rounded-lg border border-slate-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-700 whitespace-nowrap text-xs">No. PO / Kontrak :</span>
+                    <input
+                      type="text"
+                      value={bap.sphNumber}
+                      onChange={(e) => handleUpdateHeader('sphNumber', e.target.value)}
+                      placeholder="Nomor PO / Kontrak..."
+                      className="font-mono font-bold text-[#1C658C] text-right bg-blue-50/60 border border-blue-200 hover:border-blue-300 focus:border-[#1C658C] focus:ring-1 focus:ring-[#1C658C] rounded px-2 py-0.5 outline-none w-52 truncate"
+                    />
+                  </div>
+                  {/* Selector 3 Nomor di SPH vs Nomor PO dari RS */}
+                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100 text-[10px]">
+                    <span className="text-slate-400 font-medium shrink-0">Pilihan No. PO:</span>
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateHeader('sphNumber', poOptions.sphNumber)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                          selectedPoMode === 'sph'
+                            ? 'bg-[#1C658C] text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                        title={`Sesuai No. SPH: ${poOptions.sphNumber}`}
+                      >
+                        1. SPH
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateHeader('sphNumber', poOptions.boNumber)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                          selectedPoMode === 'bo'
+                            ? 'bg-[#1C658C] text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                        title={`Sesuai No. BO: ${poOptions.boNumber}`}
+                      >
+                        2. BO
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateHeader('sphNumber', poOptions.fpNumber)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                          selectedPoMode === 'fp'
+                            ? 'bg-[#1C658C] text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                        title={`Sesuai No. FP: ${poOptions.fpNumber}`}
+                      >
+                        3. FP
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedPoMode !== 'rs_custom') {
+                            const defaultRsPo = `PO-${(bap.customerName || 'RS').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}-${new Date().getFullYear()}`;
+                            handleUpdateHeader('sphNumber', defaultRsPo);
+                          }
+                        }}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                          selectedPoMode === 'rs_custom'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                        }`}
+                        title="Isi manual / sesuai nomor PO resmi yang diterbitkan Rumah Sakit"
+                      >
+                        Dari RS
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-slate-700 whitespace-nowrap">Tanggal PO :</span>
@@ -524,16 +607,73 @@ export const BapModal: React.FC<BapModalProps> = ({
                     className="font-bold text-slate-950 text-right bg-white border border-slate-300 hover:border-slate-400 focus:border-amber-600 focus:ring-1 focus:ring-amber-600 rounded px-2 py-0.5 outline-none w-56 truncate disabled:bg-slate-100 disabled:text-slate-600"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-slate-700 whitespace-nowrap">No. PO :</span>
-                  <input
-                    type="text"
-                    value={bap.nonPoHeader?.sphNumber || ''}
-                    disabled={activeTab === 'bap_non_po'}
-                    placeholder="No. PO Non PO..."
-                    onChange={(e) => handleUpdateNonPoHeader('sphNumber', e.target.value)}
-                    className="font-mono font-bold text-amber-900 text-right bg-amber-50/40 border border-amber-200 hover:border-amber-300 focus:border-amber-600 focus:ring-1 focus:ring-amber-600 rounded px-2 py-0.5 outline-none w-56 truncate disabled:bg-slate-100 disabled:text-slate-600"
-                  />
+                <div className="space-y-1 bg-white/70 p-1.5 rounded-lg border border-amber-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-700 whitespace-nowrap text-xs">No. PO / Kontrak :</span>
+                    <input
+                      type="text"
+                      value={bap.nonPoHeader?.sphNumber || ''}
+                      disabled={activeTab === 'bap_non_po'}
+                      placeholder="No. PO Non PO..."
+                      onChange={(e) => handleUpdateNonPoHeader('sphNumber', e.target.value)}
+                      className="font-mono font-bold text-amber-900 text-right bg-amber-50/40 border border-amber-200 hover:border-amber-300 focus:border-amber-600 focus:ring-1 focus:ring-amber-600 rounded px-2 py-0.5 outline-none w-52 truncate disabled:bg-slate-100 disabled:text-slate-600"
+                    />
+                  </div>
+                  {activeTab === 'rekap_non_po' && (
+                    <div className="flex items-center justify-between gap-1 pt-1 border-t border-amber-100 text-[10px]">
+                      <span className="text-amber-800 font-medium shrink-0">Pilihan:</span>
+                      <div className="flex flex-wrap items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateNonPoHeader('sphNumber', poOptions.sphNumber)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                            selectedNonPoMode === 'sph'
+                              ? 'bg-amber-700 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          SPH
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateNonPoHeader('sphNumber', poOptions.boNumber)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                            selectedNonPoMode === 'bo'
+                              ? 'bg-amber-700 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          BO
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateNonPoHeader('sphNumber', poOptions.fpNumber)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                            selectedNonPoMode === 'fp'
+                              ? 'bg-amber-700 text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          FP
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedNonPoMode !== 'rs_custom') {
+                              handleUpdateNonPoHeader('sphNumber', `PO-NONPO-${(bap.nonPoHeader?.customerName || bap.customerName || 'RS').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`);
+                            }
+                          }}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                            selectedNonPoMode === 'rs_custom'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          Dari RS
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-slate-700 whitespace-nowrap">Tanggal PO :</span>

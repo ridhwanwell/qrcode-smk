@@ -15,8 +15,9 @@ import {
   ExternalLink,
   DollarSign
 } from 'lucide-react';
-import { SphQuotation, SphDealData } from '../types';
+import { SphQuotation, SphDealData, BapDocument } from '../types';
 import { formatRupiah, formatIndonesianDate } from '../utils/helpers';
+import { calculateBillingFromBap } from '../utils/billingHelpers';
 import { 
   downloadBoPdf, 
   downloadFpPdf, 
@@ -27,6 +28,7 @@ import { SphDealModal } from './SphDealModal';
 
 interface HospitalBillingManagerProps {
   sphList: SphQuotation[];
+  bapDocuments?: BapDocument[];
   onSaveDealData: (sphId: string, dealData: SphDealData) => void;
   onNavigateToSchedules?: () => void;
   onOpenBapModal?: (sph: SphQuotation) => void;
@@ -34,6 +36,7 @@ interface HospitalBillingManagerProps {
 
 export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
   sphList,
+  bapDocuments = [],
   onSaveDealData,
   onNavigateToSchedules,
   onOpenBapModal
@@ -186,6 +189,9 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
               ? formatIndonesianDate(dealData.dealDate) 
               : formatIndonesianDate(sph.date);
 
+            const matchingBap = bapDocuments.find(b => b.sphId === sph.id || b.sphNumber === sph.sphNumber) || null;
+            const billing = calculateBillingFromBap(sph, matchingBap);
+
             return (
               <div
                 key={sph.id}
@@ -218,10 +224,28 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                   </div>
 
                   <div className="text-right md:self-center bg-blue-50/60 border border-blue-200/60 px-4 py-2 rounded-xl">
-                    <p className="text-[10px] text-blue-700 font-bold uppercase tracking-wide">Total Nilai Deal</p>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <p className="text-[10px] text-blue-700 font-bold uppercase tracking-wide">
+                        {billing.isAdjustedFromBap ? 'Total Tagihan (Realisasi BAP)' : 'Total Nilai Penagihan'}
+                      </p>
+                      {billing.isAdjustedFromBap && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded text-[9px] font-bold">
+                          BAP
+                        </span>
+                      )}
+                    </div>
                     <p className="text-lg font-black text-blue-900 font-mono">
-                      {formatRupiah(sph.grandTotal)}
+                      {formatRupiah(billing.grandTotal)}
                     </p>
+                    {billing.isAdjustedFromBap ? (
+                      <p className="text-[10px] text-slate-500">
+                        Realisasi: <strong className="text-emerald-700">{billing.totalRealizedUnits} unit</strong> / PO: {billing.totalPoUnits} unit
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-slate-500">
+                        Total Item: {billing.totalPoUnits} Unit
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -231,6 +255,11 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                     <div className="flex items-center gap-2 font-bold text-slate-800">
                       <Hash className="w-4 h-4 text-blue-600" />
                       <span>Parameter Nomor Dokumen Deal</span>
+                      {billing.isAdjustedFromBap && (
+                        <span className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 text-[10px] rounded font-semibold">
+                          Tagihan dihitung dari Realisasi BAP ({billing.totalRealizedUnits} unit)
+                        </span>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -273,9 +302,9 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                     {/* BO Download */}
                     <button
                       type="button"
-                      onClick={() => downloadBoPdf(sph)}
+                      onClick={() => downloadBoPdf(sph, dealData, matchingBap)}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                      title="Unduh PDF Bukti Order (BO)"
+                      title="Unduh PDF Bukti Order (BO) - Menyesuaikan Item & Realisasi Form BAP"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Unduh BO</span>
@@ -284,9 +313,9 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                     {/* FP Download */}
                     <button
                       type="button"
-                      onClick={() => downloadFpPdf(sph)}
+                      onClick={() => downloadFpPdf(sph, dealData, matchingBap)}
                       className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                      title="Unduh PDF Faktur Penjualan (FP)"
+                      title="Unduh PDF Faktur Penjualan (FP) - Menyesuaikan Item & Realisasi Form BAP"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Unduh FP</span>
@@ -295,9 +324,9 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                     {/* KWP Download */}
                     <button
                       type="button"
-                      onClick={() => downloadKwpPdf(sph)}
+                      onClick={() => downloadKwpPdf(sph, dealData, matchingBap)}
                       className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                      title="Unduh PDF Kwitansi Penjualan (KWP)"
+                      title="Unduh PDF Kwitansi Penjualan (KWP) - Menyesuaikan Item & Realisasi Form BAP"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Unduh KWP</span>
@@ -306,7 +335,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                     {/* All ZIP */}
                     <button
                       type="button"
-                      onClick={() => downloadAllDealDocumentsZip(sph)}
+                      onClick={() => downloadAllDealDocumentsZip(sph, dealData, matchingBap)}
                       className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
                       title="Unduh Paket Lengkap (BO, FP, KWP, BAP, SPH) dalam 1 File ZIP"
                     >
@@ -320,10 +349,14 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                       <button
                         type="button"
                         onClick={() => onOpenBapModal(sph)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        title="Buka Form BAP untuk mengisi realisasi pengerjaan teknisi di lapangan"
                       >
-                        <FileText className="w-3.5 h-3.5 text-slate-600" />
+                        <FileText className="w-3.5 h-3.5 text-purple-700" />
                         <span>Form BAP</span>
+                        {billing.isAdjustedFromBap && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block ml-0.5"></span>
+                        )}
                       </button>
                     )}
 
@@ -349,6 +382,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
       {dealModalSph && (
         <SphDealModal
           sph={dealModalSph}
+          bapDocument={bapDocuments.find(b => b.sphId === dealModalSph.id || b.sphNumber === dealModalSph.sphNumber) || null}
           isOpen={true}
           onClose={() => setDealModalSph(null)}
           onSaveDeal={(sphId, dealData) => {

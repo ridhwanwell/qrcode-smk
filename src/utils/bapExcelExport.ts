@@ -20,10 +20,15 @@ function getColumnLetter(colIndex: number): string {
  * "NO. : [nomor]/SMK/BAP/[bulan romawi]/[tahun]"
  * Example: "114/SMK-SPH/IX-2026" -> "NO. : 114/SMK/BAP/IX/2026"
  */
-function formatBapNumber(sphNumber: string): string {
-  if (!sphNumber) return 'NO. : 001/SMK/BAP/IX/2026';
+function formatBapNumber(inputStr: string): string {
+  if (!inputStr) return 'NO. : 001/SMK/BAP/IX/2026';
 
-  const cleanStr = sphNumber.replace(/^NO\.\s*:\s*/i, '').trim();
+  const cleanStr = inputStr.replace(/^NO\.\s*:\s*/i, '').trim();
+
+  // If already full BAP / BASTP number
+  if (cleanStr.includes('/SMK/BAP/') || cleanStr.includes('/SMK/BASTP/')) {
+    return `NO. : ${cleanStr}`;
+  }
 
   const match = cleanStr.match(/^(\d+).*\/([I|V|X|L|C|D|M]+)[-\/](\d{4})$/i);
   if (match) {
@@ -39,40 +44,32 @@ function formatBapNumber(sphNumber: string): string {
 }
 
 /**
- * Formats the opening paragraph with TAB indentation and bold day, date, month, year:
+ * Formats the opening paragraph with TAB indentation and bold day:
+ * In accordance with the official BAP layout:
+ * "    Pada Hari Ini [Hari] Tanggal ... Bulan .... Tahun ...., Telah Dilaksanakan Pekerjaan Kalibrasi dan/atau Pengujian Alat-alat Kesehatan pada :"
  */
-function formatBapOpeningParagraph(dateInput?: string): { text: string; richText: any[]; dayName: string; dateNum: string; monthName: string; yearNum: string } {
+function formatBapOpeningParagraph(dateInput?: string): { text: string; richText: any[]; dayName: string } {
   let dayName = 'Jumat';
-  let dateNum = '18';
-  let monthName = 'September';
-  let yearNum = '2026';
 
   if (dateInput) {
     const daysIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const monthsIndo = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-    ];
+    for (const d of daysIndo) {
+      if (dateInput.toLowerCase().includes(d.toLowerCase())) {
+        dayName = d;
+        break;
+      }
+    }
 
-    const d = new Date(dateInput);
-    if (!isNaN(d.getTime())) {
-      dayName = daysIndo[d.getDay()];
-      dateNum = String(d.getDate()).padStart(2, '0');
-      monthName = monthsIndo[d.getMonth()];
-      yearNum = String(d.getFullYear());
-    } else {
-      const clean = dateInput.replace(/,/g, '');
-      const parts = clean.split(' ').filter(Boolean);
-      if (parts.length >= 4) {
-        dayName = parts[0];
-        dateNum = parts[1];
-        monthName = parts[2];
-        yearNum = parts[3];
+    if (dayName === 'Jumat') {
+      const parts = dateInput.split('-');
+      if (parts.length === 3) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (!isNaN(d.getTime())) dayName = daysIndo[d.getDay()];
       }
     }
   }
 
-  const plainText = `    Pada Hari Ini ${dayName} Tanggal ${dateNum} Bulan ${monthName} Tahun ${yearNum}, Telah Dilaksanakan Pekerjaan Kalibrasi dan/atau Pengujian Alat-alat Kesehatan pada :`;
+  const plainText = `    Pada Hari Ini ${dayName} Tanggal ... Bulan .... Tahun ...., Telah Dilaksanakan Pekerjaan Kalibrasi dan/atau Pengujian Alat-alat Kesehatan pada :`;
 
   const normalFont = { name: 'Calibri', sz: 12, bold: false, b: false };
   const boldFont = { name: 'Calibri', sz: 12, bold: true, b: true };
@@ -80,16 +77,10 @@ function formatBapOpeningParagraph(dateInput?: string): { text: string; richText
   const richText = [
     { t: '    Pada Hari Ini ', font: normalFont, s: { font: normalFont } },
     { t: dayName, font: boldFont, s: { font: boldFont } },
-    { t: ' Tanggal ', font: normalFont, s: { font: normalFont } },
-    { t: dateNum, font: boldFont, s: { font: boldFont } },
-    { t: ' Bulan ', font: normalFont, s: { font: normalFont } },
-    { t: monthName, font: boldFont, s: { font: boldFont } },
-    { t: ' Tahun ', font: normalFont, s: { font: normalFont } },
-    { t: yearNum, font: boldFont, s: { font: boldFont } },
-    { t: ', Telah Dilaksanakan Pekerjaan Kalibrasi dan/atau Pengujian Alat-alat Kesehatan pada :', font: normalFont, s: { font: normalFont } }
+    { t: ' Tanggal ... Bulan .... Tahun ...., Telah Dilaksanakan Pekerjaan Kalibrasi dan/atau Pengujian Alat-alat Kesehatan pada :', font: normalFont, s: { font: normalFont } }
   ];
 
-  return { text: plainText, richText, dayName, dateNum, monthName, yearNum };
+  return { text: plainText, richText, dayName };
 }
 
 /**
@@ -484,12 +475,12 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
   const targetSheetName = isNonPo ? 'Rekap Non PO' : 'Rekap';
 
   const docTitleStyle = {
-    font: { bold: true, underline: true, name: 'Calibri', sz: 12 },
+    font: { bold: true, name: 'Calibri', sz: 12 },
     alignment: { horizontal: 'center', vertical: 'center' },
   };
 
   const docSubTitleStyle = {
-    font: { bold: true, italic: true, name: 'Calibri', sz: 12 },
+    font: { bold: true, name: 'Calibri', sz: 12 },
     alignment: { horizontal: 'center', vertical: 'center' },
   };
 
@@ -513,7 +504,7 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
   for (let c = 2; c <= 8; c++) r1[c] = { v: '', t: 's', s: docTitleStyle };
   aoa.push(r1);
 
-  // Row 2: Document Number (Italic as requested)
+  // Row 2: Document Number (NO. : 081/SMK/BAP/IX/2026)
   const r2 = new Array(10).fill(null);
   r2[0] = { v: '', t: 's' };
   r2[1] = { v: bapNumberText, t: 's', s: docSubTitleStyle };
@@ -523,7 +514,7 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
   // Row 3: Blank
   aoa.push(new Array(10).fill({ v: '', t: 's' }));
 
-  // Row 4 & Row 5: Opening Paragraph with TAB indentation and bolded day, date, month, year
+  // Row 4 & Row 5: Opening Paragraph with TAB indentation and bolded day
   const r4 = new Array(10).fill(null);
   r4[0] = { v: '', t: 's' };
   r4[1] = { 
@@ -543,7 +534,6 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
   aoa.push(new Array(10).fill({ v: '', t: 's' }));
 
   // Rows 7..11: Header Info (5 lines)
-  // Replaced "Nama RS." with "Nama Pelanggan", "No. PO/Kontrol" with "No. PO/Kontrak"
   const infoLabels = [
     'Nama Pelanggan',
     'No. PO/Kontrak',
@@ -601,9 +591,9 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
   r13[2] = { v: 'Nama Alat', t: 's', s: blueHeaderStyle };
   r13[3] = { v: '', t: 's', s: blueHeaderStyle }; // Part of C..E merge
   r13[4] = { v: '', t: 's', s: blueHeaderStyle }; // Part of C..E merge
-  r13[5] = { v: 'Volume PO', t: 's', s: blueHeaderStyle };
-  r13[6] = { v: 'Volume Realisasi', t: 's', s: blueHeaderStyle };
-  r13[7] = { v: 'Volume Sisa', t: 's', s: blueHeaderStyle };
+  r13[5] = { v: 'Volume\nPO', t: 's', s: blueHeaderStyle };
+  r13[6] = { v: 'Volume\nRealisasi', t: 's', s: blueHeaderStyle };
+  r13[7] = { v: 'Volume\nSisa', t: 's', s: blueHeaderStyle };
   r13[8] = { v: 'Keterangan', t: 's', s: blueHeaderStyle };
   aoa.push(r13);
 
@@ -662,11 +652,8 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
     dataRowMerges.push({ s: { r: docRowIdx, c: 2 }, e: { r: docRowIdx, c: 4 } });
   }
 
-  // 1 Empty Blank Row before Total Unit Row (as requested)
-  aoa.push(new Array(10).fill({ v: '', t: 's' }));
-
-  // Row "TOTAL UNIT" - Blue Row, White Text
-  const totalRowIdx = 13 + numRowsToRender + 1; // +1 for the blank row
+  // Row "TOTAL UNIT" - Blue Row, White Text directly after data rows (as in PDF)
+  const totalRowIdx = 13 + numRowsToRender;
   const firstDataRow = 14;
   const lastDataRow = 13 + numRowsToRender;
 
@@ -691,19 +678,19 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
 
   aoa.push(totalRowArr);
 
-  // 3 Blank rows for clear vertical separation below table
+  // 3 Blank rows for clear vertical separation below table (as in PDF)
   aoa.push(new Array(10).fill({ v: '', t: 's' }));
   aoa.push(new Array(10).fill({ v: '', t: 's' }));
   aoa.push(new Array(10).fill({ v: '', t: 's' }));
 
-  // City and Date Line below Total Unit (e.g. "Surakarta, 18 September 2026")
+  // City and Date Line below Total Unit (e.g. "Surakarta, ... ........ ....")
   let cityName = 'Surakarta';
   if (parsed.cityDistrict) {
     const cityMatch = parsed.cityDistrict.match(/(Surakarta|Semarang|Yogyakarta|Jakarta|Bandung|Surabaya|Kab\.\s*[^\s,]+|Kota\s*[^\s,]+)/i);
     if (cityMatch) cityName = cityMatch[1].replace(/^(Kota|Kab\.)\s*/i, '');
   }
 
-  const dateLineText = `${cityName}, ${openingPara.dateNum} ${openingPara.monthName} ${openingPara.yearNum}`;
+  const dateLineText = `${cityName}, ... ........ ....`;
   const dateRow = new Array(10).fill(null);
   dateRow[0] = { v: '', t: 's' };
   dateRow[1] = { v: '', t: 's' };
@@ -711,14 +698,12 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
   dateRow[3] = { v: '', t: 's' };
   dateRow[4] = { v: '', t: 's' };
   dateRow[5] = { v: dateLineText, t: 's', s: { font: { name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
-  dateRow[6] = { v: '', t: 's' };
-  dateRow[7] = { v: '', t: 's' };
-  dateRow[8] = { v: '', t: 's' };
+  for (let c = 6; c <= 8; c++) dateRow[c] = { v: '', t: 's' };
 
   const dateRowIdx = aoa.length;
   aoa.push(dateRow);
 
-  // Blank row before signature section header
+  // 1 Blank row before signature headers
   aoa.push(new Array(10).fill({ v: '', t: 's' }));
 
   // Signature Section
@@ -729,59 +714,43 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
   const sigHeader = new Array(10).fill(null);
   sigHeader[0] = { v: '', t: 's' };
   sigHeader[1] = { v: customerNameText, t: 's', s: { font: { bold: true, name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
-  sigHeader[2] = { v: '', t: 's' };
-  sigHeader[3] = { v: '', t: 's' };
-  sigHeader[4] = { v: '', t: 's' };
+  for (let c = 2; c <= 4; c++) sigHeader[c] = { v: '', t: 's' };
   sigHeader[5] = { v: 'PT. SARANA MULTI KALIBRASI', t: 's', s: { font: { bold: true, name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
-  sigHeader[6] = { v: '', t: 's' };
-  sigHeader[7] = { v: '', t: 's' };
-  sigHeader[8] = { v: '', t: 's' };
+  for (let c = 6; c <= 8; c++) sigHeader[c] = { v: '', t: 's' };
 
   const sigHeaderIdx = aoa.length;
   aoa.push(sigHeader);
 
-  // 5 Blank rows for widened signature gap
-  aoa.push(new Array(10).fill({ v: '', t: 's' }));
-  aoa.push(new Array(10).fill({ v: '', t: 's' }));
-  aoa.push(new Array(10).fill({ v: '', t: 's' }));
-  aoa.push(new Array(10).fill({ v: '', t: 's' }));
-  aoa.push(new Array(10).fill({ v: '', t: 's' }));
+  // 4 Blank rows for signature and official stamp gap
+  for (let b = 0; b < 4; b++) {
+    aoa.push(new Array(10).fill({ v: '', t: 's' }));
+  }
 
-  // Signature Line (Lead Technician name if provided, or underline)
-  const effectiveLeadTech = leadTechName || bap.technicianName || '';
-
+  // Signature Lines: "( ...................................... )" on both sides as in PDF
   const sigLine = new Array(10).fill(null);
   sigLine[0] = { v: '', t: 's' };
-  sigLine[1] = { v: '( _________________________ )', t: 's', s: { font: { name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
-  sigLine[2] = { v: '', t: 's' };
-  sigLine[3] = { v: '', t: 's' };
-  sigLine[4] = { v: '', t: 's' };
-  sigLine[5] = { 
-    v: effectiveLeadTech ? `( ${effectiveLeadTech} )` : '( _________________________ )', 
-    t: 's', 
-    s: { font: { bold: true, name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } 
-  };
-  sigLine[6] = { v: '', t: 's' };
-  sigLine[7] = { v: '', t: 's' };
-  sigLine[8] = { v: '', t: 's' };
+  sigLine[1] = { v: '( ...................................... )', t: 's', s: { font: { name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
+  for (let c = 2; c <= 4; c++) sigLine[c] = { v: '', t: 's' };
+  sigLine[5] = { v: '( ...................................... )', t: 's', s: { font: { name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
+  for (let c = 6; c <= 8; c++) sigLine[c] = { v: '', t: 's' };
 
   const sigLineIdx = aoa.length;
   aoa.push(sigLine);
 
-  // Signature Role Label
-  const sigRole = new Array(10).fill(null);
-  sigRole[0] = { v: '', t: 's' };
-  sigRole[1] = { v: 'Teknisi / User RS', t: 's', s: { font: { name: 'Calibri', sz: 12, italic: true }, alignment: { horizontal: 'center' } } };
-  sigRole[2] = { v: '', t: 's' };
-  sigRole[3] = { v: '', t: 's' };
-  sigRole[4] = { v: '', t: 's' };
-  sigRole[5] = { v: effectiveLeadTech ? 'Lead Teknisi SMK' : 'Teknisi SMK', t: 's', s: { font: { name: 'Calibri', sz: 12, italic: true }, alignment: { horizontal: 'center' } } };
-  sigRole[6] = { v: '', t: 's' };
-  sigRole[7] = { v: '', t: 's' };
-  sigRole[8] = { v: '', t: 's' };
+  // Signature Names:
+  // - Left side (RS) is completely blank so the hospital party can write by hand: "(dikosongi saja biar ditulis tangan sendiri oleh pihak RS)"
+  // - Right side (PT SMK) is filled with Lead Teknisi name
+  const effectiveLeadTech = leadTechName || bap.technicianName || 'Hafizh Pasifianto, S.Tr.T.';
 
-  const sigRoleIdx = aoa.length;
-  aoa.push(sigRole);
+  const sigNameRow = new Array(10).fill(null);
+  sigNameRow[0] = { v: '', t: 's' };
+  sigNameRow[1] = { v: '', t: 's', s: { font: { name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
+  for (let c = 2; c <= 4; c++) sigNameRow[c] = { v: '', t: 's' };
+  sigNameRow[5] = { v: effectiveLeadTech, t: 's', s: { font: { bold: true, name: 'Calibri', sz: 12 }, alignment: { horizontal: 'center' } } };
+  for (let c = 6; c <= 8; c++) sigNameRow[c] = { v: '', t: 's' };
+
+  const sigNameIdx = aoa.length;
+  aoa.push(sigNameRow);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
@@ -826,24 +795,35 @@ function buildBapDocWorksheet(bap: BapDocument, items: BapItem[], isNonPo: boole
     { s: { r: sigLineIdx, c: 1 }, e: { r: sigLineIdx, c: 4 } },
     { s: { r: sigLineIdx, c: 5 }, e: { r: sigLineIdx, c: 8 } },
 
-    { s: { r: sigRoleIdx, c: 1 }, e: { r: sigRoleIdx, c: 4 } },
-    { s: { r: sigRoleIdx, c: 5 }, e: { r: sigRoleIdx, c: 8 } }
+    { s: { r: sigNameIdx, c: 1 }, e: { r: sigNameIdx, c: 4 } },
+    { s: { r: sigNameIdx, c: 5 }, e: { r: sigNameIdx, c: 8 } }
   ];
 
   ws['!merges'] = merges;
 
-  // Optimized Column Widths for 1-Page Horizontal Print Preview (A4 Portrait)
+  // Optimized Column Widths matching the PDF proportions
   ws['!cols'] = [
-    { wch: 0.5 }, // Col A
+    { wch: 1 },   // Col A
     { wch: 5 },   // Col B: No
-    { wch: 26 },  // Col C: Part 1 of Nama Alat C..E
+    { wch: 28 },  // Col C: Part 1 of Nama Alat C..E
     { wch: 3 },   // Col D: Colon ":" / Part 2 of Nama Alat C..E
-    { wch: 15 },  // Col E: Part 2 of Value E..I / Part 3 of Nama Alat C..E
-    { wch: 8.5 }, // Col F: Volume PO
-    { wch: 8.5 }, // Col G: Volume Realisasi
-    { wch: 8.5 }, // Col H: Volume Sisa
-    { wch: 12.5 } // Col I: Keterangan
+    { wch: 16 },  // Col E: Part 2 of Value E..I / Part 3 of Nama Alat C..E
+    { wch: 9.5 }, // Col F: Volume PO
+    { wch: 10 },  // Col G: Volume Realisasi
+    { wch: 9.5 }, // Col H: Volume Sisa
+    { wch: 13 }   // Col I: Keterangan
   ];
+
+  // Specific row heights for crisp document layout
+  const rowsConfig: any[] = [];
+  rowsConfig[0] = { hpt: 22 }; // Document Title
+  rowsConfig[1] = { hpt: 18 }; // BAP Number
+  rowsConfig[12] = { hpt: 28 }; // Table Header
+  rowsConfig[totalRowIdx] = { hpt: 22 }; // TOTAL UNIT
+  rowsConfig[sigHeaderIdx] = { hpt: 20 }; // Signature Header
+  rowsConfig[sigLineIdx] = { hpt: 20 }; // Signature Line
+  rowsConfig[sigNameIdx] = { hpt: 20 }; // Signature Name
+  ws['!rows'] = rowsConfig;
 
   ws['!margins'] = {
     left: 0.35,

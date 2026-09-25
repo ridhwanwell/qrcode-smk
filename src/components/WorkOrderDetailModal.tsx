@@ -19,10 +19,13 @@ import {
   Percent,
   SlidersHorizontal,
   Briefcase,
-  Award
+  Award,
+  FileSpreadsheet
 } from 'lucide-react';
 import { CalibrationSchedule, MedicalDeviceToCalibrate } from '../types';
 import { formatRupiah, formatIndonesianDate, getUrgencyInfo, generateWhatsAppMessage, TODAY_STR, ensureDeviceSeliaItems } from '../utils/helpers';
+import { exportBapToExcel } from '../utils/bapExcelExport';
+import { createBapFromSchedule } from '../utils/bapHelpers';
 import confetti from 'canvas-confetti';
 
 interface WorkOrderDetailModalProps {
@@ -369,12 +372,26 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
           <p className="text-[11px] text-slate-500">
             Penanggung Jawab Teknis: <strong className="text-slate-700">Hafizh Pasifianto, S.Tr.T.</strong> (PT. Sarana Multi Kalibrasi)
           </p>
-          <button
-            onClick={onClose}
-            className="bg-[#EEEEEE] hover:bg-[#D8D2CB]/60 text-slate-700 border border-[#D8D2CB] font-bold px-4 py-2 rounded-xl text-xs transition-colors"
-          >
-            Tutup
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const bap = createBapFromSchedule(schedule);
+                exportBapToExcel(bap, { leadTechnicianName: schedule.leadTechnicianName });
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              title="Download Dokumen Berita Acara Pekerjaan (BAP) 4-Sheet format Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+              <span>Download BAP Excel (.xlsx)</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="bg-[#EEEEEE] hover:bg-[#D8D2CB]/60 text-slate-700 border border-[#D8D2CB] font-bold px-4 py-2 rounded-xl text-xs transition-colors cursor-pointer"
+            >
+              Tutup
+            </button>
+          </div>
         </div>
       </div>
     </div>
