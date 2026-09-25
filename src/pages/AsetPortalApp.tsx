@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Navbar } from '../components/Navbar';
 import { DashboardOverview } from '../components/DashboardOverview';
 import { ScheduleManager } from '../components/ScheduleManager';
@@ -166,8 +166,47 @@ function AsetPortalMain() {
     }
   };
 
-  // Authentic data collections (Filter out any legacy mock financial records so empty financial state is respected)
-  const effectiveSchedules = schedules;
+  // Authentic data collections (Filter out any legacy mock financial records and explicitly deleted schedules)
+  const effectiveSchedules = useMemo(() => {
+    let deletedScheduleIds = new Set<string>(['SCH-007241', 'SCH-594702']);
+    try {
+      const raw = localStorage.getItem('smk_deleted_schedules');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          arr.forEach(id => deletedScheduleIds.add(String(id).trim()));
+        }
+      }
+    } catch (_) {}
+
+    return schedules
+      .filter(s => {
+        if (!s) return false;
+        const key = s.id || s.workOrderNumber;
+        if (key && deletedScheduleIds.has(key)) return false;
+        if (s.id === 'SCH-007241' || s.id === 'SCH-594702') return false;
+        return true;
+      })
+      .map(s => ({
+        ...s,
+        hospitalName: s.hospitalName || 'Rumah Sakit',
+        hospitalCity: s.hospitalCity || 'Surakarta',
+        workOrderNumber: s.workOrderNumber || 'SPK/SMK/2026/08/001',
+        scheduledDate: s.scheduledDate || '2026-09-20',
+        endDate: s.endDate || s.scheduledDate || '2026-09-21',
+        leadTechnicianName: s.leadTechnicianName || 'Shifa Zalza Billa',
+        supportTechnicianNames: Array.isArray(s.supportTechnicianNames) ? s.supportTechnicianNames : [],
+        supportTechnicianIds: Array.isArray(s.supportTechnicianIds) ? s.supportTechnicianIds : [],
+        targetDevices: Array.isArray(s.targetDevices) ? s.targetDevices : [],
+        assignedCalibratorIds: Array.isArray(s.assignedCalibratorIds) ? s.assignedCalibratorIds : [],
+        assignedCalibratorNames: Array.isArray(s.assignedCalibratorNames) ? s.assignedCalibratorNames : [],
+        progressPercent: typeof s.progressPercent === 'number' ? s.progressPercent : 0,
+        contractValue: typeof s.contractValue === 'number' ? s.contractValue : 0,
+        remindersSentCount: typeof s.remindersSentCount === 'number' ? s.remindersSentCount : 0,
+        priority: s.priority || 'Tinggi',
+        status: s.status || 'Dijadwalkan'
+      }));
+  }, [schedules]);
   const effectiveSphList = sphList;
   const effectiveCalibrators = calibrators;
   const effectiveFinancialAssets = financialAssets.filter(a => !a.id?.startsWith('FIN-00'));

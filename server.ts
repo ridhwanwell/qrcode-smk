@@ -525,7 +525,30 @@ async function startServer() {
     try {
       const { name } = req.params;
 
-      // 1. Try reading from dedicated app_collections table first
+      // 1. Fetch tombstones for permanently deleted items
+      const itemPrefix = `__item_${name}_`;
+      const tombstonePrefix = `__tombstone_${name}_`;
+      let deletedIdSet = new Set<string>();
+
+      try {
+        const { data: tombstoneRows } = await supabaseAdmin
+          .from('labels')
+          .select('pdf_name')
+          .like('no_label', `${tombstonePrefix}%`);
+        if (tombstoneRows && tombstoneRows.length > 0) {
+          tombstoneRows.forEach(tr => {
+            if (tr.pdf_name) deletedIdSet.add(String(tr.pdf_name).trim());
+          });
+        }
+      } catch (_) {}
+
+      // Hardcoded explicit deletions requested by user (sloc and duplicate Moewardi)
+      if (name === 'schedules') {
+        deletedIdSet.add('SCH-007241');
+        deletedIdSet.add('SCH-594702');
+      }
+
+      // 2. Try reading from dedicated app_collections table first
       try {
         const { data: collRow, error: collErr } = await supabaseAdmin
           .from('app_collections')
@@ -533,13 +556,17 @@ async function startServer() {
           .eq('collection_name', name)
           .maybeSingle();
 
-        if (!collErr && collRow && Array.isArray(collRow.data) && collRow.data.length > 0) {
-          return res.json({ found: true, items: collRow.data });
+        if (!collErr && collRow && Array.isArray(collRow.data)) {
+          // Filter out any tombstone deleted items
+          const cleanItems = collRow.data.filter((it: any) => {
+            const key = it?.id || it?.sphNumber || it?.workOrderNumber || it?.noLabel;
+            return !key || !deletedIdSet.has(String(key).trim());
+          });
+          return res.json({ found: true, items: cleanItems });
         }
       } catch (_) {}
 
       const metaKey = `__aset_coll_${name}`;
-      const itemPrefix = `__item_${name}_`;
 
       const { data: mainData, error } = await supabaseAdmin
         .from('labels')
@@ -588,7 +615,13 @@ async function startServer() {
         }
       });
 
-      return res.json({ found: true, items: combined });
+      // Filter out tombstones from fallback
+      const finalItems = combined.filter((it: any) => {
+        const key = it?.id || it?.sphNumber || it?.workOrderNumber || it?.noLabel;
+        return !key || !deletedIdSet.has(String(key).trim());
+      });
+
+      return res.json({ found: true, items: finalItems });
     } catch (err: any) {
       console.error(`API error in GET /api/collections/${req.params.name}:`, err);
       res.status(500).json({ error: err.message });
@@ -603,6 +636,32 @@ async function startServer() {
         return res.status(400).json({ error: "items array is required" });
       }
 
+      // Fetch tombstones to ensure deleted items are never saved back to database
+      const tombstonePrefix = `__tombstone_${name}_`;
+      let deletedIdSet = new Set<string>();
+
+      try {
+        const { data: tombstoneRows } = await supabaseAdmin
+          .from('labels')
+          .select('pdf_name')
+          .like('no_label', `${tombstonePrefix}%`);
+        if (tombstoneRows && tombstoneRows.length > 0) {
+          tombstoneRows.forEach(tr => {
+            if (tr.pdf_name) deletedIdSet.add(String(tr.pdf_name).trim());
+          });
+        }
+      } catch (_) {}
+
+      if (name === 'schedules') {
+        deletedIdSet.add('SCH-007241');
+        deletedIdSet.add('SCH-594702');
+      }
+
+      const cleanIncomingItems = items.filter(it => {
+        const k = it?.id || it?.sphNumber || it?.workOrderNumber || it?.noLabel;
+        return !k || !deletedIdSet.has(String(k).trim());
+      });
+
       const metaKey = `__aset_coll_${name}`;
       const itemPrefix = `__item_${name}_`;
 
@@ -610,7 +669,7 @@ async function startServer() {
 
       if (replaceAll) {
         await supabaseAdmin.from('labels').delete().like('no_label', `${itemPrefix}%`);
-        finalItems = items;
+        finalItems = cleanIncomingItems;
       } else {
         const { data: mainData } = await supabaseAdmin
           .from('labels')
@@ -629,7 +688,12 @@ async function startServer() {
             if (row.pdf_url) {
               try {
                 const parsed = JSON.parse(row.pdf_url);
-                if (parsed) existing.push(parsed);
+                if (parsed) {
+                  const k = parsed?.id || parsed?.sphNumber || parsed?.workOrderNumber;
+                  if (!k || !deletedIdSet.has(String(k).trim())) {
+                    existing.push(parsed);
+                  }
+                }
               } catch (_) {}
             }
           });
@@ -639,8 +703,11 @@ async function startServer() {
             const parsed = JSON.parse(mainData.pdf_url);
             if (Array.isArray(parsed)) {
               parsed.forEach(mIt => {
-                if (!existing.some(eIt => isSameCollectionItem(eIt, mIt))) {
-                  existing.push(mIt);
+                const k = mIt?.id || mIt?.sphNumber || mIt?.workOrderNumber;
+                if (!k || !deletedIdSet.has(String(k).trim())) {
+                  if (!existing.some(eIt => isSameCollectionItem(eIt, mIt))) {
+                    existing.push(mIt);
+                  }
                 }
               });
             }
@@ -648,7 +715,7 @@ async function startServer() {
         }
 
         finalItems = [...existing];
-        items.forEach(incomingIt => {
+        cleanIncomingItems.forEach(incomingIt => {
           const idx = finalItems.findIndex(eIt => isSameCollectionItem(eIt, incomingIt));
           if (idx >= 0) {
             finalItems[idx] = { ...finalItems[idx], ...incomingIt };
@@ -708,12 +775,49 @@ async function startServer() {
       const { name, id } = req.params;
       const metaKey = `__aset_coll_${name}`;
       const itemPrefix = `__item_${name}_`;
+      const tombstonePrefix = `__tombstone_${name}_`;
       console.log(`[API] Deleting item ${id} from collection ${name}`);
 
       const sanitizeId = id.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
       await supabaseAdmin.from('labels').delete().eq('no_label', `${itemPrefix}${sanitizeId}`);
       await supabaseAdmin.from('labels').delete().eq('no_label', `${itemPrefix}${id}`);
 
+      // 1. Record permanent tombstone
+      try {
+        await supabaseAdmin.from('labels').upsert({
+          no_label: `${tombstonePrefix}${sanitizeId}`,
+          status: 'deleted_tombstone',
+          pdf_source: name,
+          pdf_name: id,
+          pdf_url: JSON.stringify({ id, deletedAt: new Date().toISOString() }),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'no_label' });
+      } catch (_) {}
+
+      // 2. Fetch and update dedicated app_collections table
+      let remainingFromColl: any[] = [];
+      try {
+        const { data: collRow } = await supabaseAdmin
+          .from('app_collections')
+          .select('data')
+          .eq('collection_name', name)
+          .maybeSingle();
+
+        if (collRow && Array.isArray(collRow.data)) {
+          remainingFromColl = collRow.data.filter((it: any) => 
+            !isSameCollectionItem(it, { id, sphNumber: id, noLabel: id, workOrderNumber: id })
+          );
+          await supabaseAdmin.from('app_collections').upsert({
+            collection_name: name,
+            data: remainingFromColl,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'collection_name' });
+        }
+      } catch (collErr) {
+        console.warn(`[API] Error updating app_collections on delete ${id}:`, collErr);
+      }
+
+      // 3. Update legacy labels table metaKey
       const { data: itemRows } = await supabaseAdmin
         .from('labels')
         .select('pdf_url')
@@ -725,7 +829,7 @@ async function startServer() {
           if (row.pdf_url) {
             try {
               const parsed = JSON.parse(row.pdf_url);
-              if (parsed && !isSameCollectionItem(parsed, { id, sphNumber: id, noLabel: id })) {
+              if (parsed && !isSameCollectionItem(parsed, { id, sphNumber: id, noLabel: id, workOrderNumber: id })) {
                 remainingItems.push(parsed);
               }
             } catch (_) {}
@@ -733,16 +837,18 @@ async function startServer() {
         });
       }
 
+      const finalRemaining = remainingFromColl.length > 0 ? remainingFromColl : remainingItems;
+
       await supabaseAdmin.from('labels').upsert({
         no_label: metaKey,
         status: 'asset_data',
         pdf_source: name,
-        pdf_name: `Collection: ${name} (${remainingItems.length} items)`,
-        pdf_url: JSON.stringify(remainingItems),
+        pdf_name: `Collection: ${name} (${finalRemaining.length} items)`,
+        pdf_url: JSON.stringify(finalRemaining),
         updated_at: new Date().toISOString()
       }, { onConflict: 'no_label' });
 
-      res.json({ success: true, remaining: remainingItems.length, items: remainingItems });
+      res.json({ success: true, remaining: finalRemaining.length, items: finalRemaining });
     } catch (err: any) {
       console.error(`API error in DELETE /api/collections/${req.params.name}/${req.params.id}:`, err);
       res.status(500).json({ error: err.message });
@@ -765,6 +871,15 @@ async function startServer() {
         pdf_url: JSON.stringify([]),
         updated_at: new Date().toISOString()
       }, { onConflict: 'no_label' });
+
+      // Clear dedicated app_collections table as well
+      try {
+        await supabaseAdmin.from('app_collections').upsert({
+          collection_name: name,
+          data: [],
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'collection_name' });
+      } catch (_) {}
 
       res.json({ success: true, remaining: 0 });
     } catch (err: any) {

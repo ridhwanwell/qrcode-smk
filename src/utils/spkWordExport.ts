@@ -3,10 +3,11 @@ import { formatIndonesianDate, formatRupiah } from './helpers';
 import { exportHtmlToWord, getWordKopSuratHtml, getWordFooterHtml } from './wordExport';
 
 export function exportSpkToWord(schedule: CalibrationSchedule) {
-  const totalVolumePO = schedule.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
+  const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
+  const totalVolumePO = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
   const hospitalAddress = schedule.hospitalAddress || `${schedule.hospitalName}, ${schedule.hospitalCity}`;
 
-  const devicesRowsHtml = schedule.targetDevices.map((d, index) => `
+  const devicesRowsHtml = targetDevices.map((d, index) => `
     <tr>
       <td style="text-align: center;">${index + 1}</td>
       <td style="font-weight: bold;">${d.name}</td>
@@ -130,14 +131,15 @@ export function exportSpkToWord(schedule: CalibrationSchedule) {
 }
 
 export function exportBapToWord(schedule: CalibrationSchedule) {
-  const totalVolumePO = schedule.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
-  const totalRealisasi = schedule.targetDevices.reduce((sum, d) => {
-    if (d.status === 'Pass' || d.status === 'Fail') return sum + (d.quantity || 1);
+  const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
+  const totalVolumePO = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
+  const totalRealisasi = targetDevices.reduce((sum, d) => {
+    if (d?.status === 'Pass' || d?.status === 'Fail') return sum + (d?.quantity || 1);
     return sum;
   }, 0);
   const totalSisa = Math.max(0, totalVolumePO - totalRealisasi);
 
-  const devicesRowsHtml = schedule.targetDevices.map((d, index) => {
+  const devicesRowsHtml = targetDevices.map((d, index) => {
     const isCompleted = d.status === 'Pass' || d.status === 'Fail';
     const volumeKalibrasi = isCompleted ? (d.quantity || 1) : 0;
     const volumeSisa = (d.quantity || 1) - volumeKalibrasi;
@@ -253,11 +255,12 @@ export function exportBapToWord(schedule: CalibrationSchedule) {
 }
 
 export function exportBastpToWord(schedule: CalibrationSchedule) {
-  const totalVolumePO = schedule.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
-  const laikPakaiCount = schedule.targetDevices.reduce((sum, d) => d.status === 'Pass' ? sum + (d.quantity || 1) : sum, 0);
-  const tidakLaikCount = schedule.targetDevices.reduce((sum, d) => d.status === 'Fail' ? sum + (d.quantity || 1) : sum, 0);
+  const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
+  const totalVolumePO = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
+  const laikPakaiCount = targetDevices.reduce((sum, d) => d?.status === 'Pass' ? sum + (d?.quantity || 1) : sum, 0);
+  const tidakLaikCount = targetDevices.reduce((sum, d) => d?.status === 'Fail' ? sum + (d?.quantity || 1) : sum, 0);
 
-  const devicesRowsHtml = schedule.targetDevices.map((d, index) => `
+  const devicesRowsHtml = targetDevices.map((d, index) => `
     <tr>
       <td style="text-align: center;">${index + 1}</td>
       <td style="font-weight: bold;">${d.name}</td>

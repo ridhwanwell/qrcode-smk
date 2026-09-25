@@ -98,7 +98,7 @@ export const BapModal: React.FC<BapModalProps> = ({
 
   // New Non-PO item input state
   const [newNonPoName, setNewNonPoName] = useState('');
-  const [newNonPoQty, setNewNonPoQty] = useState<number>(1);
+  const [newNonPoQty, setNewNonPoQty] = useState<number | ''>('');
   const [showAddNonPo, setShowAddNonPo] = useState(false);
 
   // Autosave notification badge
@@ -245,13 +245,16 @@ export const BapModal: React.FC<BapModalProps> = ({
 
   // Update Item in Sheet Rekap
   const handleUpdateItemRealisasi = (itemId: string, dateCol: string, valStr: string) => {
-    const num = Math.max(0, parseInt(valStr, 10) || 0);
+    const clean = valStr.replace(/^0+(?=\d)/, '');
+    const num = clean === '' ? undefined : Math.max(0, parseInt(clean, 10) || 0);
     const updatedItems = bap.items.map(it => {
       if (it.id !== itemId) return it;
-      const updatedReal = {
-        ...it.realisasi,
-        [dateCol]: num
-      };
+      const updatedReal = { ...it.realisasi };
+      if (num === undefined) {
+        delete updatedReal[dateCol];
+      } else {
+        updatedReal[dateCol] = num;
+      }
       return recalculateBapItem({ ...it, realisasi: updatedReal }, bap.dateColumns);
     });
 
@@ -281,14 +284,15 @@ export const BapModal: React.FC<BapModalProps> = ({
   const handleAddNonPoItem = () => {
     if (!newNonPoName.trim()) return;
     const currentCols = bap.nonPoDateColumns || bap.dateColumns;
+    const qty = Math.max(1, Number(newNonPoQty) || 1);
     const newItem: BapItem = {
       id: `nonpo-${Date.now()}-${bap.nonPoItems.length + 1}`,
       no: bap.nonPoItems.length + 1,
       namaAlat: newNonPoName.trim(),
-      poQty: Math.max(1, newNonPoQty),
+      poQty: qty,
       realisasi: {},
       total: 0,
-      sisa: Math.max(1, newNonPoQty),
+      sisa: qty,
       keterangan: ''
     };
     const updatedNonPo = [...bap.nonPoItems, newItem];
@@ -298,7 +302,7 @@ export const BapModal: React.FC<BapModalProps> = ({
       updatedAt: new Date().toISOString()
     };
     setNewNonPoName('');
-    setNewNonPoQty(1);
+    setNewNonPoQty('');
     setShowAddNonPo(false);
     triggerSave(updated);
   };
@@ -315,14 +319,17 @@ export const BapModal: React.FC<BapModalProps> = ({
   };
 
   const handleUpdateNonPoRealisasi = (itemId: string, dateCol: string, valStr: string) => {
-    const num = Math.max(0, parseInt(valStr, 10) || 0);
+    const clean = valStr.replace(/^0+(?=\d)/, '');
+    const num = clean === '' ? undefined : Math.max(0, parseInt(clean, 10) || 0);
     const currentCols = bap.nonPoDateColumns || bap.dateColumns;
     const updatedNonPo = bap.nonPoItems.map(it => {
       if (it.id !== itemId) return it;
-      const updatedReal = {
-        ...it.realisasi,
-        [dateCol]: num
-      };
+      const updatedReal = { ...it.realisasi };
+      if (num === undefined) {
+        delete updatedReal[dateCol];
+      } else {
+        updatedReal[dateCol] = num;
+      }
       return recalculateBapItem({ ...it, realisasi: updatedReal }, currentCols);
     });
 
@@ -1150,8 +1157,18 @@ export const BapModal: React.FC<BapModalProps> = ({
                       <input
                         type="number"
                         min="1"
-                        value={newNonPoQty}
-                        onChange={(e) => setNewNonPoQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                        placeholder="1"
+                        value={newNonPoQty === 0 || !newNonPoQty ? '' : newNonPoQty}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                          const val = raw === '' ? ('' as any) : parseInt(raw, 10);
+                          setNewNonPoQty(val);
+                        }}
+                        onBlur={() => {
+                          if (!newNonPoQty || Number(newNonPoQty) < 1) {
+                            setNewNonPoQty(1);
+                          }
+                        }}
                         className="w-full border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:border-amber-600"
                       />
                     </div>

@@ -1108,8 +1108,11 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                   <input
                     type="number"
                     placeholder="125000000"
-                    value={newPurchasePrice}
-                    onChange={(e) => setNewPurchasePrice(e.target.value)}
+                    value={newPurchasePrice === '0' ? '' : newPurchasePrice}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setNewPurchasePrice(raw);
+                    }}
                     className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
@@ -1228,8 +1231,11 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                   <input
                     type="number"
                     placeholder="4500000"
-                    value={maintCost}
-                    onChange={(e) => setMaintCost(e.target.value)}
+                    value={maintCost === '0' ? '' : maintCost}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setMaintCost(raw);
+                    }}
                     className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>

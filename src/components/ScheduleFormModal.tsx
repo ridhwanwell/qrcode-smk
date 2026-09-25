@@ -131,11 +131,11 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
       ...devices,
       {
         id: newId,
-        name: 'Patient Monitor Multi-Parameter',
-        quantity: 2,
-        room: 'Ruang Perawatan Lt. 3',
-        brandModel: 'Mindray BeneVision',
-        serialNumber: `SN-${Date.now().toString().slice(-4)}`,
+        name: '',
+        quantity: '' as any,
+        room: '',
+        brandModel: '',
+        serialNumber: '',
         status: 'Pending'
       }
     ]);
@@ -172,7 +172,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   };
 
   // Calculate totals and 7-digit label ranges
-  const totalDeviceUnits = devices.reduce((sum, d) => sum + (d.quantity || 1), 0);
+  const totalDeviceUnits = Math.max(1, devices.reduce((sum, d) => sum + (Number(d.quantity) || 0), 0));
   const labelRangeInfo = useMemo(() => {
     return calculateLabelRange(hospitalCode, startSequence, totalDeviceUnits);
   }, [hospitalCode, startSequence, totalDeviceUnits]);
@@ -327,8 +327,16 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                     type="number"
                     min={1}
                     required
-                    value={startSequence}
-                    onChange={(e) => setStartSequence(Math.max(1, parseInt(e.target.value) || 1))}
+                    value={startSequence === 0 || !startSequence ? '' : startSequence}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setStartSequence(raw === '' ? ('' as any) : parseInt(raw, 10));
+                    }}
+                    onBlur={() => {
+                      if (!startSequence || Number(startSequence) < 1) {
+                        setStartSequence(1);
+                      }
+                    }}
                     className="w-full bg-transparent text-slate-900 font-mono font-bold text-xs focus:outline-none"
                     placeholder="1"
                   />
@@ -452,8 +460,11 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                 <input
                   type="text"
                   placeholder="35000000"
-                  value={contractValue}
-                  onChange={(e) => setContractValue(e.target.value)}
+                  value={contractValue === '0' ? '' : contractValue}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                    setContractValue(raw);
+                  }}
                   className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
@@ -592,8 +603,17 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                       type="number"
                       min="1"
                       placeholder="1"
-                      value={device.quantity || 1}
-                      onChange={(e) => handleDeviceChange(device.id, 'quantity', Number(e.target.value) || 1)}
+                      value={device.quantity === 0 || !device.quantity ? '' : device.quantity}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                        const val = raw === '' ? ('' as any) : parseInt(raw, 10);
+                        handleDeviceChange(device.id, 'quantity', val);
+                      }}
+                      onBlur={() => {
+                        if (!device.quantity || Number(device.quantity) < 1) {
+                          handleDeviceChange(device.id, 'quantity', 1);
+                        }
+                      }}
                       className="w-full p-1.5 bg-white border border-[#398AB9] rounded-lg text-xs text-[#1C658C] font-bold font-mono text-center focus:outline-none"
                     />
                   </div>

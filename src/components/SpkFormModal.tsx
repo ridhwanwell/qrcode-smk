@@ -169,13 +169,13 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
       ...devices,
       {
         id: newId,
-        name: 'Infusion Pump',
-        quantity: 5,
-        room: 'Ruang Rawat Inap',
-        brandModel: 'Terumo TE-171',
-        serialNumber: `SN-INF-${Date.now().toString().slice(-4)}`,
+        name: '',
+        quantity: '' as any,
+        room: '',
+        brandModel: '',
+        serialNumber: '',
         status: 'Pending',
-        notes: 'Pengujian kalibrasi debit laju alir'
+        notes: ''
       }
     ]);
   };
@@ -255,7 +255,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
       leadTechnicianName: selectedLeadTech.name,
       supportTechnicianIds: selectedSupportIds,
       supportTechnicianNames: supportTechNames,
-      targetDevices: devices,
+      targetDevices: devices.map(d => ({ ...d, quantity: Math.max(1, Number(d.quantity) || 1) })),
       assignedCalibratorIds: selectedCalibratorIds,
       assignedCalibratorNames: calibratorNames,
       priority,
@@ -591,9 +591,18 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                         type="number"
                         min={1}
                         required
-                        placeholder="Qty"
-                        value={d.quantity || 1}
-                        onChange={(e) => handleDeviceChange(d.id, 'quantity', parseInt(e.target.value) || 1)}
+                        placeholder="1"
+                        value={d.quantity === 0 || !d.quantity ? '' : d.quantity}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                          const val = raw === '' ? ('' as any) : parseInt(raw, 10);
+                          handleDeviceChange(d.id, 'quantity', val);
+                        }}
+                        onBlur={() => {
+                          if (!d.quantity || Number(d.quantity) < 1) {
+                            handleDeviceChange(d.id, 'quantity', 1);
+                          }
+                        }}
                         className="w-full bg-transparent text-xs text-[#1C658C] font-bold text-center focus:outline-none font-mono"
                       />
                       <span className="text-[10px] text-slate-500 font-medium">Unit</span>
@@ -639,8 +648,12 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
               <label className="font-semibold text-slate-700 block mb-1">Nilai Kontrak Kalibrasi (Rp)</label>
               <input
                 type="number"
-                value={contractValue}
-                onChange={(e) => setContractValue(e.target.value)}
+                value={contractValue === '0' ? '' : contractValue}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                  setContractValue(raw);
+                }}
+                placeholder="0"
                 className="w-full p-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-[#1C658C] font-mono font-bold focus:outline-none focus:border-[#1C658C]"
               />
             </div>

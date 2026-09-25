@@ -323,16 +323,20 @@ export function generateAutomatedReminders(
     // We generate automated reminders for schedules that are OVERDUE, CRITICAL (H-0, H-1), WARNING (H-2, H-3), or UPCOMING (H-7)
     if (urgency.level !== 'NORMAL') {
       let msg = '';
+      const targetDevs = Array.isArray(sch.targetDevices) ? sch.targetDevices : [];
+      const assignedCals = Array.isArray(sch.assignedCalibratorNames) ? sch.assignedCalibratorNames : [];
+      const leadTech = sch.leadTechnicianName || 'Teknisi PT SMK';
+
       if (urgency.level === 'OVERDUE') {
-        msg = `🚨 [PERINGATAN TERLAMBAT] Surat Perintah Kerja ${sch.workOrderNumber} di ${sch.hospitalName} telah melewati tenggat waktu (${Math.abs(urgency.daysRemaining)} hari yang lalu). Harap segera hubungi Teknisi Utama (${sch.leadTechnicianName}) dan PIC RS.`;
+        msg = `🚨 [PERINGATAN TERLAMBAT] Surat Perintah Kerja ${sch.workOrderNumber} di ${sch.hospitalName} telah melewati tenggat waktu (${Math.abs(urgency.daysRemaining)} hari yang lalu). Harap segera hubungi Teknisi Utama (${leadTech}) dan PIC RS.`;
       } else if (urgency.daysRemaining === 0) {
-        msg = `⚡ [PENGINGAT HARI-H] Pelaksanaan kalibrasi di ${sch.hospitalName} (${sch.workOrderNumber}) dijadwalkan HARI INI. Teknisi: ${sch.leadTechnicianName}. Total ${sch.targetDevices.length} alat medis disiapkan.`;
+        msg = `⚡ [PENGINGAT HARI-H] Pelaksanaan kalibrasi di ${sch.hospitalName} (${sch.workOrderNumber}) dijadwalkan HARI INI. Teknisi: ${leadTech}. Total ${targetDevs.length} alat medis disiapkan.`;
       } else if (urgency.daysRemaining === 1) {
-        msg = `⚠️ [PENGINGAT H-1] Besok jadwal kalibrasi di ${sch.hospitalName}. Teknisi: ${sch.leadTechnicianName}. Pastikan modul kalibrator (${sch.assignedCalibratorNames.join(', ')}) terkalibrasi & siap pakai.`;
+        msg = `⚠️ [PENGINGAT H-1] Besok jadwal kalibrasi di ${sch.hospitalName}. Teknisi: ${leadTech}. Pastikan modul kalibrator (${assignedCals.join(', ') || 'Kalibrator Utama'}) terkalibrasi & siap pakai.`;
       } else if (urgency.daysRemaining <= 3) {
         msg = `📅 [PENGINGAT H-${urgency.daysRemaining}] Kalibrasi RS ${sch.hospitalName} dalam ${urgency.daysRemaining} hari. Konfirmasi ruang medis dengan PIC (${sch.hospitalPic}).`;
       } else {
-        msg = `📋 [PENGINGAT H-${urgency.daysRemaining}] Jadwal terencana di ${sch.hospitalName}. Tim teknisi: ${sch.leadTechnicianName}.`;
+        msg = `📋 [PENGINGAT H-${urgency.daysRemaining}] Jadwal terencana di ${sch.hospitalName}. Tim teknisi: ${leadTech}.`;
       }
 
       reminders.push({
@@ -343,7 +347,7 @@ export function generateAutomatedReminders(
         scheduledDate: sch.scheduledDate,
         daysRemaining: urgency.daysRemaining,
         urgency: urgency.level,
-        technicianName: sch.leadTechnicianName,
+        technicianName: leadTech,
         technicianPhone: sch.hospitalPhone,
         message: msg,
         isAcknowledged: sch.remindersSentCount > 2,
@@ -366,11 +370,14 @@ export function generateAutomatedReminders(
 }
 
 export function generateWhatsAppMessage(schedule: CalibrationSchedule, urgency: ReturnType<typeof getUrgencyInfo>): string {
-  const calibratorsStr = schedule.assignedCalibratorNames.length > 0 
-    ? schedule.assignedCalibratorNames.map(c => `• ${c}`).join('\n')
+  const calibratorNames = Array.isArray(schedule.assignedCalibratorNames) ? schedule.assignedCalibratorNames : [];
+  const calibratorsStr = calibratorNames.length > 0 
+    ? calibratorNames.map(c => `• ${c}`).join('\n')
     : '• Menyesuaikan kebutuhan lapangan';
 
-  const devicesStr = schedule.targetDevices.map((d, i) => `${i+1}. ${d.name} (${d.room})`).join('\n');
+  const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
+  const devicesStr = targetDevices.map((d, i) => `${i+1}. ${d.name} (${d.room || '-'})`).join('\n');
+  const supportTechNames = Array.isArray(schedule.supportTechnicianNames) ? schedule.supportTechnicianNames : [];
 
   return `*NOTIFIKASI PENGINGAT JADWAL KALIBRASI MEDIS*
 ----------------------------------------
@@ -380,14 +387,14 @@ export function generateWhatsAppMessage(schedule: CalibrationSchedule, urgency: 
 *Status Tenggat:* ${urgency.label} (${urgency.description})
 
 *Teknisi Bertugas:*
-• Lead: ${schedule.leadTechnicianName}
-${schedule.supportTechnicianNames.map(s => `• Pendamping: ${s}`).join('\n')}
+• Lead: ${schedule.leadTechnicianName || 'Shifa Zalza Billa'}
+${supportTechNames.map(s => `• Pendamping: ${s}`).join('\n')}
 
 *Alat Kalibrator Ditugaskan:*
 ${calibratorsStr}
 
-*Daftar Alat Medis Sasaran (${schedule.targetDevices.length} Unit):*
-${devicesStr}
+*Daftar Alat Medis Sasaran (${targetDevices.length} Unit):*
+${devicesStr || '• Belum ada alat spesifik terdaftar'}
 
 *PIC Rumah Sakit:* ${schedule.hospitalPic}
 ----------------------------------------
@@ -401,8 +408,9 @@ export function ensureDeviceSeliaItems(schedule: CalibrationSchedule): DeviceSel
 
   const items: DeviceSeliaItem[] = [];
   let globalUnitCounter = 1;
+  const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
 
-  schedule.targetDevices.forEach(d => {
+  targetDevices.forEach(d => {
     const qty = Math.max(1, d.quantity || 1);
     const startSeq = d.labelSequenceStart || schedule.labelSequenceStart || 1;
     const hospitalCode = schedule.hospitalCode || '100';

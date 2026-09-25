@@ -218,14 +218,21 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   // Filtered schedules
   const filteredSchedules = useMemo(() => {
     return schedules.filter((sch) => {
+      if (!sch) return false;
       const urgency = getUrgencyInfo(sch, TODAY_STR);
       
+      const hospitalName = sch.hospitalName || '';
+      const workOrderNumber = sch.workOrderNumber || '';
+      const leadTechnicianName = sch.leadTechnicianName || '';
+      const marketingName = sch.marketingName || '';
+      const hospitalCity = sch.hospitalCity || '';
+
       const matchesSearch = 
-        sch.hospitalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        sch.workOrderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        sch.leadTechnicianName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (sch.marketingName && sch.marketingName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        sch.hospitalCity.toLowerCase().includes(searchTerm.toLowerCase());
+        hospitalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        workOrderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        leadTechnicianName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        marketingName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        hospitalCity.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesStatus = statusFilter === 'ALL' || sch.status === statusFilter;
       const matchesUrgency = urgencyFilter === 'ALL' || urgency.level === urgencyFilter;
@@ -244,6 +251,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
     let completed = 0;
 
     schedules.forEach(s => {
+      if (!s) return;
       if (s.status === 'Selesai Kalibrasi' || s.status === 'Sertifikat Terbit') {
         completed++;
         return;
@@ -471,7 +479,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSchedules.map((schedule) => {
             const urgency = getUrgencyInfo(schedule, TODAY_STR);
-            const totalQty = schedule.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
+            const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
+            const totalQty = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
+            const supportTechNames = Array.isArray(schedule.supportTechnicianNames) ? schedule.supportTechnicianNames : [];
+            const calibratorNames = Array.isArray(schedule.assignedCalibratorNames) ? schedule.assignedCalibratorNames : [];
 
             return (
               <div
@@ -509,7 +520,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       <div className="flex items-center gap-1.5 truncate">
                         <UserCheck className="w-3.5 h-3.5 text-[#1C658C] shrink-0" />
                         <span className="text-slate-500">Lead Teknisi:</span>
-                        <strong className="text-slate-800 truncate">{schedule.leadTechnicianName}</strong>
+                        <strong className="text-slate-800 truncate">{schedule.leadTechnicianName || 'Belum ditugaskan'}</strong>
                       </div>
                     </div>
 
@@ -521,9 +532,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       <span className="font-bold text-[#1C658C]">{schedule.marketingName || 'Shifa Zalza Billa'}</span>
                     </div>
 
-                    {schedule.supportTechnicianNames.length > 0 && (
+                    {supportTechNames.length > 0 && (
                       <p className="text-[10px] text-slate-500">
-                        Pendamping: {schedule.supportTechnicianNames.join(', ')}
+                        Pendamping: {supportTechNames.join(', ')}
                       </p>
                     )}
                   </div>
@@ -532,16 +543,16 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   <div>
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="text-slate-500">
-                        Alkes: <strong className="text-slate-800">{schedule.targetDevices.length} Jenis ({totalQty} Unit)</strong>
+                        Alkes: <strong className="text-slate-800">{targetDevices.length} Jenis ({totalQty} Unit)</strong>
                       </span>
-                      <span className="font-bold text-[#1C658C]">{schedule.progressPercent}% Selesai</span>
+                      <span className="font-bold text-[#1C658C]">{schedule.progressPercent || 0}% Selesai</span>
                     </div>
                     <div className="w-full bg-[#EEEEEE] rounded-full h-2 overflow-hidden border border-[#D8D2CB]">
                       <div
                         className={`h-full rounded-full transition-all ${
                           schedule.progressPercent === 100 ? 'bg-emerald-600' : 'bg-gradient-to-r from-[#398AB9] to-[#1C658C]'
                         }`}
-                        style={{ width: `${schedule.progressPercent}%` }}
+                        style={{ width: `${schedule.progressPercent || 0}%` }}
                       />
                     </div>
                     {/* 7-digit Label Range Badge */}
@@ -560,11 +571,15 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       Alat Kalibrator PT SMK Ditugaskan:
                     </p>
                     <div className="flex flex-wrap gap-1">
-                      {schedule.assignedCalibratorNames.map((calName, i) => (
-                        <span key={i} className="bg-[#EEEEEE] text-[#1C658C] border border-[#D8D2CB] text-[10px] font-medium px-2 py-0.5 rounded-md">
-                          {calName}
-                        </span>
-                      ))}
+                      {calibratorNames.length > 0 ? (
+                        calibratorNames.map((calName, i) => (
+                          <span key={i} className="bg-[#EEEEEE] text-[#1C658C] border border-[#D8D2CB] text-[10px] font-medium px-2 py-0.5 rounded-md">
+                            {calName}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">Sesuai kebutuhan lapangan</span>
+                      )}
                     </div>
                   </div>
 
@@ -645,7 +660,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
               <tbody className="divide-y divide-[#D8D2CB]">
                 {filteredSchedules.map((sch) => {
                   const urgency = getUrgencyInfo(sch, TODAY_STR);
-                  const totalQty = sch.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
+                  const targetDevices = Array.isArray(sch.targetDevices) ? sch.targetDevices : [];
+                  const totalQty = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
 
                   return (
                     <tr key={sch.id} className="hover:bg-[#EEEEEE]/40 transition-colors">
@@ -664,18 +680,18 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                         <p className="text-slate-400 text-[10px]">s.d {formatIndonesianDate(sch.endDate)}</p>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <p className="font-semibold text-slate-800">{sch.leadTechnicianName}</p>
+                        <p className="font-semibold text-slate-800">{sch.leadTechnicianName || 'Belum ditugaskan'}</p>
                         <p className="text-[#398AB9] text-[11px]">Marketing: {sch.marketingName || 'Shifa Zalza Billa'}</p>
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-800">{totalQty} Unit ({sch.targetDevices.length} Jenis)</span>
+                          <span className="font-bold text-slate-800">{totalQty} Unit ({targetDevices.length} Jenis)</span>
                           <span className="text-[10px] bg-[#1C658C]/10 text-[#1C658C] px-1.5 py-0.2 rounded font-semibold font-mono border border-[#1C658C]/20">
-                            {sch.progressPercent}%
+                            {sch.progressPercent || 0}%
                           </span>
                         </div>
                         <div className="w-24 bg-[#EEEEEE] rounded-full h-1.5 mt-1 overflow-hidden border border-[#D8D2CB]">
-                          <div className="bg-[#1C658C] h-full rounded-full" style={{ width: `${sch.progressPercent}%` }} />
+                          <div className="bg-[#1C658C] h-full rounded-full" style={{ width: `${sch.progressPercent || 0}%` }} />
                         </div>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
@@ -756,7 +772,8 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           s.sphNumber === bapTargetSchedule.workOrderNumber
         );
         const options = getBapPoOptionsFromSph(matchingSph, bapTargetSchedule.workOrderNumber);
-        const totalUnits = bapTargetSchedule.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
+        const targetDevices = Array.isArray(bapTargetSchedule.targetDevices) ? bapTargetSchedule.targetDevices : [];
+        const totalUnits = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
 
         return (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -794,7 +811,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-slate-500 font-medium">Total Unit:</span>
-                    <span className="font-bold text-slate-900 text-right">{bapTargetSchedule.targetDevices.length} Jenis ({totalUnits} Unit)</span>
+                    <span className="font-bold text-slate-900 text-right">{targetDevices.length} Jenis ({totalUnits} Unit)</span>
                   </div>
                 </div>
 

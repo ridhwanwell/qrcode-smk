@@ -77,11 +77,27 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
     for (const col of COLLECTIONS_CONFIG) {
       // Local count from localStorage
       let localCount = 0;
+      let deletedSet = new Set<string>();
+      if (col.name === 'schedules') {
+        deletedSet.add('SCH-007241');
+        deletedSet.add('SCH-594702');
+      }
+      try {
+        const delRaw = localStorage.getItem(`smk_deleted_${col.name}`);
+        if (delRaw) JSON.parse(delRaw).forEach((d: string) => deletedSet.add(d));
+      } catch (_) {}
+
       try {
         const raw = localStorage.getItem(`smk_supa_${col.name}`);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) localCount = parsed.length;
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((it: any) => {
+              const k = it?.id || it?.sphNumber || it?.workOrderNumber;
+              return !k || !deletedSet.has(String(k).trim());
+            });
+            localCount = clean.length;
+          }
         }
       } catch (_) {}
 
@@ -95,13 +111,21 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
           .maybeSingle();
 
         if (!error && supaRow && Array.isArray(supaRow.data)) {
-          serverCount = supaRow.data.length;
+          const cleanServer = supaRow.data.filter((it: any) => {
+            const k = it?.id || it?.sphNumber || it?.workOrderNumber;
+            return !k || !deletedSet.has(String(k).trim());
+          });
+          serverCount = cleanServer.length;
         } else {
           const res = await fetch(`/api/collections/${encodeURIComponent(col.name)}`);
           if (res.ok) {
             const json = await res.json();
             if (json && json.found && Array.isArray(json.items)) {
-              serverCount = json.items.length;
+              const cleanItems = json.items.filter((it: any) => {
+                const k = it?.id || it?.sphNumber || it?.workOrderNumber;
+                return !k || !deletedSet.has(String(k).trim());
+              });
+              serverCount = cleanItems.length;
             }
           }
         }
@@ -152,10 +176,26 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
   const handleFixSingle = async (item: CollectionSyncItem, action: 'push_to_server' | 'pull_from_server') => {
     setSyncingKey(item.name);
     try {
+      let deletedSet = new Set<string>();
+      if (item.name === 'schedules') {
+        deletedSet.add('SCH-007241');
+        deletedSet.add('SCH-594702');
+      }
+      try {
+        const delRaw = localStorage.getItem(`smk_deleted_${item.name}`);
+        if (delRaw) JSON.parse(delRaw).forEach((d: string) => deletedSet.add(d));
+      } catch (_) {}
+
       if (action === 'push_to_server') {
         const raw = localStorage.getItem(`smk_supa_${item.name}`);
         let localData = [];
         if (raw) localData = JSON.parse(raw);
+        if (Array.isArray(localData)) {
+          localData = localData.filter((x: any) => {
+            const k = x?.id || x?.sphNumber || x?.workOrderNumber;
+            return !k || !deletedSet.has(String(k).trim());
+          });
+        }
         
         // Direct write to Supabase
         await supabase.from('app_collections').upsert({
@@ -190,7 +230,11 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         }
 
         if (Array.isArray(serverItems)) {
-          localStorage.setItem(`smk_supa_${item.name}`, JSON.stringify(serverItems));
+          const cleanServer = serverItems.filter((x: any) => {
+            const k = x?.id || x?.sphNumber || x?.workOrderNumber;
+            return !k || !deletedSet.has(String(k).trim());
+          });
+          localStorage.setItem(`smk_supa_${item.name}`, JSON.stringify(cleanServer));
           localStorage.setItem(`smk_inited_${item.name}`, 'true');
           window.dispatchEvent(new CustomEvent('supabase_collection_sync', { detail: { collection: item.name } }));
           onShowToast(`Koleksi ${item.label} diperbarui dari Supabase server!`);

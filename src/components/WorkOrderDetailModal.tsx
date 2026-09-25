@@ -49,7 +49,7 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
 }) => {
   if (!schedule) return null;
 
-  const [devices, setDevices] = useState<MedicalDeviceToCalibrate[]>(schedule.targetDevices);
+  const [devices, setDevices] = useState<MedicalDeviceToCalibrate[]>(Array.isArray(schedule.targetDevices) ? schedule.targetDevices : []);
   const [certNumber, setCertNumber] = useState(schedule.certificateNumber || '');
   const [copiedWA, setCopiedWA] = useState(false);
   
@@ -57,7 +57,7 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
   const [bastpPdfUrl, setBastpPdfUrl] = useState<string | undefined>(schedule.bastpPdfUrl);
 
   const urgency = getUrgencyInfo(schedule, TODAY_STR);
-  const totalQty = devices.reduce((acc, d) => acc + (d.quantity || 1), 0);
+  const totalQty = (devices || []).reduce((acc, d) => acc + (d?.quantity || 1), 0);
 
   // Update a single device status
   const handleDeviceStatusChange = (

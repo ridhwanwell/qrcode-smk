@@ -1195,8 +1195,11 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     required
                     min="0"
                     placeholder="e.g. 15000000"
-                    value={formAmount}
-                    onChange={(e) => setFormAmount(e.target.value)}
+                    value={formAmount === '0' ? '' : formAmount}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setFormAmount(raw);
+                    }}
                     className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl font-bold focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
                   />
                 </div>

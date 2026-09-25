@@ -337,10 +337,10 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
     const newItem: SphItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       description: '',
-      quantity: 1,
+      quantity: '' as any,
       unit: 'Unit',
       standardPrice: 0,
-      unitPrice: 0,
+      unitPrice: '' as any,
       totalPrice: 0,
       eCatalogueUrl: ''
     };
@@ -367,8 +367,8 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
       if (it.id !== id) return it;
       const updated = { ...it, [field]: value };
       if (field === 'quantity' || field === 'unitPrice') {
-        const qty = field === 'quantity' ? Number(value) || 0 : it.quantity;
-        const price = field === 'unitPrice' ? Number(value) || 0 : it.unitPrice;
+        const qty = Number(updated.quantity) || 0;
+        const price = Number(updated.unitPrice) || 0;
         updated.totalPrice = qty * price;
       }
       return updated;
@@ -407,8 +407,8 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
   };
 
   // Calculate live totals
-  const subtotalOriginal = items.reduce((acc, it) => acc + (it.quantity * (it.standardPrice || it.unitPrice)), 0);
-  const subtotal1 = items.reduce((acc, it) => acc + it.totalPrice, 0);
+  const subtotalOriginal = items.reduce((acc, it) => acc + ((Number(it.quantity) || 0) * (Number(it.standardPrice) || Number(it.unitPrice) || 0)), 0);
+  const subtotal1 = items.reduce((acc, it) => acc + (Number(it.totalPrice) || 0), 0);
   const subtotal2 = subtotal1 + (Number(accommodationFee) || 0);
   const ppnAmount = isPpnIncluded ? Math.round(subtotal2 * 0.11) : 0;
   const grandTotal = subtotal2 + ppnAmount;
@@ -1124,8 +1124,11 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   <span className="absolute left-3 top-2.5 text-slate-400 font-mono text-xs font-bold">Rp</span>
                   <input
                     type="number"
-                    value={negotiationTarget}
-                    onChange={(e) => setNegotiationTarget(e.target.value)}
+                    value={negotiationTarget === '0' ? '' : negotiationTarget}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setNegotiationTarget(raw);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -1317,8 +1320,18 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                         <input
                           type="number"
                           min="1"
-                          value={item.quantity}
-                          onChange={(e) => handleUpdateItem(item.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                          value={item.quantity === 0 || !item.quantity ? '' : item.quantity}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                            const val = raw === '' ? ('' as any) : parseInt(raw, 10);
+                            handleUpdateItem(item.id, 'quantity', val);
+                          }}
+                          onBlur={() => {
+                            if (!item.quantity || Number(item.quantity) < 1) {
+                              handleUpdateItem(item.id, 'quantity', 1);
+                            }
+                          }}
+                          placeholder="1"
                           className="w-14 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-1.5 py-1 text-center text-xs font-bold text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                           required
                         />
@@ -1338,8 +1351,13 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                       <td className="px-2.5 py-2 text-right border-r border-[#D8D2CB]/40">
                         <input
                           type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => handleUpdateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          value={item.unitPrice === 0 || !item.unitPrice ? '' : item.unitPrice}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                            const val = raw === '' ? ('' as any) : parseFloat(raw);
+                            handleUpdateItem(item.id, 'unitPrice', val);
+                          }}
+                          placeholder="0"
                           className="w-28 bg-[#EEEEEE]/50 border border-[#398AB9] rounded px-2 py-1 text-right text-xs font-mono font-bold text-[#1C658C] focus:ring-1 focus:ring-[#1C658C] outline-none"
                           required
                         />
@@ -1402,8 +1420,11 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   <label className="text-slate-700 font-medium">Biaya Akomodasi & Transportasi (Rp):</label>
                   <input
                     type="number"
-                    value={accommodationFee}
-                    onChange={(e) => setAccommodationFee(parseFloat(e.target.value) || 0)}
+                    value={accommodationFee === 0 || !accommodationFee ? '' : accommodationFee}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setAccommodationFee(raw === '' ? ('' as any) : parseFloat(raw));
+                    }}
                     className="w-36 bg-white border border-[#D8D2CB] rounded-lg px-2.5 py-1.5 text-right font-mono font-bold text-slate-900 outline-none"
                     placeholder="0"
                   />

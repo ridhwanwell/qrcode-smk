@@ -3,6 +3,37 @@ import { useAuth } from './AuthContext';
 import { supabase } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+const getCollectionItemKey = (i: any): string => {
+  return String(i?.id || i?.sphNumber || i?.workOrderNumber || i?.noLabel || i?.no_label || '').trim();
+};
+
+const getPersistedDeletedIds = (key: string, collName: string): Set<string> => {
+  const set = new Set<string>();
+  // Pre-seed known explicitly deleted schedule IDs requested by user
+  if (collName === 'schedules') {
+    set.add('SCH-007241');
+    set.add('SCH-594702');
+  }
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        arr.forEach(id => set.add(String(id).trim()));
+      }
+    }
+  } catch (_) {}
+  return set;
+};
+
+const persistDeletedId = (key: string, collName: string, id: string) => {
+  try {
+    const set = getPersistedDeletedIds(key, collName);
+    set.add(String(id).trim());
+    localStorage.setItem(key, JSON.stringify(Array.from(set)));
+  } catch (_) {}
+};
+
 /**
  * Universal React Hook for durable data persistence and live Realtime cross-device sync.
  * Connects directly to Supabase cloud table 'app_collections' from any device (laptop, mobile phone, tablet)
@@ -14,27 +45,31 @@ export function useSupabaseData<T extends { id: string }>(
 ) {
   const storageKey = `smk_supa_${collectionName}`;
   const initKey = `smk_inited_${collectionName}`;
+  const deletedKey = `smk_deleted_${collectionName}`;
 
   // Unique client instance ID to identify broadcast origin and avoid redundant self-refetches
   const clientIdRef = useRef<string>(`client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // 1. Instant load from local cache or initialFallback
+  // 1. Instant load from local cache or initialFallback with strict tombstone filtering
   const [data, setData] = useState<T[]>(() => {
+    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
+    const filterDeleted = (items: T[]) => items.filter(it => !deletedSet.has(getCollectionItemKey(it)));
     try {
       const isInited = localStorage.getItem(initKey) === 'true';
       const cached = localStorage.getItem(storageKey);
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
+          const cleaned = filterDeleted(parsed as T[]);
           // If already initialized, respect whatever is cached
-          if (isInited || parsed.length > 0) {
-            return parsed as T[];
+          if (isInited || cleaned.length > 0) {
+            return cleaned;
           }
         }
       }
     } catch (_) {}
-    return initialFallback;
+    return filterDeleted(initialFallback);
   });
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -44,13 +79,15 @@ export function useSupabaseData<T extends { id: string }>(
   dataRef.current = data;
 
   const updateCache = useCallback((nextItems: T[]) => {
-    setData(nextItems);
-    dataRef.current = nextItems;
+    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
+    const cleanItems = nextItems.filter(it => !deletedSet.has(getCollectionItemKey(it)));
+    setData(cleanItems);
+    dataRef.current = cleanItems;
     try {
-      localStorage.setItem(storageKey, JSON.stringify(nextItems));
+      localStorage.setItem(storageKey, JSON.stringify(cleanItems));
       localStorage.setItem(initKey, 'true');
     } catch (_) {}
-  }, [storageKey, initKey]);
+  }, [storageKey, initKey, deletedKey, collectionName]);
 
   const initialFallbackRef = useRef(initialFallback);
   initialFallbackRef.current = initialFallback;
@@ -75,6 +112,7 @@ export function useSupabaseData<T extends { id: string }>(
 
   // Direct fetch from Supabase (Works everywhere: mobile, tablet, laptop, Vercel, etc.)
   const fetchDirectFromSupabase = useCallback(async (): Promise<T[] | null> => {
+    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
     // 1. First priority: Direct Supabase client query
     try {
       const { data: supaRow, error } = await supabase
@@ -84,7 +122,7 @@ export function useSupabaseData<T extends { id: string }>(
         .maybeSingle();
 
       if (!error && supaRow && Array.isArray(supaRow.data)) {
-        return supaRow.data as T[];
+        return (supaRow.data as T[]).filter(it => !deletedSet.has(getCollectionItemKey(it)));
       }
     } catch (e) {
       console.warn(`[useSupabaseData] Direct fetch failed for ${collectionName}:`, e);
@@ -96,7 +134,7 @@ export function useSupabaseData<T extends { id: string }>(
       if (res.ok) {
         const json = await res.json();
         if (json && json.found === true && Array.isArray(json.items)) {
-          return json.items as T[];
+          return (json.items as T[]).filter(it => !deletedSet.has(getCollectionItemKey(it)));
         }
       }
     } catch (e) {
@@ -104,15 +142,18 @@ export function useSupabaseData<T extends { id: string }>(
     }
 
     return null;
-  }, [collectionName]);
+  }, [collectionName, deletedKey]);
 
   // Direct write to Supabase (Writes to both direct Supabase cloud table AND backend proxy)
   const saveToSupabase = useCallback(async (items: T[]) => {
+    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
+    const cleanItems = items.filter(it => !deletedSet.has(getCollectionItemKey(it)));
+
     // 1. Direct Supabase Cloud Table Upsert
     try {
       await supabase.from('app_collections').upsert({
         collection_name: collectionName,
-        data: items,
+        data: cleanItems,
         updated_at: new Date().toISOString()
       }, { onConflict: 'collection_name' });
     } catch (e) {
@@ -124,7 +165,7 @@ export function useSupabaseData<T extends { id: string }>(
       await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, replaceAll: true })
+        body: JSON.stringify({ items: cleanItems, replaceAll: true })
       });
     } catch (e) {
       console.warn(`[useSupabaseData] API Proxy save error on ${collectionName}:`, e);
@@ -132,7 +173,7 @@ export function useSupabaseData<T extends { id: string }>(
 
     // 3. Realtime Broadcast
     broadcastSync();
-  }, [collectionName, broadcastSync]);
+  }, [collectionName, broadcastSync, deletedKey]);
 
   // 2. Fetch from Supabase and set up Supabase Realtime channel
   useEffect(() => {
@@ -141,44 +182,16 @@ export function useSupabaseData<T extends { id: string }>(
 
     const loadData = async () => {
       try {
+        const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
         const serverItems = await fetchDirectFromSupabase();
 
         if (serverItems !== null) {
-          // If server has data, or server was explicitly initialized:
-          // Check if local cache has items that the server does not have
-          let localItems: T[] = [];
-          try {
-            const raw = localStorage.getItem(storageKey);
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) localItems = parsed;
-            }
-          } catch (_) {}
-
-          const getItemKey = (i: any) => i?.id || i?.sphNumber || i?.workOrderNumber || i?.noLabel || i?.no_label;
-          
-          // Identify any local items created on this device that are not yet on the server
-          const localOnlyItems = localItems.filter(loc => {
-            const lk = getItemKey(loc);
-            if (!lk) return false;
-            return !serverItems.some(srv => getItemKey(srv) === lk);
-          });
-
-          if (localOnlyItems.length > 0) {
-            // Local device has items that server doesn't have yet -> MERGE them together so no device loses input
-            console.log(`[useSupabaseData] Auto-merging ${localOnlyItems.length} local items with ${serverItems.length} server items for ${collectionName}...`);
-            const merged = [...serverItems, ...localOnlyItems];
-            if (isMounted) {
-              updateCache(merged);
-              setLoading(false);
-            }
-            await saveToSupabase(merged);
-          } else {
-            // Server has authentic data -> Server is the single source of truth across all devices
-            if (isMounted) {
-              updateCache(serverItems);
-              setLoading(false);
-            }
+          // Server is the authoritative single source of truth across all devices.
+          // Filter out any permanently deleted IDs and strictly update local cache.
+          const cleanServerItems = serverItems.filter(it => !deletedSet.has(getCollectionItemKey(it)));
+          if (isMounted) {
+            updateCache(cleanServerItems);
+            setLoading(false);
           }
           return;
         }
@@ -186,10 +199,11 @@ export function useSupabaseData<T extends { id: string }>(
         // If not found in database yet, check if initialized locally
         const isInited = localStorage.getItem(initKey) === 'true';
         if (!isInited && initialFallbackRef.current.length > 0) {
+          const cleanFallback = initialFallbackRef.current.filter(it => !deletedSet.has(getCollectionItemKey(it)));
           if (isMounted) {
-            updateCache(initialFallbackRef.current);
+            updateCache(cleanFallback);
           }
-          await saveToSupabase(initialFallbackRef.current);
+          await saveToSupabase(cleanFallback);
         }
       } catch (err) {
         console.warn(`[useSupabaseData] Error loading ${collectionName}:`, err);
@@ -230,8 +244,10 @@ export function useSupabaseData<T extends { id: string }>(
           if (row && row.collection_name === collectionName) {
             console.log(`[useSupabaseData] Realtime postgres_changes on app_collections for ${collectionName}`);
             if (Array.isArray(row.data)) {
+              const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
+              const cleanData = row.data.filter((it: any) => !deletedSet.has(getCollectionItemKey(it)));
               if (isMounted) {
-                updateCache(row.data);
+                updateCache(cleanData);
                 setLoading(false);
               }
             } else {
@@ -273,6 +289,22 @@ export function useSupabaseData<T extends { id: string }>(
           }
         }
       )
+      .on(
+        'broadcast',
+        { event: `deleted_${collectionName}` },
+        (msg: any) => {
+          const delId = msg?.payload?.deletedId;
+          if (delId) {
+            console.log(`[useSupabaseData] Broadcast delete received for ${delId} in ${collectionName}`);
+            persistDeletedId(deletedKey, collectionName, delId);
+            const current = dataRef.current;
+            const next = current.filter(i => getCollectionItemKey(i) !== delId);
+            if (isMounted) {
+              updateCache(next);
+            }
+          }
+        }
+      )
       .subscribe((status) => {
         if (isMounted) {
           setIsRealtimeConnected(status === 'SUBSCRIBED');
@@ -305,16 +337,13 @@ export function useSupabaseData<T extends { id: string }>(
       }
       channelRef.current = null;
     };
-  }, [collectionName, updateCache, initKey, fetchDirectFromSupabase, saveToSupabase]);
+  }, [collectionName, updateCache, initKey, fetchDirectFromSupabase, saveToSupabase, deletedKey]);
 
   // Add an item
   const add = async (item: T) => {
     const current = dataRef.current;
-    const targetId = item.id || (item as any).noLabel || (item as any).sphNumber;
-    const next = [item, ...current.filter(i => {
-      const curId = i.id || (i as any).noLabel || (i as any).sphNumber;
-      return curId !== targetId;
-    })];
+    const targetId = getCollectionItemKey(item);
+    const next = [item, ...current.filter(i => getCollectionItemKey(i) !== targetId)];
     updateCache(next);
     await saveToSupabase(next);
   };
@@ -322,33 +351,93 @@ export function useSupabaseData<T extends { id: string }>(
   // Update an item
   const update = async (item: T) => {
     const current = dataRef.current;
-    const targetId = item.id || (item as any).noLabel || (item as any).sphNumber;
+    const targetId = getCollectionItemKey(item);
     const next = current.map(i => {
-      const curId = i.id || (i as any).noLabel || (i as any).sphNumber;
-      return curId === targetId ? item : i;
+      return getCollectionItemKey(i) === targetId ? item : i;
     });
     updateCache(next);
     await saveToSupabase(next);
   };
 
-  // Remove an item
+  // Remove an item permanently with tombstone persistence and server purge
   const remove = async (id: string) => {
-    console.log(`[useSupabaseData] Deleting item ${id} from ${collectionName}`);
+    console.log(`[useSupabaseData] Permanently deleting item ${id} from ${collectionName}`);
+    // 1. Record tombstone locally immediately so it can never be resurrected
+    persistDeletedId(deletedKey, collectionName, id);
+    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
+
     const current = dataRef.current;
     const next = current.filter(i => {
-      const itemKey = i.id || (i as any).noLabel || (i as any).no_label || (i as any).sphNumber || (i as any).workOrderNumber;
-      return itemKey !== id;
+      const itemKey = getCollectionItemKey(i);
+      return itemKey !== id && !deletedSet.has(itemKey);
     });
     
     updateCache(next);
-    await saveToSupabase(next);
+
+    // 2. Call backend DELETE API proxy to remove from both labels and app_collections table
+    try {
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+    } catch (e) {
+      console.warn(`[useSupabaseData] Server DELETE API proxy error for ${id} in ${collectionName}:`, e);
+    }
+
+    // 3. Direct Supabase cloud table upsert
+    try {
+      await supabase.from('app_collections').upsert({
+        collection_name: collectionName,
+        data: next,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection_name' });
+    } catch (e) {
+      console.warn(`[useSupabaseData] Direct Supabase upsert error on delete in ${collectionName}:`, e);
+    }
+
+    // 4. Broadcast permanent deletion to all open tabs and connected devices
+    try {
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: `deleted_${collectionName}`,
+          payload: {
+            deletedId: id,
+            senderId: clientIdRef.current,
+            timestamp: Date.now()
+          }
+        });
+      }
+    } catch (_) {}
+
+    broadcastSync();
   };
 
   // Clear all items in collection
   const clearAll = async () => {
     console.log(`[useSupabaseData] Clearing all items from ${collectionName}`);
+    // Record all current items as deleted
+    dataRef.current.forEach(i => {
+      const key = getCollectionItemKey(i);
+      if (key) persistDeletedId(deletedKey, collectionName, key);
+    });
+
     updateCache([]);
-    await saveToSupabase([]);
+
+    try {
+      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'DELETE'
+      });
+    } catch (_) {}
+
+    try {
+      await supabase.from('app_collections').upsert({
+        collection_name: collectionName,
+        data: [],
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection_name' });
+    } catch (_) {}
+
+    broadcastSync();
   };
 
   // Force push all data currently in memory/localStorage to Supabase

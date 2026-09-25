@@ -73,20 +73,21 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
   };
 
   // Calculations for BAP and BASTP
-  const totalVolumePO = schedule.targetDevices.reduce((sum, d) => sum + (d.quantity || 1), 0);
-  const totalRealisasi = schedule.targetDevices.reduce((sum, d) => {
-    if (d.status === 'Pass' || d.status === 'Fail') {
-      return sum + (d.quantity || 1);
+  const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
+  const totalVolumePO = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
+  const totalRealisasi = targetDevices.reduce((sum, d) => {
+    if (d?.status === 'Pass' || d?.status === 'Fail') {
+      return sum + (d?.quantity || 1);
     }
     return sum;
   }, 0);
   const totalSisa = Math.max(0, totalVolumePO - totalRealisasi);
 
-  const laikPakaiCount = schedule.targetDevices.reduce((sum, d) => {
-    return d.status === 'Pass' ? sum + (d.quantity || 1) : sum;
+  const laikPakaiCount = targetDevices.reduce((sum, d) => {
+    return d?.status === 'Pass' ? sum + (d?.quantity || 1) : sum;
   }, 0);
-  const tidakLaikCount = schedule.targetDevices.reduce((sum, d) => {
-    return d.status === 'Fail' ? sum + (d.quantity || 1) : sum;
+  const tidakLaikCount = targetDevices.reduce((sum, d) => {
+    return d?.status === 'Fail' ? sum + (d?.quantity || 1) : sum;
   }, 0);
 
   const hospitalAddress = schedule.hospitalAddress || `${schedule.hospitalName}, ${schedule.hospitalCity}`;
@@ -143,7 +144,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
         totalSisa: totalSisa,
         laikPakaiCount: laikPakaiCount,
         tidakLaikCount: tidakLaikCount,
-        devices: schedule.targetDevices.map((d, i) => ({
+        devices: targetDevices.map((d, i) => ({
           no: i + 1,
           name: d.name,
           labelNumber: d.labelNumber || '-',
@@ -444,7 +445,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {schedule.targetDevices.map((d, idx) => (
+                  {targetDevices.map((d, idx) => (
                     <tr key={d.id} className="border-b border-slate-200">
                       <td className="p-2 border-r border-slate-300 text-center font-bold text-slate-600">{idx + 1}</td>
                       <td className="p-2 border-r border-slate-300 font-bold text-slate-900">{d.name}</td>
@@ -590,7 +591,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-400">
-                  {schedule.targetDevices.map((d, idx) => {
+                  {targetDevices.map((d, idx) => {
                     const isDone = d.status === 'Pass' || d.status === 'Fail';
                     const volPO = d.quantity || 1;
                     const volReal = isDone ? volPO : 0;
