@@ -12,16 +12,24 @@ import {
   Tag,
   AlertCircle
 } from 'lucide-react';
-import { CalibrationSchedule, DeviceSeliaItem, SeliaStatus } from '../types';
-import { ensureDeviceSeliaItems, TODAY_STR } from '../utils/helpers';
+import { CalibrationSchedule, DeviceSeliaItem, SeliaStatus, SphQuotation } from '../types';
+import { 
+  ensureDeviceSeliaItems, 
+  getScheduleDealPrefix, 
+  getScheduleDealNumbers, 
+  getScheduleLabelRange, 
+  TODAY_STR 
+} from '../utils/helpers';
 
 interface SeliaDashboardProps {
   schedules: CalibrationSchedule[];
+  sphList?: SphQuotation[];
   onUpdateSchedule: (schedule: CalibrationSchedule) => void;
 }
 
 export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
   schedules,
+  sphList = [],
   onUpdateSchedule
 }) => {
   // Completed / eligible schedules for Selia
@@ -68,7 +76,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
 
   // Helper to update individual tool status for a specific schedule
   const handleToolStatusChange = (targetItem: DeviceSeliaItem, parentSchedule: CalibrationSchedule, newStatus: SeliaStatus) => {
-    const scheduleItems = ensureDeviceSeliaItems(parentSchedule);
+    const scheduleItems = ensureDeviceSeliaItems(parentSchedule, sphList);
     const updatedItems = scheduleItems.map(i => {
       if (i.id === targetItem.id) {
         return {
@@ -94,7 +102,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
 
   // Helper to update individual tool notes for a specific schedule
   const handleToolNotesChange = (targetItem: DeviceSeliaItem, parentSchedule: CalibrationSchedule, newNotes: string) => {
-    const scheduleItems = ensureDeviceSeliaItems(parentSchedule);
+    const scheduleItems = ensureDeviceSeliaItems(parentSchedule, sphList);
     const updatedItems = scheduleItems.map(i => {
       if (i.id === targetItem.id) {
         return {
@@ -116,7 +124,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
 
   // Batch update for an entire RS schedule
   const handleBatchUpdateSchedule = (parentSchedule: CalibrationSchedule, targetStatus: SeliaStatus) => {
-    const scheduleItems = ensureDeviceSeliaItems(parentSchedule);
+    const scheduleItems = ensureDeviceSeliaItems(parentSchedule, sphList);
     const updatedItems = scheduleItems.map(i => ({
       ...i,
       seliaStatus: targetStatus,
@@ -139,7 +147,8 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
   // STAGE 2: HALAMAN DETAIL MONITORING SELIA PER RUMAH SAKIT
   // =========================================================
   if (activeSchedule) {
-    const items = ensureDeviceSeliaItems(activeSchedule);
+    const activeDealInfo = getScheduleDealNumbers(activeSchedule, sphList);
+    const items = ensureDeviceSeliaItems(activeSchedule, sphList);
     const totalRsItems = items.length;
     const countRsBelum = items.filter(i => i.seliaStatus === 'Belum Diselia').length;
     const countRsProses = items.filter(i => i.seliaStatus === 'Sedang Proses Selia').length;
@@ -154,14 +163,15 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
         (item.labelNumber && item.labelNumber.toLowerCase().includes(query)) ||
         (item.keterangan && item.keterangan.toLowerCase().includes(query)) ||
         (item.deviceName && item.deviceName.toLowerCase().includes(query)) ||
-        (item.unitTitle && item.unitTitle.toLowerCase().includes(query));
+        (item.unitTitle && item.unitTitle.toLowerCase().includes(query)) ||
+        activeDealInfo.boNumber.toLowerCase().includes(query);
 
       const matchesStatus = filterSeliaStatus === 'all' || item.seliaStatus === filterSeliaStatus;
 
       return matchesSearch && matchesStatus;
     });
 
-    const labelRangeText = activeSchedule.labelRange || (items.length > 0 ? `${items[0]?.labelNumber || '-'} s/d ${items[items.length - 1]?.labelNumber || '-'}` : '-');
+    const labelRangeText = getScheduleLabelRange(activeSchedule, sphList);
 
     return (
       <div className="space-y-6">
@@ -188,7 +198,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
           </button>
 
           <span className="text-xs font-mono text-slate-400">
-            Faskes ID: <strong className="text-white">{activeSchedule.hospitalName}</strong>
+            Faskes: <strong className="text-white">{activeSchedule.hospitalName}</strong>
           </span>
         </div>
 
@@ -205,11 +215,34 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
                     {activeSchedule.hospitalName}
                   </h2>
                   <span className="font-mono text-xs text-cyan-300 bg-cyan-950 px-3 py-1 rounded-full border border-cyan-500/40 font-bold">
-                    {activeSchedule.workOrderNumber}
+                    SPK: {activeSchedule.workOrderNumber}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 mt-1.5">
-                  <span>No. Label: <strong className="text-amber-300 font-mono text-sm">{labelRangeText}</strong></span>
+
+                {/* Nomor Dokumen BO, FP, KWP Terintegrasi */}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className="font-mono text-xs text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-500/40 font-bold flex items-center gap-1.5" title="Nomor Bukti Order">
+                    <span>BO:</span>
+                    <strong className="text-emerald-200">{activeDealInfo.boNumber}</strong>
+                  </span>
+                  <span className="font-mono text-xs text-teal-300 bg-teal-950/80 px-2.5 py-1 rounded-lg border border-teal-500/40 font-bold flex items-center gap-1.5" title="Nomor Faktur Penjualan">
+                    <span>FP:</span>
+                    <strong className="text-teal-200">{activeDealInfo.fpNumber}</strong>
+                  </span>
+                  <span className="font-mono text-xs text-cyan-300 bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/40 font-bold flex items-center gap-1.5" title="Nomor Kwitansi Penjualan">
+                    <span>KWP:</span>
+                    <strong className="text-cyan-200">{activeDealInfo.kwpNumber}</strong>
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 mt-2">
+                  <span className="flex items-center gap-1.5">
+                    <span>No. Label:</span>
+                    <strong className="text-amber-300 font-mono text-sm">{labelRangeText}</strong>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-950/80 border border-emerald-500/50 px-2 py-0.5 rounded-full font-mono font-bold">
+                      ✓ Disamakan dengan Dokumen Deal #{activeDealInfo.sequenceNumber}
+                    </span>
+                  </span>
                   <span>•</span>
                   <span>Total: <strong className="text-white font-mono">{totalRsItems} Label Alat</strong></span>
                 </div>
@@ -304,7 +337,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Cari No. Label atau Catatan Alat..."
+              placeholder={`Cari No. Label (${activeDealInfo.sequenceNumber}.xxxx) atau Catatan Alat...`}
               value={labelSearchQuery}
               onChange={(e) => setLabelSearchQuery(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
@@ -363,7 +396,14 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
               <thead>
                 <tr className="bg-slate-950/90 text-slate-400 border-b border-slate-800 font-bold text-[11px] uppercase tracking-wider">
                   <th className="py-3.5 px-3 text-center w-12">No</th>
-                  <th className="py-3.5 px-4 text-center w-48">No. Label</th>
+                  <th className="py-3.5 px-4 text-center w-52">
+                    <div className="flex flex-col items-center">
+                      <span>No. Label</span>
+                      <span className="text-[9px] text-emerald-400 font-normal font-mono normal-case tracking-normal">
+                        (Sinkron BO #{activeDealInfo.sequenceNumber})
+                      </span>
+                    </div>
+                  </th>
                   <th className="py-3.5 px-4 text-center min-w-[280px]">Status Selia Individual</th>
                   <th className="py-3.5 px-4 text-left">Catatan / Keterangan Alat</th>
                 </tr>
@@ -391,7 +431,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
                         {/* No Label Only */}
                         <td className="py-3 px-4 text-center">
                           <span 
-                            title={item.unitTitle || item.deviceName}
+                            title={`${item.unitTitle || item.deviceName} (Prefix disamakan dengan BO: ${activeDealInfo.boNumber})`}
                             className="font-mono text-sm font-black text-amber-300 bg-amber-950/50 px-3.5 py-1 rounded-lg border border-amber-500/40 inline-block shadow-xs tracking-wider"
                           >
                             {item.labelNumber || '-'}
@@ -469,12 +509,14 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
   const filteredSchedules = completedSchedules.filter(sch => {
     const q = rsSearchQuery.toLowerCase();
     if (!q) return true;
-    const items = ensureDeviceSeliaItems(sch);
+    const items = ensureDeviceSeliaItems(sch, sphList);
+    const deal = getScheduleDealNumbers(sch, sphList);
     const labelMatch = items.some(i => i.labelNumber && i.labelNumber.toLowerCase().includes(q));
     const rangeMatch = sch.labelRange && sch.labelRange.toLowerCase().includes(q);
     const hospitalMatch = sch.hospitalName.toLowerCase().includes(q);
     const spkMatch = sch.workOrderNumber.toLowerCase().includes(q);
-    return hospitalMatch || spkMatch || labelMatch || rangeMatch;
+    const boMatch = deal.boNumber.toLowerCase().includes(q) || deal.fpNumber.toLowerCase().includes(q) || deal.kwpNumber.toLowerCase().includes(q) || deal.sequenceNumber.includes(q);
+    return hospitalMatch || spkMatch || labelMatch || rangeMatch || boMatch;
   });
 
   return (
@@ -503,7 +545,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-0.5">
-              Pilih Rumah Sakit di bawah ini untuk mengelola monitoring <strong>Belum Selia</strong>, <strong>Proses Selia</strong>, dan <strong>Cetak Sertifikat</strong>.
+              Pilih Rumah Sakit di bawah ini untuk mengelola monitoring <strong>Belum Selia</strong>, <strong>Proses Selia</strong>, dan <strong>Cetak Sertifikat</strong>. Nomor label selalu diselaraskan dengan nomor dokumen BO, FP, dan KWP.
             </p>
           </div>
         </div>
@@ -515,7 +557,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Cari Nama Rumah Sakit, No. SPK, atau No. Label..."
+            placeholder="Cari Nama Rumah Sakit, No. BO / FP, No. SPK, atau No. Label..."
             value={rsSearchQuery}
             onChange={(e) => setRsSearchQuery(e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 shadow-inner"
@@ -530,14 +572,15 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
       {/* Grid of Hospital Cards (Initial Clean Overview) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredSchedules.map((schedule) => {
-          const items = ensureDeviceSeliaItems(schedule);
+          const dealInfo = getScheduleDealNumbers(schedule, sphList);
+          const items = ensureDeviceSeliaItems(schedule, sphList);
           const totalCount = items.length;
           const countBelum = items.filter(i => i.seliaStatus === 'Belum Diselia').length;
           const countProses = items.filter(i => i.seliaStatus === 'Sedang Proses Selia').length;
           const countCetak = items.filter(i => i.seliaStatus === 'Sudah Cetak Sertifikat').length;
           const percentCetak = totalCount > 0 ? Math.round((countCetak / totalCount) * 100) : 0;
 
-          const labelRangeText = schedule.labelRange || (items.length > 0 ? `${items[0]?.labelNumber || '-'} s/d ${items[items.length - 1]?.labelNumber || '-'}` : '-');
+          const labelRangeText = getScheduleLabelRange(schedule, sphList);
 
           return (
             <div
@@ -549,7 +592,7 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
 
               <div>
-                {/* Header: Name & SPK */}
+                {/* Header: Name & SPK & BO */}
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-start gap-3">
                     <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-xl group-hover:bg-cyan-500/20 transition-colors shrink-0 mt-0.5">
@@ -559,9 +602,14 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
                       <h3 className="font-black text-white text-base group-hover:text-cyan-300 transition-colors uppercase tracking-wide">
                         {schedule.hospitalName}
                       </h3>
-                      <span className="font-mono text-xs text-cyan-400 bg-cyan-950 px-2.5 py-0.5 rounded-full border border-cyan-500/30 font-bold inline-block mt-1">
-                        {schedule.workOrderNumber}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="font-mono text-[11px] text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded-md border border-cyan-500/30 font-bold inline-block">
+                          SPK: {schedule.workOrderNumber}
+                        </span>
+                        <span className="font-mono text-[11px] text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-500/30 font-bold inline-block" title="Nomor Dokumen Bukti Order">
+                          BO: {dealInfo.boNumber}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -575,16 +623,19 @@ export const SeliaDashboard: React.FC<SeliaDashboardProps> = ({
                   </span>
                 </div>
 
-                {/* No Label Range Highlight */}
-                <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 mb-4 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                {/* No Label Range Highlight - Matching BO / FP / KWP */}
+                <div className="bg-slate-950/90 p-3 rounded-xl border border-slate-800/80 mb-4 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Tag className="w-4 h-4 text-amber-400 shrink-0" />
                     <span className="text-xs text-slate-400">No. Label:</span>
                     <span className="font-mono text-sm font-black text-amber-300 tracking-wider">
                       {labelRangeText}
                     </span>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 rounded-md font-mono font-bold">
+                      ✓ Disamakan BO #{dealInfo.sequenceNumber}
+                    </span>
                   </div>
-                  <span className="text-xs font-mono font-bold text-slate-300 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">
+                  <span className="text-xs font-mono font-bold text-slate-300 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 shrink-0">
                     {totalCount} Label Alat
                   </span>
                 </div>

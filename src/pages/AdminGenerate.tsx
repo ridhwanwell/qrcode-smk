@@ -1,12 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle2, XCircle, Printer, AlertCircle, RefreshCw, LayoutTemplate, ExternalLink, FolderOpen, Building2 } from 'lucide-react';
+import { 
+  CheckCircle2, 
+  XCircle, 
+  Printer, 
+  AlertCircle, 
+  RefreshCw, 
+  LayoutTemplate, 
+  ExternalLink, 
+  FolderOpen, 
+  Building2, 
+  Plus, 
+  ArrowRight, 
+  Sparkles, 
+  Layers, 
+  Info 
+} from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
 import { fetchTemplateConfigs } from '../lib/templateStorage';
-import { saveFolderRsToSupabase, bulkSyncLabelsToSupabase } from '../lib/supabaseSync';
+import { saveFolderRsToSupabase, bulkSyncLabelsToSupabase, fetchFolderRsFromSupabase } from '../lib/supabaseSync';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 
 export interface LabelBatchCalculation {
@@ -17,20 +32,45 @@ export interface LabelBatchCalculation {
   spareWasBumped: boolean;
 }
 
+export interface ExistingFolderSummary {
+  prefix: string;
+  count: number;
+  maxNum: number;
+  maxLabel: string;
+  nextNum: number;
+  nextLabel: string;
+  namaRs: string | null;
+}
+
 /**
  * Kalkulasi jumlah lembar dan stiker A3+ (kapasitas 85 stiker/lembar).
  * Aturan:
- * - Dihitung dalam kelipatan 85 (85, 170, 255, 340, dst).
- * - Jika sisa/spare cadangan kurang dari 15 stiker (< 15), otomatis pembulatan ke kelipatan berikutnya (+85 lagi).
+ * - Jika applyA3Multiples = true:
+ *   Dihitung selalu dalam kelipatan 85 (85, 170, 255, 340, dst).
+ *   Jika sisa/spare cadangan kurang dari 15 stiker (< 15), otomatis pembulatan ke kelipatan berikutnya (+85 lagi).
  *   Contoh:
  *   - 114 label -> kelipatan 170 (2 lembar), spare = 56 (>= 15, tetap 170)
  *   - 155 label -> kelipatan 170 (2 lembar), spare = 15 (>= 15, tetap 170)
  *   - 161 label -> spare ke 170 hanya 9 (< 15), langsung dibulatkan ke 255 (3 lembar), spare = 94
  *   - 168 label -> spare ke 170 hanya 2 (< 15), langsung dibulatkan ke 255 (3 lembar), spare = 87
+ * - Jika applyA3Multiples = false (Mode Jumlah Pas / Penambahan Lanjutan):
+ *   Dihitung tepat sejumlah kebutuhan label (spareCount = 0).
+ *   Contoh: 1 label lanjutan (misal 16 s/d 16) -> tepat 1 stiker tanpa dipaksa 85 stiker.
  */
-export function calculateLabelBatches(baseCount: number): LabelBatchCalculation {
+export function calculateLabelBatches(baseCount: number, applyA3Multiples: boolean = true): LabelBatchCalculation {
   if (baseCount <= 0) {
     return { baseCount: 0, sheets: 0, totalCount: 0, spareCount: 0, spareWasBumped: false };
+  }
+  
+  if (!applyA3Multiples) {
+    const sheets = Math.ceil(baseCount / 85);
+    return {
+      baseCount,
+      sheets,
+      totalCount: baseCount,
+      spareCount: 0,
+      spareWasBumped: false
+    };
   }
   
   let sheets = Math.ceil(baseCount / 85);
@@ -69,10 +109,12 @@ interface LabelBreakdown {
   sheetsCount: number;
   spareWasBumped?: boolean;
   type: 'laik' | 'tidak_laik';
+  spareMode?: 'a3_multiples' | 'exact';
 }
 
 export default function AdminGenerate() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<'single' | 'bulk'>('single');
   
   // Single mode state
@@ -83,6 +125,12 @@ export default function AdminGenerate() {
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
   const [bulkType, setBulkType] = useState<'laik' | 'tidak_laik'>('laik');
+  // Spare mode: 'a3_multiples' (kelipatan 85) atau 'exact' (jumlah pas / lanjutan tanpa cadangan)
+  const [spareMode, setSpareMode] = useState<'a3_multiples' | 'exact'>('a3_multiples');
+
+  // Existing folder summaries for continuation / suggestion
+  const [existingFolders, setExistingFolders] = useState<ExistingFolderSummary[]>([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
 
   // Hospital Name state (Optional)
   const [namaRs, setNamaRs] = useState('');
@@ -140,7 +188,101 @@ export default function AdminGenerate() {
       }
     };
     fetchTemplatesAndSettings();
+    fetchExistingFoldersSummary();
   }, []);
+
+  // Read URL search params (e.g. from AdminLabels "+ Tambah / Lanjut Label" button)
+  useEffect(() => {
+    const pStart = searchParams.get('start');
+    const pEnd = searchParams.get('end');
+    const pNo = searchParams.get('no') || searchParams.get('label');
+    const pNamaRs = searchParams.get('namaRs');
+    const pMode = searchParams.get('mode');
+    const pSpare = searchParams.get('spareMode');
+
+    if (pStart) setStartLabel(pStart);
+    if (pEnd) setEndLabel(pEnd);
+    if (pNo) setNoLabel(pNo);
+    if (pNamaRs) setNamaRs(decodeURIComponent(pNamaRs));
+    if (pMode === 'bulk' || pMode === 'single') setMode(pMode);
+    if (pSpare === 'exact' || pSpare === 'a3_multiples') setSpareMode(pSpare);
+  }, [searchParams]);
+
+  // Fetch summary of all existing folders & their max label numbers
+  const fetchExistingFoldersSummary = async () => {
+    setLoadingFolders(true);
+    try {
+      const [sbLabelsRes, sbFolderMap, apiLabelsRes] = await Promise.all([
+        supabase
+          .from('labels')
+          .select('no_label, nama_rs')
+          .not('no_label', 'like', '__meta_%')
+          .not('no_label', 'like', '__aset_%')
+          .order('no_label', { ascending: true }),
+        fetchFolderRsFromSupabase(),
+        fetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => [])
+      ]);
+
+      const allItems: { noLabel: string; namaRs?: string | null }[] = [];
+      (sbLabelsRes.data || []).forEach((d: any) => {
+        if (d.no_label) allItems.push({ noLabel: d.no_label, namaRs: d.nama_rs });
+      });
+      (apiLabelsRes || []).forEach((d: any) => {
+        const key = d.noLabel || d.no_label;
+        if (key && !key.startsWith('__meta_') && !key.startsWith('__aset_')) {
+          allItems.push({ noLabel: key, namaRs: d.namaRs || d.nama_rs });
+        }
+      });
+
+      // Also check localStorage
+      try {
+        const local = JSON.parse(localStorage.getItem('smk_labels') || '[]');
+        local.forEach((l: any) => {
+          const k = l.noLabel || l.no_label;
+          if (k && !k.startsWith('__meta_') && !k.startsWith('__aset_')) {
+            allItems.push({ noLabel: k, namaRs: l.namaRs || l.nama_rs });
+          }
+        });
+      } catch (_) {}
+
+      // Group by 3-digit prefix
+      const map = new Map<string, { maxNum: number; count: number; namaRs: string | null }>();
+      allItems.forEach(it => {
+        const parts = it.noLabel.split('.');
+        if (parts.length === 2 && /^\d{3}$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
+          const prefix = parts[0];
+          const num = parseInt(parts[1], 10);
+          const curr = map.get(prefix) || { maxNum: 0, count: 0, namaRs: it.namaRs || sbFolderMap[prefix] || null };
+          if (num > curr.maxNum) curr.maxNum = num;
+          curr.count += 1;
+          if (!curr.namaRs && (it.namaRs || sbFolderMap[prefix])) {
+            curr.namaRs = it.namaRs || sbFolderMap[prefix] || null;
+          }
+          map.set(prefix, curr);
+        }
+      });
+
+      const summaries: ExistingFolderSummary[] = [];
+      map.forEach((val, prefix) => {
+        summaries.push({
+          prefix,
+          count: val.count,
+          maxNum: val.maxNum,
+          maxLabel: `${prefix}.${val.maxNum.toString().padStart(4, '0')}`,
+          nextNum: val.maxNum + 1,
+          nextLabel: `${prefix}.${(val.maxNum + 1).toString().padStart(4, '0')}`,
+          namaRs: val.namaRs
+        });
+      });
+
+      summaries.sort((a, b) => a.prefix.localeCompare(b.prefix, undefined, { numeric: true }));
+      setExistingFolders(summaries);
+    } catch (err) {
+      console.warn('Could not fetch existing folders summary:', err);
+    } finally {
+      setLoadingFolders(false);
+    }
+  };
 
   // Validate format XXX.XXXX
   const validateFormat = (value: string) => {
@@ -165,8 +307,31 @@ export default function AdminGenerate() {
     }
     const count = end.number - start.number + 1;
     if (count <= 0 || count > 2000) return null;
-    return calculateLabelBatches(count);
-  }, [mode, startLabel, endLabel]);
+    return calculateLabelBatches(count, spareMode === 'a3_multiples');
+  }, [mode, startLabel, endLabel, spareMode]);
+
+  // Detected folder info for currently typed label prefix
+  const activeInputPrefixInfo = React.useMemo(() => {
+    const raw = mode === 'single' ? noLabel : startLabel;
+    if (!raw) return null;
+    const cleanPrefix = raw.split('.')[0];
+    if (!cleanPrefix || cleanPrefix.length < 3) return null;
+    return existingFolders.find(f => f.prefix === cleanPrefix) || null;
+  }, [mode, noLabel, startLabel, existingFolders]);
+
+  const handleApplyContinuation = (folder: ExistingFolderSummary) => {
+    if (mode === 'single') {
+      setNoLabel(folder.nextLabel);
+    } else {
+      setStartLabel(folder.nextLabel);
+      setEndLabel(folder.nextLabel); // default to 1 sticker addition (misal 15 lanjut sampai 16)
+      setSpareMode('exact'); // Default to exact count for continuation so it won't force 85 stickers
+    }
+    if (folder.namaRs) {
+      setNamaRs(folder.namaRs);
+    }
+    setError('');
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +344,7 @@ export default function AdminGenerate() {
 
     if (mode === 'single') {
       if (!validateFormat(noLabel)) {
-        setError('Format No Label tidak valid.');
+        setError('Format No Label tidak valid. Harus format XXX.XXXX (contoh: 001.0016).');
         return;
       }
       const parsed = parseLabel(noLabel);
@@ -188,7 +353,7 @@ export default function AdminGenerate() {
       baseEndNum = parsed.number;
     } else {
       if (!validateFormat(startLabel) || !validateFormat(endLabel)) {
-        setError('Format No Label tidak valid.');
+        setError('Format No Label tidak valid. Harus format XXX.XXXX (contoh: 001.0016).');
         return;
       }
       const start = parseLabel(startLabel);
@@ -212,8 +377,8 @@ export default function AdminGenerate() {
       baseStartNum = start.number;
       baseEndNum = end.number;
 
-      // Hitung otomatis kelipatan 85 (85, 170, 255, 340, dst) dengan ambang batas spare < 15
-      batchCalc = calculateLabelBatches(count);
+      // Hitung otomatis berdasarkan spareMode ('a3_multiples' atau 'exact')
+      batchCalc = calculateLabelBatches(count, spareMode === 'a3_multiples');
     }
 
     const isSingleTidakLaik = mode === 'single' && singleType === 'tidak_laik';
@@ -259,7 +424,8 @@ export default function AdminGenerate() {
       totalCount: labelsToGenerate.length,
       sheetsCount: mode === 'bulk' ? batchCalc.sheets : 1,
       spareWasBumped: mode === 'bulk' ? batchCalc.spareWasBumped : false,
-      type: mode === 'bulk' ? bulkType : singleType
+      type: mode === 'bulk' ? bulkType : singleType,
+      spareMode: mode === 'bulk' ? spareMode : 'exact'
     };
 
     setLoading(true);
@@ -643,8 +809,54 @@ export default function AdminGenerate() {
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-8">
           <div className="flex-1 max-w-md">
             
+            {/* Folder Continuation Suggestions */}
+            {existingFolders.length > 0 && (
+              <div className="mb-6 p-4 bg-gradient-to-r from-amber-50/90 to-orange-50/70 border border-amber-200/80 rounded-2xl">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    Penambahan Stiker dari Seri yang Sudah Ada:
+                  </span>
+                  <span className="text-[10px] text-amber-700 bg-amber-100 font-bold px-2 py-0.5 rounded-full font-mono">
+                    {existingFolders.length} Seri Folder
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {existingFolders.map((f) => (
+                    <div 
+                      key={f.prefix} 
+                      className="flex items-center justify-between bg-white/90 hover:bg-white p-2 rounded-xl border border-amber-100/90 shadow-2xs transition-all text-xs"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="font-bold text-slate-900 font-mono flex items-center gap-1.5">
+                          <span>Folder {f.prefix}</span>
+                          <span className="text-[10px] font-normal text-slate-500 font-sans">
+                            ({f.count} label, terakhir <strong className="text-slate-800 font-mono">{f.maxLabel}</strong>)
+                          </span>
+                        </div>
+                        {f.namaRs && (
+                          <div className="text-[11px] text-amber-800 truncate" title={f.namaRs}>
+                            {f.namaRs}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyContinuation(f)}
+                        className="shrink-0 px-2.5 py-1 text-[11px] font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
+                        title={`Lanjutkan penambahan stiker mulai dari ${f.nextLabel}`}
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Lanjut {f.nextLabel}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Mode Switcher */}
-            <div className="flex p-1 bg-slate-100 rounded-lg mb-8">
+            <div className="flex p-1 bg-slate-100 rounded-lg mb-6">
               <button
                 type="button"
                 onClick={() => { setMode('single'); setError(''); }}
@@ -668,6 +880,31 @@ export default function AdminGenerate() {
             </div>
 
             <form onSubmit={handleGenerate} className="space-y-6">
+              {/* Intelligent Active Prefix Continuation Notification */}
+              {activeInputPrefixInfo && (
+                <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold">
+                      Seri Folder {activeInputPrefixInfo.prefix} {activeInputPrefixInfo.namaRs ? `(${activeInputPrefixInfo.namaRs})` : ''}
+                    </p>
+                    <p className="text-[11px] text-amber-900 mt-0.5">
+                      Nomor terakhir yang terdaftar adalah <strong className="font-mono">{activeInputPrefixInfo.maxLabel}</strong>.
+                    </p>
+                    {(mode === 'single' ? noLabel !== activeInputPrefixInfo.nextLabel : startLabel !== activeInputPrefixInfo.nextLabel) && (
+                      <button
+                        type="button"
+                        onClick={() => handleApplyContinuation(activeInputPrefixInfo)}
+                        className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 hover:text-black bg-amber-200/80 hover:bg-amber-300 px-2 py-0.5 rounded transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Gunakan nomor lanjutan: {activeInputPrefixInfo.nextLabel}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {mode === 'single' ? (
                 <div className="space-y-4">
                   <div>
@@ -681,7 +918,7 @@ export default function AdminGenerate() {
                         setError('');
                       }}
                       className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none font-mono"
-                      placeholder="002.0021"
+                      placeholder="001.0016"
                     />
                   </div>
 
@@ -751,6 +988,50 @@ export default function AdminGenerate() {
                     </div>
                   </div>
 
+                  {/* Spare Mode Selector */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Metode Cadangan (Spare)</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSpareMode('exact')}
+                        className={cn(
+                          "p-2.5 rounded-xl border text-left transition-all text-xs",
+                          spareMode === 'exact'
+                            ? "border-amber-500 bg-amber-50/80 text-amber-950 ring-2 ring-amber-500/20 shadow-2xs font-semibold"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold">🎯 Pas / Lanjutan (+0 Spare)</span>
+                          {spareMode === 'exact' && <span className="w-2 h-2 rounded-full bg-amber-500"></span>}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                          Tepat sesuai nomor (misal 15 lanjut sampai 16 hanya 1 stiker).
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSpareMode('a3_multiples')}
+                        className={cn(
+                          "p-2.5 rounded-xl border text-left transition-all text-xs",
+                          spareMode === 'a3_multiples'
+                            ? "border-blue-500 bg-blue-50/80 text-blue-950 ring-2 ring-blue-500/20 shadow-2xs font-semibold"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold">📦 Kelipatan 85 (A3+ Penuh)</span>
+                          {spareMode === 'a3_multiples' && <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                          Dibulatkan ke 85, 170, 255 dst (spare &lt; 15 dibulatkan ke atas).
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Label Awal</label>
@@ -763,7 +1044,7 @@ export default function AdminGenerate() {
                           setError('');
                         }}
                         className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none font-mono"
-                        placeholder="100.0001"
+                        placeholder="001.0016"
                       />
                     </div>
                     <div>
@@ -777,39 +1058,54 @@ export default function AdminGenerate() {
                           setError('');
                         }}
                         className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none font-mono"
-                        placeholder="100.0114"
+                        placeholder="001.0016"
                       />
                     </div>
                   </div>
 
                   {liveCalculation && (
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-950 space-y-2">
+                    <div className={cn(
+                      "border rounded-xl p-3.5 text-xs space-y-2",
+                      spareMode === 'exact' 
+                        ? "bg-gradient-to-r from-amber-50/90 to-orange-50/80 border-amber-200 text-amber-950"
+                        : "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-950"
+                    )}>
                       <div className="flex items-center justify-between font-bold">
                         <span className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-                          Simulasi Kelipatan 85 & Cadangan (A3+):
+                          <span className={cn("w-2 h-2 rounded-full animate-pulse", spareMode === 'exact' ? "bg-amber-600" : "bg-blue-600")}></span>
+                          {spareMode === 'exact' 
+                            ? 'Simulasi Penambahan Stiker Pas (Tanpa Cadangan):' 
+                            : 'Simulasi Kelipatan 85 & Cadangan (A3+):'}
                         </span>
-                        <span className="bg-blue-600 text-white font-mono px-2 py-0.5 rounded text-[11px] font-bold">
+                        <span className={cn("text-white font-mono px-2 py-0.5 rounded text-[11px] font-bold", spareMode === 'exact' ? "bg-amber-700" : "bg-blue-600")}>
                           {liveCalculation.sheets} Lembar • {liveCalculation.totalCount} Stiker
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 bg-white/70 p-2.5 rounded-lg border border-blue-100 text-center">
+                      <div className="grid grid-cols-3 gap-2 bg-white/70 p-2.5 rounded-lg border border-slate-200/60 text-center">
                         <div>
                           <span className="text-slate-500 text-[10px] block">Kebutuhan Pokok</span>
                           <span className="font-extrabold text-slate-900 font-mono text-xs">{liveCalculation.baseCount} Label</span>
                         </div>
                         <div>
                           <span className="text-slate-500 text-[10px] block">Cadangan (Spare)</span>
-                          <span className="font-extrabold text-amber-700 font-mono text-xs">+{liveCalculation.spareCount} Label</span>
+                          <span className={cn("font-extrabold font-mono text-xs", liveCalculation.spareCount > 0 ? "text-amber-700" : "text-slate-400")}>
+                            +{liveCalculation.spareCount} Label
+                          </span>
                         </div>
                         <div>
                           <span className="text-slate-500 text-[10px] block">Total Digenerate</span>
-                          <span className="font-extrabold text-blue-900 font-mono text-xs">{liveCalculation.totalCount} Stiker</span>
+                          <span className={cn("font-extrabold font-mono text-xs", spareMode === 'exact' ? "text-amber-900" : "text-blue-900")}>
+                            {liveCalculation.totalCount} Stiker
+                          </span>
                         </div>
                       </div>
 
-                      {liveCalculation.spareWasBumped ? (
+                      {spareMode === 'exact' ? (
+                        <p className="text-[11px] text-amber-900 bg-amber-100/70 border border-amber-200 p-2 rounded-md font-medium">
+                          🎯 <strong>Mode Pas Sesuai Permintaan:</strong> Menghasilkan tepat {liveCalculation.baseCount} stiker (mulai {startLabel} s/d {endLabel}) tanpa dipaksa menghasilkan cadangan 85 stiker.
+                        </p>
+                      ) : liveCalculation.spareWasBumped ? (
                         <p className="text-[11px] text-amber-900 bg-amber-100/70 border border-amber-200 p-2 rounded-md font-medium">
                           ⚠️ <strong>Otomatis Pembulatan ke Atas ({liveCalculation.totalCount} stiker / {liveCalculation.sheets} lembar):</strong> Karena sisa spare kurang dari 15 stiker, otomatis digenapkan ke kelipatan 85 berikutnya (+{liveCalculation.spareCount} cadangan {bulkType === 'laik' ? 'Laik Pakai' : 'Tidak Laik'}).
                         </p>
@@ -897,7 +1193,9 @@ export default function AdminGenerate() {
             {breakdownInfo && (
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
                 <h4 className="font-bold text-slate-800 text-sm flex items-center justify-between">
-                  <span>Rincian Komposisi Label (Kelipatan 85 / Lembar A3+)</span>
+                  <span>
+                    Rincian Komposisi Label {breakdownInfo.spareMode === 'exact' ? '(Mode Pas Sesuai Permintaan)' : '(Kelipatan 85 / Lembar A3+)'}
+                  </span>
                   <span className="text-xs font-mono bg-slate-900 text-amber-400 px-2.5 py-1 rounded-lg font-bold">
                     {breakdownInfo.totalCount} Total Stiker ({breakdownInfo.sheetsCount} Lembar)
                   </span>

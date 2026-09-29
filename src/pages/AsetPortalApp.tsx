@@ -47,7 +47,8 @@ import {
   assignDeviceLabels, 
   extractSphPrefix, 
   generateSpkNumberFromSph, 
-  generateBapNumberFromSph 
+  generateBapNumberFromSph,
+  ensureDeviceSeliaItems
 } from '../utils/helpers';
 import { SPREADSHEET_CALIBRATORS, OFFICIAL_TABLETS } from '../data/spreadsheetCalibrators';
 import { 
@@ -67,7 +68,7 @@ import { useSupabaseData } from '../lib/useSupabaseData';
 import { useAuth } from '../lib/AuthContext';
 import { LoginPage } from './AsetLoginPage';
 import { BapModal } from '../components/BapModal';
-import { createBapFromSph, createBapFromSchedule } from '../utils/bapHelpers';
+import { createBapFromSph, createBapFromSchedule, getBapPoOptionsFromSph } from '../utils/bapHelpers';
 
 export default function App() {
   const { user } = useAuth();
@@ -411,24 +412,23 @@ function AsetPortalMain() {
 
   // Helper to ensure an approved/deal SPH enters calibration scheduling
   const syncSphToSchedule = (sph: SphQuotation) => {
-    const spkNum = generateSpkNumberFromSph(sph.sphNumber);
-    const bapNum = generateBapNumberFromSph(sph.sphNumber);
+    const bapOptions = getBapPoOptionsFromSph(sph);
+    const sphPrefix = bapOptions.sequenceNumber; // 3 digits matching BO, FP, KWP
+    const spkNum = generateSpkNumberFromSph(sph);
+    const bapNum = generateBapNumberFromSph(sph);
+
+    const totalUnits = sph.items.reduce((sum, it) => sum + (it.quantity || 1), 0);
+    const labelRange = calculateLabelRange(sphPrefix, 1, Math.max(1, totalUnits));
 
     // Check if schedule for this SPH already exists
     const existingSch = schedules.find(s => 
+      (s.sphId && s.sphId === sph.id) ||
+      (sph.sphNumber && s.sphNumber === sph.sphNumber) ||
       (sph.sphNumber && s.notes?.includes(sph.sphNumber)) ||
       (spkNum && s.workOrderNumber === spkNum) ||
-      (bapNum && s.bapNumber === bapNum)
+      (bapNum && s.bapNumber === bapNum) ||
+      (s.hospitalName && sph.hospitalName && s.hospitalName.toLowerCase() === sph.hospitalName.toLowerCase())
     );
-
-    if (existingSch) {
-      return existingSch;
-    }
-
-    // Extract 3 initial digits from SPH number (e.g. "045/SMK-SPH/VII-2026" -> "045")
-    const sphPrefix = extractSphPrefix(sph.sphNumber);
-    const totalUnits = sph.items.reduce((sum, it) => sum + (it.quantity || 1), 0);
-    const labelRange = calculateLabelRange(sphPrefix, 1, Math.max(1, totalUnits));
 
     const targetDevicesWithLabels = assignDeviceLabels(
       sph.items.map((it, idx) => ({
@@ -445,10 +445,36 @@ function AsetPortalMain() {
       1
     );
 
+    if (existingSch) {
+      const updatedSchedule: CalibrationSchedule = {
+        ...existingSch,
+        sphId: sph.id,
+        sphNumber: sph.sphNumber,
+        hospitalCode: sphPrefix,
+        boNumber: bapOptions.boNumber,
+        fpNumber: bapOptions.fpNumber,
+        kwpNumber: bapOptions.kwpNumber,
+        bapNumber: existingSch.bapNumber || bapNum,
+        labelStart: labelRange.startLabel,
+        labelEnd: labelRange.endLabel,
+        labelRange: labelRange.displayRange,
+        targetDevices: targetDevicesWithLabels,
+        notes: `Otomatis disinkronkan dari SPH Deal No. ${sph.sphNumber}. No. BO: ${bapOptions.boNumber}. Label teralokasi: ${labelRange.displayRange}.`
+      };
+      updatedSchedule.seliaItems = ensureDeviceSeliaItems(updatedSchedule, sphList);
+      updateSchedule(updatedSchedule);
+      return updatedSchedule;
+    }
+
     const newSchedule: CalibrationSchedule = {
       id: `SCH-${Date.now().toString().slice(-6)}`,
-      workOrderNumber: generateSpkNumberFromSph(sph.sphNumber),
-      bapNumber: generateBapNumberFromSph(sph.sphNumber),
+      sphId: sph.id,
+      sphNumber: sph.sphNumber,
+      workOrderNumber: spkNum,
+      bapNumber: bapNum,
+      boNumber: bapOptions.boNumber,
+      fpNumber: bapOptions.fpNumber,
+      kwpNumber: bapOptions.kwpNumber,
       hospitalId: sph.hospitalId || `RS-${Date.now().toString().slice(-4)}`,
       hospitalCode: sphPrefix,
       hospitalName: sph.hospitalName,
@@ -479,9 +505,10 @@ function AsetPortalMain() {
       progressPercent: 0,
       createdAt: TODAY_STR,
       remindersSentCount: 0,
-      notes: `Otomatis dijadwalkan dari SPH Deal No. ${sph.sphNumber}. Label teralokasi: ${labelRange.displayRange}. Nilai Kontrak: Rp ${sph.grandTotal.toLocaleString('id-ID')}`
+      notes: `Otomatis dijadwalkan dari SPH Deal No. ${sph.sphNumber}. No. BO: ${bapOptions.boNumber}. Label teralokasi: ${labelRange.displayRange}. Nilai Kontrak: Rp ${sph.grandTotal.toLocaleString('id-ID')}`
     };
 
+    newSchedule.seliaItems = ensureDeviceSeliaItems(newSchedule, sphList);
     addSchedule(newSchedule);
     return newSchedule;
   };
@@ -1071,6 +1098,7 @@ function AsetPortalMain() {
             >
               <SeliaDashboard
                 schedules={effectiveSchedules}
+                sphList={sphList}
                 onUpdateSchedule={updateSchedule}
               />
             </motion.div>

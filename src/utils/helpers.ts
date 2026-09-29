@@ -1,4 +1,4 @@
-import { CalibrationSchedule, AutomaticReminder, UrgencyLevel, Hospital, MedicalDeviceToCalibrate, DeviceSeliaItem } from '../types';
+import { CalibrationSchedule, AutomaticReminder, UrgencyLevel, Hospital, MedicalDeviceToCalibrate, DeviceSeliaItem, SphQuotation } from '../types';
 
 // ==========================================
 // 3-DIGIT SPH PREFIX & LABEL / DOCUMENT NUMBER SYSTEM
@@ -401,8 +401,141 @@ ${devicesStr || '• Belum ada alat spesifik terdaftar'}
 _Pesan otomatis Sistem Manajemen Aset & Kalibrasi Medis PT Sarana Medika Kalibrasi._`;
 }
 
-export function ensureDeviceSeliaItems(schedule: CalibrationSchedule): DeviceSeliaItem[] {
+/**
+ * Resolves the official 3-digit prefix matching BO, FP, KWP documents for a schedule.
+ * Selia Dashboard label numbers (e.g. 074.0001) must strictly match the 3 digits of BO, FP, KWP.
+ */
+export function getScheduleDealPrefix(schedule: CalibrationSchedule, sphList: SphQuotation[] = []): string {
+  // 1. Direct BO / FP / KWP numbers on schedule
+  if (schedule.boNumber) {
+    const m = schedule.boNumber.match(/^(\d{1,3})/);
+    if (m) return m[1].padStart(3, '0');
+  }
+  if (schedule.fpNumber) {
+    const m = schedule.fpNumber.match(/^(\d{1,3})/);
+    if (m) return m[1].padStart(3, '0');
+  }
+  if (schedule.kwpNumber) {
+    const m = schedule.kwpNumber.match(/^(\d{1,3})/);
+    if (m) return m[1].padStart(3, '0');
+  }
+
+  // 2. Linked SPH deal data or SPH number
+  if (sphList && sphList.length > 0) {
+    const linkedSph = sphList.find(s => 
+      (schedule.sphId && s.id === schedule.sphId) ||
+      (schedule.sphNumber && s.sphNumber === schedule.sphNumber) ||
+      (schedule.notes && s.sphNumber && schedule.notes.includes(s.sphNumber)) ||
+      (schedule.hospitalName && s.hospitalName && s.hospitalName.trim().toLowerCase() === schedule.hospitalName.trim().toLowerCase()) ||
+      (schedule.hospitalId && s.hospitalId && s.hospitalId === schedule.hospitalId)
+    );
+
+    if (linkedSph) {
+      if (linkedSph.dealData?.sequenceNumber) {
+        return String(linkedSph.dealData.sequenceNumber).padStart(3, '0');
+      }
+      if (linkedSph.dealData?.boNumber) {
+        const m = linkedSph.dealData.boNumber.match(/^(\d{1,3})/);
+        if (m) return m[1].padStart(3, '0');
+      }
+      if (linkedSph.sphNumber) {
+        return extractSphPrefix(linkedSph.sphNumber);
+      }
+    }
+  }
+
+  // 3. schedule.sphNumber if set
+  if (schedule.sphNumber) {
+    return extractSphPrefix(schedule.sphNumber);
+  }
+
+  // 4. BAP number (e.g. "045/SMK/BAP/VII/2026" or "021/SMK/BAP/VIII/2026")
+  if (schedule.bapNumber) {
+    const m = schedule.bapNumber.match(/^(\d{1,3})/);
+    if (m) return m[1].padStart(3, '0');
+  }
+
+  // 5. Hospital code if not the placeholder '100'
+  if (schedule.hospitalCode && schedule.hospitalCode !== '100') {
+    return extractSphPrefix(schedule.hospitalCode);
+  }
+
+  // 6. Work order / SPK number (e.g. "045/SMK-SPK/..." or "SPK/SMK/2026/08/021" -> "021")
+  if (schedule.workOrderNumber) {
+    const leading = schedule.workOrderNumber.match(/^(\d{1,3})/);
+    if (leading) return leading[1].padStart(3, '0');
+    const trailing = schedule.workOrderNumber.match(/\/(\d{1,3})$/);
+    if (trailing) return trailing[1].padStart(3, '0');
+  }
+
+  // 7. Check notes for any SPH reference
+  if (schedule.notes) {
+    const noteSph = schedule.notes.match(/(\d{3})\/SMK-SPH/i);
+    if (noteSph) return noteSph[1].padStart(3, '0');
+  }
+
+  return schedule.hospitalCode ? extractSphPrefix(schedule.hospitalCode) : '001';
+}
+
+/**
+ * Derives full BO, FP, KWP documents info for a schedule so they are always in sync.
+ */
+export function getScheduleDealNumbers(schedule: CalibrationSchedule, sphList: SphQuotation[] = []) {
+  const prefix = getScheduleDealPrefix(schedule, sphList);
+  
+  let romanMonth = 'IX';
+  let year = new Date().getFullYear();
+
+  const refStr = schedule.boNumber || schedule.bapNumber || schedule.workOrderNumber || '';
+  const suffixMatch = refStr.match(/\/([I|V|X|L|C|D|M]+)[-\/](\d{4})/i);
+  if (suffixMatch) {
+    romanMonth = suffixMatch[1].toUpperCase();
+    year = parseInt(suffixMatch[2], 10);
+  } else if (schedule.scheduledDate) {
+    const d = new Date(schedule.scheduledDate);
+    if (!isNaN(d.getTime())) {
+      const romanMonths = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+      romanMonth = romanMonths[d.getMonth()] || 'IX';
+      year = d.getFullYear();
+    }
+  }
+
+  const boNumber = schedule.boNumber || `${prefix}/SMK-BO/${romanMonth}-${year}`;
+  const fpNumber = schedule.fpNumber || `${prefix}/SMK-FP/${romanMonth}-${year}`;
+  const kwpNumber = schedule.kwpNumber || `${prefix}/SMK-KWP/${romanMonth}-${year}`;
+
+  return {
+    sequenceNumber: prefix,
+    romanMonth,
+    year,
+    boNumber,
+    fpNumber,
+    kwpNumber
+  };
+}
+
+export function ensureDeviceSeliaItems(schedule: CalibrationSchedule, sphList: SphQuotation[] = []): DeviceSeliaItem[] {
+  const expectedPrefix = getScheduleDealPrefix(schedule, sphList);
+
   if (schedule.seliaItems && schedule.seliaItems.length > 0) {
+    // Check if any existing item has a mismatched prefix (e.g. old "100.xxxx" when BO/FP is "045" or "074")
+    const needsPrefixSync = schedule.seliaItems.some(i => {
+      if (!i.labelNumber) return true;
+      const curPrefix = i.labelNumber.split('.')[0];
+      return curPrefix !== expectedPrefix;
+    });
+
+    if (needsPrefixSync) {
+      return schedule.seliaItems.map((item, idx) => {
+        const parts = (item.labelNumber || '').split('.');
+        const seq = parts.length > 1 ? parts[1] : String(item.unitNo || (idx + 1)).padStart(4, '0');
+        return {
+          ...item,
+          labelNumber: `${expectedPrefix}.${seq}`
+        };
+      });
+    }
+
     return schedule.seliaItems;
   }
 
@@ -413,7 +546,7 @@ export function ensureDeviceSeliaItems(schedule: CalibrationSchedule): DeviceSel
   targetDevices.forEach(d => {
     const qty = Math.max(1, d.quantity || 1);
     const startSeq = d.labelSequenceStart || schedule.labelSequenceStart || 1;
-    const hospitalCode = schedule.hospitalCode || '100';
+    const hospitalCode = expectedPrefix;
 
     for (let i = 1; i <= qty; i++) {
       const unitSeq = startSeq + i - 1;
@@ -422,7 +555,7 @@ export function ensureDeviceSeliaItems(schedule: CalibrationSchedule): DeviceSel
       const serialNumber = qty > 1 && d.serialNumber ? `${d.serialNumber}-${i}` : (d.serialNumber || '-');
 
       items.push({
-        id: `selia-${d.id}-${i}`,
+        id: `selia-${schedule.id || 'sch'}-${d.id}-${i}`,
         unitNo: globalUnitCounter++,
         parentDeviceId: d.id,
         deviceName: d.name,
@@ -440,5 +573,13 @@ export function ensureDeviceSeliaItems(schedule: CalibrationSchedule): DeviceSel
   });
 
   return items;
+}
+
+export function getScheduleLabelRange(schedule: CalibrationSchedule, sphList: SphQuotation[] = []): string {
+  const items = ensureDeviceSeliaItems(schedule, sphList);
+  if (items.length === 0) return schedule.labelRange || '-';
+  const first = items[0]?.labelNumber || '-';
+  const last = items[items.length - 1]?.labelNumber || '-';
+  return first === last ? first : `${first} s/d ${last}`;
 }
 

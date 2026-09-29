@@ -71,6 +71,11 @@ export interface CalibrationSchedule {
   workOrderNumber: string;
   bapNumber?: string;          // Nomor Berita Acara Pekerjaan e.g. 021/SMK/BAP/VIII/2026
   bastpNumber?: string;        // Nomor Berita Acara Serah Terima Pekerjaan / Kalibrasi
+  boNumber?: string;           // Nomor Bukti Order e.g. 074/SMK-BO/IX-2026
+  fpNumber?: string;           // Nomor Faktur Penjualan e.g. 074/SMK-FP/IX-2026
+  kwpNumber?: string;          // Nomor Kwitansi Penjualan e.g. 074/SMK-KWP/IX-2026
+  sphNumber?: string;          // Nomor Surat Penawaran Harga e.g. 045/SMK-SPH/VII-2026
+  sphId?: string;              // ID referensi SPH
   poContractNumber?: string;   // Nomor PO / Kontrak dari Rumah Sakit
   poDate?: string;             // Tanggal PO / Kontrak
   hospitalId: string;
