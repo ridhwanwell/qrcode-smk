@@ -9,6 +9,52 @@ import { fetchTemplateConfigs } from '../lib/templateStorage';
 import { saveFolderRsToSupabase, bulkSyncLabelsToSupabase } from '../lib/supabaseSync';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 
+export interface LabelBatchCalculation {
+  baseCount: number;
+  sheets: number;
+  totalCount: number;
+  spareCount: number;
+  spareWasBumped: boolean;
+}
+
+/**
+ * Kalkulasi jumlah lembar dan stiker A3+ (kapasitas 85 stiker/lembar).
+ * Aturan:
+ * - Dihitung dalam kelipatan 85 (85, 170, 255, 340, dst).
+ * - Jika sisa/spare cadangan kurang dari 15 stiker (< 15), otomatis pembulatan ke kelipatan berikutnya (+85 lagi).
+ *   Contoh:
+ *   - 114 label -> kelipatan 170 (2 lembar), spare = 56 (>= 15, tetap 170)
+ *   - 155 label -> kelipatan 170 (2 lembar), spare = 15 (>= 15, tetap 170)
+ *   - 161 label -> spare ke 170 hanya 9 (< 15), langsung dibulatkan ke 255 (3 lembar), spare = 94
+ *   - 168 label -> spare ke 170 hanya 2 (< 15), langsung dibulatkan ke 255 (3 lembar), spare = 87
+ */
+export function calculateLabelBatches(baseCount: number): LabelBatchCalculation {
+  if (baseCount <= 0) {
+    return { baseCount: 0, sheets: 0, totalCount: 0, spareCount: 0, spareWasBumped: false };
+  }
+  
+  let sheets = Math.ceil(baseCount / 85);
+  let totalCount = sheets * 85;
+  let spareCount = totalCount - baseCount;
+  
+  let spareWasBumped = false;
+  // Jika sisa / spare kurang dari 15, langsung otomatis pembulatan lagi ke atasnya
+  if (spareCount < 15) {
+    sheets += 1;
+    totalCount = sheets * 85;
+    spareCount = totalCount - baseCount;
+    spareWasBumped = true;
+  }
+  
+  return {
+    baseCount,
+    sheets,
+    totalCount,
+    spareCount,
+    spareWasBumped
+  };
+}
+
 interface LabelBreakdown {
   baseRangeStart: string;
   baseRangeEnd: string;
@@ -20,6 +66,9 @@ interface LabelBreakdown {
   extraTidakLaikEnd: string;
   extraTidakLaikCount: number;
   totalCount: number;
+  sheetsCount: number;
+  spareWasBumped?: boolean;
+  type: 'laik' | 'tidak_laik';
 }
 
 export default function AdminGenerate() {
@@ -33,6 +82,7 @@ export default function AdminGenerate() {
   // Bulk mode state
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
+  const [bulkType, setBulkType] = useState<'laik' | 'tidak_laik'>('laik');
 
   // Hospital Name state (Optional)
   const [namaRs, setNamaRs] = useState('');
@@ -102,6 +152,22 @@ export default function AdminGenerate() {
     return { prefix: parts[0] + '.', number: parseInt(parts[1], 10) };
   };
 
+  // Live calculation of A3+ sheets and spare when user is typing in bulk mode
+  const liveCalculation = React.useMemo(() => {
+    if (mode !== 'bulk') return null;
+    if (!validateFormat(startLabel) || !validateFormat(endLabel)) {
+      return null;
+    }
+    const start = parseLabel(startLabel);
+    const end = parseLabel(endLabel);
+    if (start.prefix !== end.prefix || start.number > end.number) {
+      return null;
+    }
+    const count = end.number - start.number + 1;
+    if (count <= 0 || count > 2000) return null;
+    return calculateLabelBatches(count);
+  }, [mode, startLabel, endLabel]);
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -109,6 +175,7 @@ export default function AdminGenerate() {
     let prefix = '033.';
     let baseStartNum = 1;
     let baseEndNum = 1;
+    let batchCalc: LabelBatchCalculation = { baseCount: 1, sheets: 1, totalCount: 1, spareCount: 0, spareWasBumped: false };
 
     if (mode === 'single') {
       if (!validateFormat(noLabel)) {
@@ -144,38 +211,40 @@ export default function AdminGenerate() {
       prefix = start.prefix;
       baseStartNum = start.number;
       baseEndNum = end.number;
+
+      // Hitung otomatis kelipatan 85 (85, 170, 255, 340, dst) dengan ambang batas spare < 15
+      batchCalc = calculateLabelBatches(count);
     }
 
-    // 1. Primary requested Laik Pakai labels
+    const isSingleTidakLaik = mode === 'single' && singleType === 'tidak_laik';
+    const isBulkTidakLaik = mode === 'bulk' && bulkType === 'tidak_laik';
+    const isTargetTidakLaik = isSingleTidakLaik || isBulkTidakLaik;
+
+    // 1. Primary requested labels
     const baseLabels: string[] = [];
     for (let i = baseStartNum; i <= baseEndNum; i++) {
       baseLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
     }
 
-    // 2. Auto append 10 extra Laik Pakai labels (cadangan non BAP) ONLY if NOT single mode
+    // 2. Extra Spare labels to fill multiples of 85 (85, 170, 255, 340, ...)
+    // Sesuai aturan: semua cadangan adalah Laik Pakai (kecuali jika batch sengaja dipilih Tidak Laik Pakai)
     const extraLaikLabels: string[] = [];
-    if (mode !== 'single') {
-      const extraLaikStartNum = baseEndNum + 1;
-      const extraLaikEndNum = baseEndNum + 10;
-      for (let i = extraLaikStartNum; i <= extraLaikEndNum; i++) {
-        extraLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
-      }
-    }
-
-    // 3. Auto append 10 extra Tidak Laik Pakai labels ONLY if NOT single mode
     const extraTidakLaikLabels: string[] = [];
-    if (mode !== 'single') {
-      const extraLaikEndNum = baseEndNum + 10;
-      const extraTidakLaikStartNum = extraLaikEndNum + 1;
-      const extraTidakLaikEndNum = extraLaikEndNum + 10;
-      for (let i = extraTidakLaikStartNum; i <= extraTidakLaikEndNum; i++) {
-        extraTidakLaikLabels.push(`${prefix}${i.toString().padStart(4, '0')}`);
+
+    if (mode !== 'single' && batchCalc.spareCount > 0) {
+      const extraStartNum = baseEndNum + 1;
+      const extraEndNum = baseEndNum + batchCalc.spareCount;
+      for (let i = extraStartNum; i <= extraEndNum; i++) {
+        const lbl = `${prefix}${i.toString().padStart(4, '0')}`;
+        if (isBulkTidakLaik) {
+          extraTidakLaikLabels.push(lbl);
+        } else {
+          extraLaikLabels.push(lbl);
+        }
       }
     }
 
     const labelsToGenerate = [...baseLabels, ...extraLaikLabels, ...extraTidakLaikLabels];
-
-    const isSingleTidakLaik = mode === 'single' && singleType === 'tidak_laik';
 
     const currentBreakdown: LabelBreakdown = {
       baseRangeStart: isSingleTidakLaik ? '' : (baseLabels[0] || ''),
@@ -186,8 +255,11 @@ export default function AdminGenerate() {
       extraLaikCount: extraLaikLabels.length,
       extraTidakLaikStart: isSingleTidakLaik ? (baseLabels[0] || '') : (extraTidakLaikLabels.length > 0 ? extraTidakLaikLabels[0] : ''),
       extraTidakLaikEnd: isSingleTidakLaik ? (baseLabels[baseLabels.length - 1] || '') : (extraTidakLaikLabels.length > 0 ? extraTidakLaikLabels[extraTidakLaikLabels.length - 1] : ''),
-      extraTidakLaikCount: isSingleTidakLaik ? baseLabels.length : extraTidakLaikLabels.length,
-      totalCount: labelsToGenerate.length
+      extraTidakLaikCount: isSingleTidakLaik ? 1 : extraTidakLaikLabels.length,
+      totalCount: labelsToGenerate.length,
+      sheetsCount: mode === 'bulk' ? batchCalc.sheets : 1,
+      spareWasBumped: mode === 'bulk' ? batchCalc.spareWasBumped : false,
+      type: mode === 'bulk' ? bulkType : singleType
     };
 
     setLoading(true);
@@ -200,7 +272,7 @@ export default function AdminGenerate() {
         ...baseLabels.map(lbl => ({
           noLabel: lbl,
           no_label: lbl,
-          status: isSingleTidakLaik ? 'Tidak Laik Pakai' : 'Menunggu Sertifikat',
+          status: isTargetTidakLaik ? 'Tidak Laik Pakai' : 'Menunggu Sertifikat',
           namaRs: cleanNamaRs,
           nama_rs: cleanNamaRs
         })),
@@ -337,9 +409,25 @@ export default function AdminGenerate() {
 
       const isBulkA3 = (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus';
 
-      const cutoffTidakLaikIndex = breakdownInfo && breakdownInfo.extraTidakLaikCount > 0
-        ? breakdownInfo.baseCount + breakdownInfo.extraLaikCount 
-        : (mode === 'single' ? generatedLabels.length : generatedLabels.length - 10);
+      let isAllTidakLaik = false;
+      let cutoffTidakLaikIndex = generatedLabels.length;
+
+      if (breakdownInfo) {
+        if (breakdownInfo.type === 'tidak_laik') {
+          isAllTidakLaik = true;
+          cutoffTidakLaikIndex = 0;
+        } else if (breakdownInfo.extraTidakLaikCount > 0) {
+          cutoffTidakLaikIndex = breakdownInfo.baseCount + breakdownInfo.extraLaikCount;
+        }
+      } else {
+        if (mode === 'single' && singleType === 'tidak_laik') {
+          isAllTidakLaik = true;
+          cutoffTidakLaikIndex = 0;
+        } else if (mode === 'bulk' && bulkType === 'tidak_laik') {
+          isAllTidakLaik = true;
+          cutoffTidakLaikIndex = 0;
+        }
+      }
 
       if (isBulkA3) {
         // Standar format cetak lembaran A3+ (320 mm x 480 mm, portrait)
@@ -412,7 +500,7 @@ export default function AdminGenerate() {
             const x = marginLeft + col * (labelWidth + gapX);
             const y = marginTop + row * (labelHeight + gapY);
 
-            const isTidakLaik = globalIdx >= cutoffTidakLaikIndex;
+            const isTidakLaik = isAllTidakLaik || (globalIdx >= cutoffTidakLaikIndex);
             const activeConfig = isTidakLaik && configTidakLaik?.imageUrl ? configTidakLaik : configLaik;
 
             // A. Background Template Image
@@ -482,7 +570,7 @@ export default function AdminGenerate() {
           }
 
           const labelStr = generatedLabels[i];
-          const isTidakLaik = i >= cutoffTidakLaikIndex;
+          const isTidakLaik = isAllTidakLaik || (i >= cutoffTidakLaikIndex);
           const activeConfig = isTidakLaik && configTidakLaik?.imageUrl ? configTidakLaik : configLaik;
           
           // 1. Draw Background
@@ -630,35 +718,108 @@ export default function AdminGenerate() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Label Awal</label>
-                    <input
-                      type="text"
-                      required
-                      value={startLabel}
-                      onChange={(e) => {
-                        setStartLabel(e.target.value);
-                        setError('');
-                      }}
-                      className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none"
-                      placeholder="100.0001"
-                    />
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Status / Jenis Stiker</label>
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setBulkType('laik')}
+                        className={cn(
+                          "flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-lg transition-all",
+                          bulkType === 'laik'
+                            ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-700"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                        )}
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Laik Pakai (Standar)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBulkType('tidak_laik')}
+                        className={cn(
+                          "flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-lg transition-all",
+                          bulkType === 'tidak_laik'
+                            ? "bg-rose-600 text-white shadow-sm ring-1 ring-rose-700"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                        )}
+                      >
+                        <XCircle className="w-4 h-4" />
+                        <span>Tidak Laik Pakai</span>
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Label Akhir</label>
-                    <input
-                      type="text"
-                      required
-                      value={endLabel}
-                      onChange={(e) => {
-                        setEndLabel(e.target.value);
-                        setError('');
-                      }}
-                      className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none"
-                      placeholder="100.0571"
-                    />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Label Awal</label>
+                      <input
+                        type="text"
+                        required
+                        value={startLabel}
+                        onChange={(e) => {
+                          setStartLabel(e.target.value);
+                          setError('');
+                        }}
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none font-mono"
+                        placeholder="100.0001"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Label Akhir</label>
+                      <input
+                        type="text"
+                        required
+                        value={endLabel}
+                        onChange={(e) => {
+                          setEndLabel(e.target.value);
+                          setError('');
+                        }}
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 bg-slate-50 text-slate-900 outline-none font-mono"
+                        placeholder="100.0114"
+                      />
+                    </div>
                   </div>
+
+                  {liveCalculation && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-950 space-y-2">
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                          Simulasi Kelipatan 85 & Cadangan (A3+):
+                        </span>
+                        <span className="bg-blue-600 text-white font-mono px-2 py-0.5 rounded text-[11px] font-bold">
+                          {liveCalculation.sheets} Lembar • {liveCalculation.totalCount} Stiker
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 bg-white/70 p-2.5 rounded-lg border border-blue-100 text-center">
+                        <div>
+                          <span className="text-slate-500 text-[10px] block">Kebutuhan Pokok</span>
+                          <span className="font-extrabold text-slate-900 font-mono text-xs">{liveCalculation.baseCount} Label</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-[10px] block">Cadangan (Spare)</span>
+                          <span className="font-extrabold text-amber-700 font-mono text-xs">+{liveCalculation.spareCount} Label</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-[10px] block">Total Digenerate</span>
+                          <span className="font-extrabold text-blue-900 font-mono text-xs">{liveCalculation.totalCount} Stiker</span>
+                        </div>
+                      </div>
+
+                      {liveCalculation.spareWasBumped ? (
+                        <p className="text-[11px] text-amber-900 bg-amber-100/70 border border-amber-200 p-2 rounded-md font-medium">
+                          ⚠️ <strong>Otomatis Pembulatan ke Atas ({liveCalculation.totalCount} stiker / {liveCalculation.sheets} lembar):</strong> Karena sisa spare kurang dari 15 stiker, otomatis digenapkan ke kelipatan 85 berikutnya (+{liveCalculation.spareCount} cadangan {bulkType === 'laik' ? 'Laik Pakai' : 'Tidak Laik'}).
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-emerald-800 bg-emerald-100/70 border border-emerald-200 p-2 rounded-md">
+                          ✅ <strong>Format Pas ({liveCalculation.totalCount} stiker / {liveCalculation.sheets} lembar):</strong> Sisa spare {liveCalculation.spareCount} stiker (≥ 15) melengkapi kelipatan 85 lembar A3+.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -736,47 +897,69 @@ export default function AdminGenerate() {
             {breakdownInfo && (
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
                 <h4 className="font-bold text-slate-800 text-sm flex items-center justify-between">
-                  <span>Rincian Komposisi Label</span>
+                  <span>Rincian Komposisi Label (Kelipatan 85 / Lembar A3+)</span>
                   <span className="text-xs font-mono bg-slate-900 text-amber-400 px-2.5 py-1 rounded-lg font-bold">
-                    {breakdownInfo.totalCount} Total Stiker
+                    {breakdownInfo.totalCount} Total Stiker ({breakdownInfo.sheetsCount} Lembar)
                   </span>
                 </h4>
                 
                 <div className={cn(
                   "grid grid-cols-1 gap-3",
-                  breakdownInfo.extraLaikCount > 0 && breakdownInfo.extraTidakLaikCount > 0 ? "sm:grid-cols-3" : "sm:grid-cols-1"
+                  (breakdownInfo.extraLaikCount > 0 || breakdownInfo.extraTidakLaikCount > 0) ? "sm:grid-cols-2" : "sm:grid-cols-1"
                 )}>
-                  <div className="bg-emerald-50/80 border border-emerald-200/80 p-3.5 rounded-xl">
-                    <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Label Utama</div>
-                    <div className="text-sm font-extrabold text-emerald-950 font-mono mt-1">
+                  <div className={cn(
+                    "p-3.5 rounded-xl border",
+                    breakdownInfo.type === 'tidak_laik' 
+                      ? "bg-rose-50/80 border-rose-200/80 text-rose-950" 
+                      : "bg-emerald-50/80 border-emerald-200/80 text-emerald-950"
+                  )}>
+                    <div className="text-[11px] font-bold uppercase tracking-wider">
+                      {breakdownInfo.type === 'tidak_laik' ? 'Label Utama (Tidak Laik Pakai)' : 'Label Utama (Laik Pakai)'}
+                    </div>
+                    <div className="text-sm font-extrabold font-mono mt-1">
                       {breakdownInfo.baseRangeStart === breakdownInfo.baseRangeEnd 
                         ? breakdownInfo.baseRangeStart 
                         : `${breakdownInfo.baseRangeStart} s/d ${breakdownInfo.baseRangeEnd}`}
                     </div>
-                    <div className="text-[11px] text-emerald-700 font-medium mt-0.5">{breakdownInfo.baseCount} Label (Menunggu Sertifikat)</div>
+                    <div className="text-[11px] font-medium mt-0.5 opacity-80">
+                      {breakdownInfo.baseCount} Label ({breakdownInfo.type === 'tidak_laik' ? 'Status Tidak Laik Pakai' : 'Status Menunggu Sertifikat'})
+                    </div>
                   </div>
 
                   {breakdownInfo.extraLaikCount > 0 && (
                     <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-xl">
-                      <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">+{breakdownInfo.extraLaikCount} Cadangan Laik Pakai</div>
+                      <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
+                        +{breakdownInfo.extraLaikCount} Cadangan Laik Pakai
+                      </div>
                       <div className="text-sm font-extrabold text-amber-950 font-mono mt-1">
                         {breakdownInfo.extraLaikStart === breakdownInfo.extraLaikEnd 
                           ? breakdownInfo.extraLaikStart 
                           : `${breakdownInfo.extraLaikStart} s/d ${breakdownInfo.extraLaikEnd}`}
                       </div>
-                      <div className="text-[11px] text-amber-700 font-medium mt-0.5">{breakdownInfo.extraLaikCount} Label (Otomatis Tambahan)</div>
+                      <div className="text-[11px] text-amber-700 font-medium mt-0.5">
+                        {breakdownInfo.extraLaikCount} Label Cadangan (Kelipatan 85 Lembar A3+)
+                      </div>
+                      {breakdownInfo.spareWasBumped && (
+                        <div className="text-[10px] text-amber-800 font-semibold mt-1">
+                          *Dibulatkan otomatis ke kelipatan berikutnya karena sisa spare &lt; 15 stiker
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {breakdownInfo.extraTidakLaikCount > 0 && (
                     <div className="bg-rose-50/80 border border-rose-200/80 p-3.5 rounded-xl">
-                      <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">+{breakdownInfo.extraTidakLaikCount} Tidak Laik Pakai</div>
+                      <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
+                        +{breakdownInfo.extraTidakLaikCount} Cadangan Tidak Laik Pakai
+                      </div>
                       <div className="text-sm font-extrabold text-rose-950 font-mono mt-1">
                         {breakdownInfo.extraTidakLaikStart === breakdownInfo.extraTidakLaikEnd 
                           ? breakdownInfo.extraTidakLaikStart 
                           : `${breakdownInfo.extraTidakLaikStart} s/d ${breakdownInfo.extraTidakLaikEnd}`}
                       </div>
-                      <div className="text-[11px] text-rose-700 font-medium mt-0.5">{breakdownInfo.extraTidakLaikCount} Label (Template Tidak Laik)</div>
+                      <div className="text-[11px] text-rose-700 font-medium mt-0.5">
+                        {breakdownInfo.extraTidakLaikCount} Label Cadangan Tidak Laik
+                      </div>
                     </div>
                   )}
                 </div>
