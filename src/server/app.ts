@@ -379,61 +379,18 @@ export function createApp() {
 
   /**
    * Helper to safely upsert labels to Supabase using supabaseAdmin.
-   * Handles column name variations (pdf_original_url vs pdforiginal_url) and batching.
+   * Writes exclusively to valid database columns (pdforiginal_url, etc).
    */
   async function upsertLabelsAdmin(items: any[]): Promise<{ success: boolean; count: number; error?: any }> {
     if (!items || items.length === 0) return { success: true, count: 0 };
-
-    const tryUpsert = async (payload: any[]) => {
-      return await supabaseAdmin.from('labels').upsert(payload, { onConflict: 'no_label' });
-    };
 
     const BATCH_SIZE = 200;
     let totalSaved = 0;
 
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
-      const chunk = items.slice(i, i + BATCH_SIZE);
-
-      // Variant 1: Both pdf_original_url and pdforiginal_url
-      const variantBoth = chunk.map(it => {
+      const chunk = items.slice(i, i + BATCH_SIZE).map(it => {
         const copy = { ...it };
-        const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
-        if (origVal) {
-          copy.pdf_original_url = origVal;
-          copy.pdforiginal_url = origVal;
-        }
-        delete copy.pdfOriginalUrl;
-        return copy;
-      });
-
-      let res = await tryUpsert(variantBoth);
-      if (!res.error) {
-        totalSaved += chunk.length;
-        continue;
-      }
-
-      // Variant 2: pdf_original_url only
-      const variantOriginalOnly = chunk.map(it => {
-        const copy = { ...it };
-        const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
-        if (origVal) {
-          copy.pdf_original_url = origVal;
-        }
-        delete copy.pdforiginal_url;
-        delete copy.pdfOriginalUrl;
-        return copy;
-      });
-
-      res = await tryUpsert(variantOriginalOnly);
-      if (!res.error) {
-        totalSaved += chunk.length;
-        continue;
-      }
-
-      // Variant 3: pdforiginal_url only
-      const variantNoUnderscoreOnly = chunk.map(it => {
-        const copy = { ...it };
-        const origVal = copy.pdf_original_url || copy.pdforiginal_url || copy.pdfOriginalUrl || null;
+        const origVal = copy.pdforiginal_url || copy.pdf_original_url || copy.pdfOriginalUrl || null;
         if (origVal) {
           copy.pdforiginal_url = origVal;
         }
@@ -442,28 +399,16 @@ export function createApp() {
         return copy;
       });
 
-      res = await tryUpsert(variantNoUnderscoreOnly);
-      if (!res.error) {
-        totalSaved += chunk.length;
-        continue;
+      const { error } = await supabaseAdmin
+        .from('labels')
+        .upsert(chunk, { onConflict: 'no_label' });
+
+      if (error) {
+        console.error("upsertLabelsAdmin error:", error);
+        return { success: false, count: totalSaved, error };
       }
 
-      // Variant 4: Strip both pdf_original_url and pdforiginal_url
-      const variantClean = chunk.map(it => {
-        const copy = { ...it };
-        delete copy.pdf_original_url;
-        delete copy.pdforiginal_url;
-        delete copy.pdfOriginalUrl;
-        return copy;
-      });
-
-      res = await tryUpsert(variantClean);
-      if (!res.error) {
-        totalSaved += chunk.length;
-        continue;
-      }
-
-      return { success: false, count: totalSaved, error: res.error };
+      totalSaved += chunk.length;
     }
 
     return { success: true, count: totalSaved };
@@ -476,13 +421,13 @@ export function createApp() {
         fetchAllRows((from, to) =>
           supabaseAdmin
             .from('labels')
-            .select('no_label, nama_rs, pdforiginal_url, pdf_original_url')
+            .select('no_label, nama_rs, pdforiginal_url')
             .order('no_label', { ascending: true })
             .range(from, to)
         ),
         supabaseAdmin
           .from('labels')
-          .select('no_label, pdforiginal_url, pdf_original_url')
+          .select('no_label, pdforiginal_url')
           .like('no_label', '__meta_folder_rs_%')
       ]);
 
@@ -607,30 +552,39 @@ export function createApp() {
 
       const payload: any = {
         no_label: noLabel,
-        nama_rs: namaRs || (oldData?.nama_rs ?? null),
-        nama_alat: namaAlat || pdfName || (oldData?.nama_alat ?? null),
-        ruangan: ruangan || (oldData?.ruangan ?? null),
+        nama_rs: namaRs !== undefined ? (namaRs || null) : (oldData?.nama_rs ?? null),
+        nama_alat: namaAlat !== undefined ? (namaAlat || null) : (pdfName || oldData?.nama_alat || oldData?.pdf_name || null),
+        ruangan: ruangan !== undefined ? (ruangan || null) : (oldData?.ruangan ?? null),
         status: status || (oldData?.status ?? 'Menunggu Sertifikat'),
         pdf_source: pdfSource || (oldData?.pdf_source ?? null),
         pdf_url: pdfUrl || (oldData?.pdf_url ?? null),
         pdf_drive_url: pdfDriveUrl || (oldData?.pdf_drive_url ?? null),
         pdforiginal_url: pdfOriginalUrl || (oldData?.pdforiginal_url ?? oldData?.pdf_original_url ?? null),
-        pdf_original_url: pdfOriginalUrl || (oldData?.pdf_original_url ?? oldData?.pdforiginal_url ?? null),
         pdf_name: pdfName || (oldData?.pdf_name ?? null),
-        calibrated_at: calibratedAt || (oldData?.calibrated_at ?? null),
-        valid_until: validUntil || (oldData?.valid_until ?? null),
+        calibrated_at: calibratedAt !== undefined ? (calibratedAt || null) : (oldData?.calibrated_at ?? null),
+        valid_until: validUntil !== undefined ? (validUntil || null) : (oldData?.valid_until ?? null),
         updated_at: new Date().toISOString()
       };
 
-      // Jika sertifikat TIDAK diminta dikosongkan, proteksi field sertifikat lama agar tidak terhapus
-      if (!isClearCertRequested && oldData) {
+      // 1) Saat clearCertificate === true:
+      // Paksa nilai berikut di payload SETELAH payload dibuat:
+      // pdf_url = null, pdf_drive_url = null, pdforiginal_url = null, pdf_name = null, pdf_source = null, status = 'Menunggu Sertifikat'
+      if (isClearCertRequested) {
+        payload.pdf_url = null;
+        payload.pdf_drive_url = null;
+        payload.pdforiginal_url = null;
+        payload.pdf_name = null;
+        payload.pdf_source = null;
+        payload.status = 'Menunggu Sertifikat';
+      } else if (oldData) {
+        // Jika sertifikat TIDAK diminta dikosongkan, proteksi field sertifikat lama agar tidak terhapus jika incoming kosong
         if (oldData.pdf_url && !pdfUrl) payload.pdf_url = oldData.pdf_url;
         if (oldData.pdf_drive_url && !pdfDriveUrl) payload.pdf_drive_url = oldData.pdf_drive_url;
         if ((oldData.pdforiginal_url || oldData.pdf_original_url) && !pdfOriginalUrl) {
           payload.pdforiginal_url = oldData.pdforiginal_url || oldData.pdf_original_url;
-          payload.pdf_original_url = oldData.pdf_original_url || oldData.pdforiginal_url;
         }
         if (oldData.pdf_name && !pdfName) payload.pdf_name = oldData.pdf_name;
+        if (oldData.pdf_source && !pdfSource) payload.pdf_source = oldData.pdf_source;
         if (oldData.calibrated_at && !calibratedAt) payload.calibrated_at = oldData.calibrated_at;
         if (oldData.valid_until && !validUntil) payload.valid_until = oldData.valid_until;
         if (oldData.status === 'Sertifikat Tertaut' && (!status || status === 'Menunggu Sertifikat')) {
@@ -647,8 +601,8 @@ export function createApp() {
             no_label: `__meta_folder_rs_${prefix}`,
             status: 'metadata',
             pdf_source: 'folder_rs_name',
+            nama_rs: namaRs.trim(),
             pdforiginal_url: namaRs.trim(),
-            pdf_original_url: namaRs.trim(),
             updated_at: new Date().toISOString()
           }]);
         } catch (_) {}
@@ -690,7 +644,6 @@ export function createApp() {
           pdf_url: it.pdfUrl || it.pdf_url || null,
           pdf_drive_url: it.pdfDriveUrl || it.pdf_drive_url || null,
           pdforiginal_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
-          pdf_original_url: it.pdfOriginalUrl || it.pdforiginal_url || null,
           pdf_name: it.pdfName || it.pdf_name || null,
           calibrated_at: it.calibratedAt || it.calibrated_at || null,
           valid_until: it.validUntil || it.valid_until || null,
@@ -736,7 +689,6 @@ export function createApp() {
               pdf_url: rec.pdf_url || oldItem.pdf_url || null,
               pdf_drive_url: rec.pdf_drive_url || oldItem.pdf_drive_url || null,
               pdforiginal_url: rec.pdforiginal_url || oldItem.pdforiginal_url || oldItem.pdf_original_url || null,
-              pdf_original_url: rec.pdf_original_url || oldItem.pdf_original_url || oldItem.pdforiginal_url || null,
               pdf_name: rec.pdf_name || oldItem.pdf_name || null,
               calibrated_at: rec.calibrated_at || oldItem.calibrated_at || null,
               valid_until: rec.valid_until || oldItem.valid_until || null
@@ -770,8 +722,8 @@ export function createApp() {
             no_label: `__meta_folder_rs_${prefix}`,
             status: 'metadata',
             pdf_source: 'folder_rs_name',
+            nama_rs: rsName,
             pdforiginal_url: rsName,
-            pdf_original_url: rsName,
             updated_at: new Date().toISOString()
           }]);
         } catch (_) {}
@@ -874,7 +826,7 @@ export function createApp() {
       const data = await fetchAllRows((from, to) =>
         supabaseAdmin
           .from('labels')
-          .select('no_label, nama_rs, pdforiginal_url, pdf_original_url')
+          .select('no_label, nama_rs, pdforiginal_url')
           .or('no_label.like.__meta_folder_rs_%,no_label.like.__meta_folder_%')
           .order('no_label', { ascending: true })
           .range(from, to)
@@ -918,7 +870,6 @@ export function createApp() {
         pdf_source: 'folder_rs_name',
         nama_rs: namaRs ? String(namaRs).trim() : null,
         pdforiginal_url: namaRs ? String(namaRs).trim() : null,
-        pdf_original_url: namaRs ? String(namaRs).trim() : null,
         updated_at: new Date().toISOString()
       };
 
@@ -967,21 +918,21 @@ export function createApp() {
         return res.status(500).json({ error: "Gagal memperbarui nama Rumah Sakit di database" });
       }
 
-      // 3. Simpan juga metadata __meta_folder_rs_<prefix>
-      try {
-        await supabaseAdmin
-          .from('labels')
-          .upsert({
-            no_label: `__meta_folder_rs_${prefix}`,
-            status: 'metadata',
-            pdf_source: 'folder_rs_name',
-            nama_rs: cleanNamaRs,
-            pdforiginal_url: cleanNamaRs,
-            pdf_original_url: cleanNamaRs,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'no_label' });
-      } catch (metaErr) {
-        console.warn("Gagal memperbarui metadata folder rs:", metaErr);
+      // 3. Simpan juga metadata __meta_folder_rs_<prefix> dan cek error secara eksplisit
+      const { error: metaErr } = await supabaseAdmin
+        .from('labels')
+        .upsert({
+          no_label: `__meta_folder_rs_${prefix}`,
+          status: 'metadata',
+          pdf_source: 'folder_rs_name',
+          nama_rs: cleanNamaRs,
+          pdforiginal_url: cleanNamaRs,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'no_label' });
+
+      if (metaErr) {
+        console.error("Gagal memperbarui metadata folder rs:", metaErr);
+        return res.status(500).json({ error: "Gagal menyimpan metadata nama Rumah Sakit folder" });
       }
 
       await broadcastLabelsChanged();
