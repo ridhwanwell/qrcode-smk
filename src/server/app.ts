@@ -1,7 +1,8 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
-import { supabaseAdmin } from "./supabaseAdmin";
-import { requireAuth, requireRole, AuthRequest, UserRole, OFFICIAL_ROLES } from "../middleware/auth";
+import { supabaseAdmin } from "./supabaseAdmin.js";
+import { requireAuth, requireRole, OFFICIAL_ROLES } from "../middleware/auth.js";
+import type { AuthRequest, UserRole } from "../middleware/auth.js";
 
 export interface IdempotencyRecord {
   statusCode: number;
@@ -131,6 +132,54 @@ export function createApp() {
   // --- API: HEALTH CHECK ---
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString(), database: "supabase" });
+  });
+
+  // --- API: DEEP HEALTH CHECK (Protected: admin_utama only) ---
+  app.get("/api/health/deep", requireAuth, requireRole(['admin_utama']), async (req: AuthRequest, res) => {
+    try {
+      const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+      const hasServiceRoleKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+      const checkTable = async (tableName: string) => {
+        try {
+          const { error } = await supabaseAdmin.from(tableName).select('count', { count: 'exact', head: true });
+          if (error) {
+            return { ok: false, error: error.message || error.code || "Query error" };
+          }
+          return { ok: true };
+        } catch (e: any) {
+          return { ok: false, error: e?.message || "Connection error" };
+        }
+      };
+
+      const [collectionsCheck, settingsCheck, activityLogCheck, idempotencyCheck] = await Promise.all([
+        checkTable('app_collections'),
+        checkTable('settings'),
+        checkTable('activity_log'),
+        checkTable('api_idempotency')
+      ]);
+
+      const allOk = hasSupabaseUrl && hasServiceRoleKey && 
+        collectionsCheck.ok && settingsCheck.ok && activityLogCheck.ok && idempotencyCheck.ok;
+
+      res.status(allOk ? 200 : 503).json({
+        ok: allOk,
+        timestamp: new Date().toISOString(),
+        environment: {
+          hasSupabaseUrl,
+          hasServiceRoleKey
+        },
+        tables: {
+          app_collections: collectionsCheck,
+          settings: settingsCheck,
+          activity_log: activityLogCheck,
+          api_idempotency: idempotencyCheck
+        }
+      });
+    } catch (err: any) {
+      console.error("Deep health check error:", err);
+      res.status(500).json({ ok: false, error: "Gagal menjalankan deep health check" });
+    }
   });
 
   // --- API: PUBLIC SCAN LOOKUP (For hospital staff scanning QR code on equipment stickers) ---

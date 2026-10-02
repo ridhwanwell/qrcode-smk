@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { supabaseAdmin } from '../server/supabaseAdmin';
+import { supabaseAdmin } from '../server/supabaseAdmin.js';
 
 export type UserRole = 'admin_utama' | 'admin_teknik' | 'admin_keuangan' | 'hanya_sph';
 

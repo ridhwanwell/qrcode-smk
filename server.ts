@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { createApp, idempotencyStore } from "./src/server/app";
+import { createApp, idempotencyStore } from "./src/server/app.js";
 
 async function startServer() {
   const PORT = 3000;
