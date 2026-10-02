@@ -489,7 +489,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
                     <td className="px-3 py-1.5 text-center border-x border-slate-300">
                       {billing.isAdjustedFromBap ? billing.totalRealizedUnits : totalUnits}
                     </td>
-                    <td className="px-3 py-1.5 text-right border-r border-slate-300">Total 1</td>
+                    <td className="px-3 py-1.5 text-right border-r border-slate-300">Sub Total</td>
                     <td className="px-3 py-1.5 text-right font-mono">
                       <div className="flex justify-between">
                         <span>Rp</span>
@@ -497,43 +497,39 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
                       </div>
                     </td>
                   </tr>
+                  {billing.accommodationFee ? (
+                    <tr className="border-b border-slate-200">
+                      <td colSpan={3} className="px-3 py-1 border-r border-slate-300"></td>
+                      <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px]">Akomodasi</td>
+                      <td className="px-3 py-1 text-right font-mono text-[11px]">
+                        <div className="flex justify-between">
+                          <span>Rp</span>
+                          <span>{formatNumber(billing.accommodationFee)}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                  <tr className="border-b border-slate-200">
+                    <td colSpan={3} rowSpan={billing.ppnAmount ? 2 : 1} className="px-4 py-2 border-r border-slate-300 text-center italic font-bold text-[11px] text-slate-700 align-middle bg-slate-50">
+                      "{billing.terbilang || 'Nol Rupiah'}"
+                    </td>
+                    <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px]">Total 2</td>
+                    <td className="px-3 py-1 text-right font-mono text-[11px]">
+                      <div className="flex justify-between">
+                        <span>Rp</span>
+                        <span>{formatNumber(billing.subtotal2 || (billing.subtotal1 + (billing.accommodationFee || 0)))}</span>
+                      </div>
+                    </td>
+                  </tr>
                   {billing.ppnAmount && billing.ppnAmount > 0 ? (
                     <tr className="border-b border-slate-200">
-                      <td colSpan={3} rowSpan={billing.accommodationFee ? 4 : 3} className="px-4 py-2 border-r border-slate-300 text-center italic font-bold text-[11px] text-slate-700 align-middle bg-slate-50">
-                        "{billing.terbilang || 'Nol Rupiah'}"
-                      </td>
-                      <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px] font-normal">
+                      <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px]">
                         {billing.ppnPercent ? `PPN ${billing.ppnPercent}%` : 'PPN 11%'}
                       </td>
                       <td className="px-3 py-1 text-right font-mono text-[11px]">
                         <div className="flex justify-between">
                           <span>Rp</span>
                           <span>{formatNumber(billing.ppnAmount)}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                  <tr className="border-b border-slate-200">
-                    {!billing.ppnAmount && (
-                      <td colSpan={3} rowSpan={billing.accommodationFee ? 3 : 2} className="px-4 py-2 border-r border-slate-300 text-center italic font-bold text-[11px] text-slate-700 align-middle bg-slate-50">
-                        "{billing.terbilang || 'Nol Rupiah'}"
-                      </td>
-                    )}
-                    <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px]">Total 2</td>
-                    <td className="px-3 py-1 text-right font-mono text-[11px]">
-                      <div className="flex justify-between">
-                        <span>Rp</span>
-                        <span>{formatNumber(billing.subtotal2 || (billing.subtotal1 + (billing.ppnAmount || 0)))}</span>
-                      </div>
-                    </td>
-                  </tr>
-                  {billing.accommodationFee ? (
-                    <tr className="border-b border-slate-200">
-                      <td className="px-3 py-1 text-right border-r border-slate-300 text-[11px]">Akomodasi</td>
-                      <td className="px-3 py-1 text-right font-mono text-[11px]">
-                        <div className="flex justify-between">
-                          <span>Rp</span>
-                          <span>{formatNumber(billing.accommodationFee)}</span>
                         </div>
                       </td>
                     </tr>

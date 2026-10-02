@@ -163,7 +163,7 @@ export function calculateBillingFromBap(
       isPpnIncluded: sph.isPpnIncluded !== false,
       ppnPercent: sph.ppnPercent || 11,
       ppnAmount: sph.ppnAmount || 0,
-      subtotal2: sph.subtotal2 || (sph.subtotal1 + (sph.ppnAmount || 0)),
+      subtotal2: sph.subtotal2 || (sph.subtotal1 + (sph.accommodationFee || 0)),
       accommodationFee: sph.accommodationFee || 0,
       grandTotal: originalGrandTotal,
       terbilang: sph.terbilang || angkaTerbilang(originalGrandTotal),
@@ -256,17 +256,17 @@ export function calculateBillingFromBap(
   }
 
   const subtotalAfterDiscount = Math.max(0, subtotal1 - discountAmount);
+  const accommodationFee = sph.accommodationFee || 0;
+  const subtotal2 = subtotalAfterDiscount + accommodationFee;
 
-  // PPN calculation
+  // PPN calculation (taken from Total 2 / subtotal2)
   const isPpnIncluded = sph.isPpnIncluded !== false;
   const ppnPercent = sph.ppnPercent || 11;
   const ppnAmount = (isPpnIncluded || (sph.ppnAmount && sph.ppnAmount > 0))
-    ? Math.round(subtotalAfterDiscount * (ppnPercent / 100))
+    ? Math.round(subtotal2 * (ppnPercent / 100))
     : 0;
 
-  const subtotal2 = subtotalAfterDiscount + ppnAmount;
-  const accommodationFee = sph.accommodationFee || 0;
-  const grandTotal = subtotal2 + accommodationFee;
+  const grandTotal = subtotal2 + ppnAmount;
   const terbilang = angkaTerbilang(grandTotal);
 
   return {

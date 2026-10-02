@@ -381,14 +381,18 @@ export async function createAuthenticBoPdf(
   // Summary Rows: Akomodasi, Total (Bold), PPN, GRAND TOTAL (Cyan, Bold)
   const ppnRateText = billing.ppnPercent ? `PPN ${billing.ppnPercent}%` : 'PPN 11%';
   const ppnVal = billing.ppnAmount || 0;
-  const total2Val = billing.subtotal2 || (billing.subtotal1 + ppnVal);
   const acomVal = billing.accommodationFee || 0;
+  const total2Val = billing.subtotal2 || (billing.subtotal1 + acomVal);
   const grandTotalVal = billing.grandTotal;
 
   const rightRows: Array<{ label: string; amount: string; isBold?: boolean; isGrand?: boolean }> = [];
-  rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
+  if (acomVal > 0) {
+    rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
+  }
   rightRows.push({ label: 'Total', amount: formatNumber(total2Val), isBold: true, isGrand: false });
-  rightRows.push({ label: ppnRateText, amount: formatNumber(ppnVal), isBold: false, isGrand: false });
+  if (ppnVal > 0) {
+    rightRows.push({ label: ppnRateText, amount: formatNumber(ppnVal), isBold: false, isGrand: false });
+  }
   rightRows.push({ label: 'GRAND TOTAL', amount: formatNumber(grandTotalVal), isBold: true, isGrand: true });
 
   const terbBoxHeight = rightRows.length * sumRowH;
@@ -848,14 +852,18 @@ export async function createAuthenticFpPdf(
   // Summary Rows: Discount (if any), Akomodasi, Total (Bold), PPN, GRAND TOTAL (Cyan, Bold)
   const ppnRateText = billing.ppnPercent ? `PPN ${billing.ppnPercent}%` : 'PPN 11%';
   const ppnVal = billing.ppnAmount || 0;
-  const total2Val = billing.subtotal2 || (billing.subtotal1 + ppnVal);
   const acomVal = billing.accommodationFee || 0;
+  const total2Val = billing.subtotal2 || (billing.subtotal1 + acomVal);
   const grandTotalVal = billing.grandTotal;
 
   const rightRows: Array<{ label: string; amount: string; isBold?: boolean; isGrand?: boolean }> = [];
-  rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
+  if (acomVal > 0) {
+    rightRows.push({ label: 'Akomodasi', amount: formatNumber(acomVal), isBold: false, isGrand: false });
+  }
   rightRows.push({ label: 'Total', amount: formatNumber(total2Val), isBold: true, isGrand: false });
-  rightRows.push({ label: ppnRateText, amount: formatNumber(ppnVal), isBold: false, isGrand: false });
+  if (ppnVal > 0) {
+    rightRows.push({ label: ppnRateText, amount: formatNumber(ppnVal), isBold: false, isGrand: false });
+  }
   rightRows.push({ label: 'GRAND TOTAL', amount: formatNumber(grandTotalVal), isBold: true, isGrand: true });
 
   const terbBoxHeight = rightRows.length * sumRowH;

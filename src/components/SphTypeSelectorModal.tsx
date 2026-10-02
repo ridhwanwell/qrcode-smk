@@ -116,7 +116,7 @@ export const SphTypeSelectorModal: React.FC<SphTypeSelectorModalProps> = ({
                   E-Catalogue
                 </h3>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Penawaran harga resmi terhubung dengan <strong>139 Item E-Katalog LKPP Inaproc PT. Sarana Multi Kalibrasi</strong>.
+                  Penawaran harga resmi terhubung dengan <strong>313 Item E-Katalog LKPP Inaproc PT. Sarana Multi Kalibrasi</strong>.
                 </p>
               </div>
 
