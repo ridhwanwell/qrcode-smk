@@ -217,18 +217,18 @@ END $$;`;
       fetchLabels();
     }, 15000);
 
-    // Realtime Supabase updates with unique channel ID
-    const channelId = `dashboard_labels_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // Listen to broadcast events on labels channel
+    const channelId = `dashboard_labels_bc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     let channel: any = null;
     try {
       channel = supabase
         .channel(channelId)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+        .on('broadcast', { event: 'labels_changed' }, () => {
           fetchLabels();
         })
         .subscribe();
     } catch (err) {
-      console.warn('[AdminDashboard] Realtime error:', err);
+      console.warn('[AdminDashboard] Realtime broadcast error:', err);
     }
 
     return () => {

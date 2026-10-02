@@ -253,16 +253,13 @@ export function useSupabaseData<T extends { id: string }>(
     };
   }, [collectionName, updateCache, initKey, fetchFromServer, deletedKey]);
 
-  // Add an item (Saves ONLY the changed item with local updatedAt, queues in IndexedDB if offline)
+  // Add an item (Sends new item, server assigns official updatedAt)
   const add = async (item: T) => {
-    const itemWithTime: T = {
-      ...item,
-      updatedAt: new Date().toISOString()
-    } as any;
+    const itemKey = getCollectionItemKey(item);
+    const itemToSend: any = { ...item };
 
     const current = dataRef.current;
-    const targetId = getCollectionItemKey(itemWithTime);
-    const next = [itemWithTime, ...current.filter(i => getCollectionItemKey(i) !== targetId)];
+    const next = [itemToSend as T, ...current.filter(i => getCollectionItemKey(i) !== itemKey)];
     updateCache(next);
 
     const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -277,7 +274,7 @@ export function useSupabaseData<T extends { id: string }>(
           'Idempotency-Key': idempotencyKey
         },
         body: JSON.stringify({
-          items: [itemWithTime],
+          items: [itemToSend],
           replaceAll: false
         })
       });
@@ -287,29 +284,35 @@ export function useSupabaseData<T extends { id: string }>(
         if (json && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
           handleConflictWarning(json.conflicts);
           await forcePullFromSupabase();
+        } else if (json && Array.isArray(json.items)) {
+          updateCache(json.items);
         }
       } else {
         // Enqueue to IndexedDB for offline retry
-        await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+        await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
       }
     } catch (e) {
-      await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+      await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
     }
 
     broadcastSync();
   };
 
-  // Update an item (Saves ONLY the changed item with local updatedAt, queues in IndexedDB if offline)
+  // Update an item (Sends item with baseUpdatedAt = server updatedAt timestamp, queues in IndexedDB if offline)
   const update = async (item: T) => {
-    const itemWithTime: T = {
-      ...item,
-      updatedAt: new Date().toISOString()
-    } as any;
-
     const current = dataRef.current;
-    const targetId = getCollectionItemKey(itemWithTime);
+    const targetId = getCollectionItemKey(item);
+    const existing = current.find(i => getCollectionItemKey(i) === targetId);
+
+    // baseUpdatedAt = nilai updatedAt item yang terakhir diterima DARI SERVER
+    const baseUpdatedAt = (item as any).baseUpdatedAt || (item as any).updatedAt || (existing as any)?.updatedAt || undefined;
+    const itemToSend: any = {
+      ...item,
+      baseUpdatedAt
+    };
+
     const next = current.map(i => {
-      return getCollectionItemKey(i) === targetId ? itemWithTime : i;
+      return getCollectionItemKey(i) === targetId ? (itemToSend as T) : i;
     });
     updateCache(next);
 
@@ -325,7 +328,7 @@ export function useSupabaseData<T extends { id: string }>(
           'Idempotency-Key': idempotencyKey
         },
         body: JSON.stringify({
-          items: [itemWithTime],
+          items: [itemToSend],
           replaceAll: false
         })
       });
@@ -335,13 +338,15 @@ export function useSupabaseData<T extends { id: string }>(
         if (json && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
           handleConflictWarning(json.conflicts);
           await forcePullFromSupabase();
+        } else if (json && Array.isArray(json.items)) {
+          updateCache(json.items);
         }
       } else {
         // Enqueue to IndexedDB for offline retry
-        await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+        await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
       }
     } catch (e) {
-      await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+      await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
     }
 
     broadcastSync();

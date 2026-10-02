@@ -32,9 +32,9 @@ DROP POLICY IF EXISTS "Authenticated users can manage labels" ON public.labels;
 DROP POLICY IF EXISTS "Public Read Access" ON public.labels;
 DROP POLICY IF EXISTS "Service Role Full Access" ON public.labels;
 
--- 1.3 Cabut (REVOKE) seluruh hak akses tabel dari peran publik (anon) dan pengguna terautentikasi (authenticated)
-REVOKE ALL ON TABLE public.app_collections FROM anon, authenticated;
-REVOKE ALL ON TABLE public.labels FROM anon, authenticated;
+-- 1.3 Cabut (REVOKE) seluruh hak akses tabel dari peran publik (anon, PUBLIC) dan pengguna terautentikasi (authenticated)
+REVOKE ALL ON TABLE public.app_collections FROM anon, authenticated, PUBLIC;
+REVOKE ALL ON TABLE public.labels FROM anon, authenticated, PUBLIC;
 
 -- Catatan:
 -- Tidak dibuat policy baru untuk anon maupun authenticated pada kedua tabel ini.
@@ -51,7 +51,10 @@ REVOKE ALL ON TABLE public.labels FROM anon, authenticated;
 -- 4. Pengguna baru/non-admin_utama dipaksa memiliki role terendah 'hanya_sph' saat pendaftaran.
 -- 5. Menutup hak UPDATE kolom role dari authenticated di level hak akses basis data (GRANT/REVOKE).
 
--- 2.1 Tambahkan CHECK constraint pada kolom role tabel public.profiles
+-- 2.1 Pastikan kolom full_name dan avatar_url ada, lalu tambahkan CHECK constraint pada kolom role
+ALTER TABLE IF EXISTS public.profiles ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE IF EXISTS public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
 DO $$ 
 BEGIN
     -- Hapus constraint lama jika sudah ada
@@ -87,7 +90,14 @@ AS $$
 DECLARE
     caller_role text;
 BEGIN
-    -- Penanganan operasi INSERT (Pembuatan Profil Baru)
+    -- Jika operasi dijalankan langsung dari Dashboard Supabase / SQL Editor / Service Role backend (auth.uid() IS NULL),
+    -- izinkan langsung tanpa membatasi role.
+    IF auth.uid() IS NULL THEN
+        NEW.updated_at := NOW();
+        RETURN NEW;
+    END IF;
+
+    -- Penanganan operasi INSERT (Pembuatan Profil Baru oleh Klien Web)
     IF TG_OP = 'INSERT' THEN
         caller_role := public.get_current_user_role();
         
@@ -171,10 +181,7 @@ GRANT SELECT ON public.profiles TO authenticated;
 -- 3. Membuat policy INSERT terverifikasi untuk unggah berkas dengan whitelist subfolder sah
 --    ('sph', 'spk', 'bap', 'financial', 'invoices', 'contracts').
 
--- 3.1 Pastikan tabel storage.objects dilindungi RLS
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
--- 3.2 Pastikan bucket 'internal-documents' disetel PRIVATE
+-- 3.1 Pastikan bucket 'internal-documents' disetel PRIVATE
 UPDATE storage.buckets 
 SET public = false 
 WHERE id = 'internal-documents';
@@ -184,6 +191,7 @@ DROP POLICY IF EXISTS "Internal confidential storage read" ON storage.objects;
 DROP POLICY IF EXISTS "Internal confidential storage insert" ON storage.objects;
 DROP POLICY IF EXISTS "Public read on internal-documents" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated read internal-documents" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated restricted upload on internal-documents" ON storage.objects;
 
 -- 3.4 Buat kebijakan INSERT baru yang ketat untuk pengunggahan berkas internal
 CREATE POLICY "Authenticated restricted upload on internal-documents"
