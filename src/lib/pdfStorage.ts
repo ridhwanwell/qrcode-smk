@@ -88,10 +88,15 @@ export async function linkGoogleDriveToLabel(
     updatePayload.namaRs = dates.namaRs;
   }
 
-  await apiFetch('/api/labels', {
+  const res = await apiFetch('/api/labels', {
     method: 'POST',
     body: JSON.stringify(updatePayload),
   });
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Gagal menautkan Google Drive (status ${res.status})`);
+  }
 }
 
 /**
@@ -112,10 +117,15 @@ export async function updateLabelDates(
   }
   if (extraObj?.ruangan !== undefined) payload.ruangan = extraObj.ruangan;
 
-  await apiFetch('/api/labels', {
+  const res = await apiFetch('/api/labels', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Gagal memperbarui data label (status ${res.status})`);
+  }
 }
 
 /**
@@ -133,10 +143,15 @@ export async function deleteCertificateFromLabel(labelId: string): Promise<void>
     clearCertificate: true
   };
 
-  await apiFetch('/api/labels', {
+  const res = await apiFetch('/api/labels', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Gagal melepas sertifikat dari label (status ${res.status})`);
+  }
 }
 
 function getPrefix(no: string): string {
@@ -151,7 +166,16 @@ function getPrefix(no: string): string {
  * Delete label document completely
  */
 export async function deleteLabelCompletely(labelId: string): Promise<void> {
-  // Purge from local storage immediately
+  const res = await apiFetch(`/api/labels/${encodeURIComponent(labelId)}`, {
+    method: 'DELETE',
+  });
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Gagal menghapus label (status ${res.status})`);
+  }
+
+  // Purge from local storage immediately on success
   try {
     const rawLabels = localStorage.getItem('smk_labels');
     if (rawLabels) {
@@ -171,10 +195,6 @@ export async function deleteLabelCompletely(labelId: string): Promise<void> {
   } catch (err) {
     console.warn('LocalStorage deleteLabelCompletely cleanup warning:', err);
   }
-
-  await apiFetch(`/api/labels/${encodeURIComponent(labelId)}`, {
-    method: 'DELETE',
-  });
 }
 
 /**
@@ -183,7 +203,17 @@ export async function deleteLabelCompletely(labelId: string): Promise<void> {
 export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
   if (!labelIds || labelIds.length === 0) return;
 
-  // Purge from local storage immediately
+  const res = await apiFetch('/api/labels/batch-delete', {
+    method: 'POST',
+    body: JSON.stringify({ noLabels: labelIds })
+  });
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Gagal menghapus batch label (status ${res.status})`);
+  }
+
+  // Purge from local storage immediately on success
   try {
     const rawLabels = localStorage.getItem('smk_labels');
     if (rawLabels) {
@@ -203,18 +233,27 @@ export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
   } catch (err) {
     console.warn('LocalStorage deleteBatchLabels cleanup warning:', err);
   }
-
-  await apiFetch('/api/labels/batch-delete', {
-    method: 'POST',
-    body: JSON.stringify({ noLabels: labelIds })
-  });
 }
 
 /**
  * Delete an entire folder and all its labels
  */
 export async function deleteFolderCompletely(prefix: string, labelIds?: string[]): Promise<void> {
-  // 1. Purge from local storage immediately
+  // 1. Delete on backend API
+  const res = await apiFetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Gagal menghapus folder (status ${res.status})`);
+  }
+  await apiFetch(`/api/folders/prefix/${encodeURIComponent(prefix)}`, { method: 'DELETE' }).catch(() => {});
+  if (labelIds && labelIds.length > 0) {
+    await apiFetch('/api/labels/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ noLabels: labelIds })
+    }).catch(() => {});
+  }
+
+  // 2. Purge from local storage on success
   try {
     const rawLabels = localStorage.getItem('smk_labels');
     if (rawLabels) {
@@ -251,15 +290,5 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     }
   } catch (err) {
     console.warn('LocalStorage deleteFolderCompletely cleanup warning:', err);
-  }
-
-  // 2. Delete on backend API
-  await apiFetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
-  await apiFetch(`/api/folders/prefix/${encodeURIComponent(prefix)}`, { method: 'DELETE' }).catch(() => {});
-  if (labelIds && labelIds.length > 0) {
-    await apiFetch('/api/labels/batch-delete', {
-      method: 'POST',
-      body: JSON.stringify({ noLabels: labelIds })
-    }).catch(() => {});
   }
 }

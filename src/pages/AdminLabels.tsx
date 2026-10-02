@@ -143,18 +143,15 @@ export default function AdminLabels() {
     const val = folderRsInput.trim();
 
     try {
-      await saveFolderRsToSupabase(prefix, val);
+      const res = await apiFetch(`/api/folders/${encodeURIComponent(prefix)}/rename-rs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ namaRs: val || null })
+      });
 
-      // Update labels in Supabase that match this prefix
-      const labelsInPrefix = labels.filter(l => extractLabelPrefix(l.noLabel) === prefix);
-      if (labelsInPrefix.length > 0) {
-        const supaRows = labelsInPrefix.map(l => ({
-          no_label: l.noLabel,
-          nama_rs: val || null,
-          status: l.status || 'Menunggu Sertifikat',
-          updated_at: new Date().toISOString()
-        }));
-        await upsertLabelsToSupabase(supaRows);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Gagal memperbarui nama Rumah Sakit');
       }
 
       const map = { ...folderRsMap };
@@ -164,13 +161,9 @@ export default function AdminLabels() {
         delete map[prefix];
       }
       setFolderRsMap(map);
-      localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
-
-      apiFetch('/api/folders/nama-rs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefix, namaRs: val || null })
-      }).catch(() => {});
+      try {
+        localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
+      } catch (_) {}
 
       setLabels(prev => prev.map(lbl => {
         if (extractLabelPrefix(lbl.noLabel) === prefix) {
@@ -179,10 +172,27 @@ export default function AdminLabels() {
         return lbl;
       }));
 
+      // Update local storage labels cache as well
+      try {
+        const rawLocal = localStorage.getItem('smk_labels');
+        if (rawLocal) {
+          const list = JSON.parse(rawLocal);
+          if (Array.isArray(list)) {
+            const updated = list.map((l: any) => {
+              if (extractLabelPrefix(l.noLabel || l.no_label) === prefix) {
+                return { ...l, namaRs: val || null, nama_rs: val || null };
+              }
+              return l;
+            });
+            localStorage.setItem('smk_labels', JSON.stringify(updated));
+          }
+        }
+      } catch (_) {}
+
       setEditingFolderRs(null);
-    } catch (err) {
-      console.error(err);
-      setError('Gagal memperbarui nama Rumah Sakit.');
+    } catch (err: any) {
+      console.error("Ganti nama RS folder error:", err);
+      setError(err?.message || 'Gagal memperbarui nama Rumah Sakit.');
     } finally {
       setSavingFolderRs(false);
     }

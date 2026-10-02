@@ -128,7 +128,7 @@ async function logActivity(req: AuthRequest | any, action: string, description: 
     await supabaseAdmin.from('activity_log').insert({
       user_id: req.user?.id || null,
       user_email: req.user?.email || null,
-      user_role: req.userRole || req.user?.role || null,
+      user_role: req.userRole || null,
       action,
       table_name: 'labels',
       record_id: details?.noLabel || null,
@@ -590,10 +590,19 @@ export function createApp() {
       const isClearCertRequested = clearCertificate === true;
 
       if (isClearCertRequested) {
-        if (req.user?.role !== 'admin_utama') {
-          return res.status(403).json({ error: "Hanya Admin Utama yang berhak mengosongkan sertifikat label" });
+        if (req.userRole !== 'admin_utama' && req.userRole !== 'admin_teknik') {
+          return res.status(403).json({ error: "Hanya Admin Utama dan Admin Teknik yang berhak mengosongkan sertifikat label" });
         }
-        await logActivity(req, 'CLEAR_CERTIFICATE', `Sertifikat label ${noLabel} dikosongkan oleh Admin Utama`);
+        await logActivity(req, 'CLEAR_CERTIFICATE', `Sertifikat label ${noLabel} dikosongkan oleh ${req.user?.email || req.userRole}`, {
+          noLabel,
+          oldPdfUrl: oldData?.pdf_url || null,
+          oldPdfDriveUrl: oldData?.pdf_drive_url || null,
+          oldPdfOriginalUrl: oldData?.pdforiginal_url || oldData?.pdf_original_url || null,
+          oldPdfName: oldData?.pdf_name || null,
+          oldStatus: oldData?.status || null,
+          clearedBy: req.user?.email || req.user?.id || 'admin',
+          clearedByRole: req.userRole
+        });
       }
 
       const payload: any = {
@@ -667,7 +676,7 @@ export function createApp() {
         return res.json({ success: true, count: 0, created: [], skippedExisting: [] });
       }
 
-      const isUpdateMode = mode === 'update' && (req.user?.role === 'admin_utama' || req.user?.role === 'admin_teknik');
+      const isUpdateMode = mode === 'update' && (req.userRole === 'admin_utama' || req.userRole === 'admin_teknik');
 
       const incomingRecords = items
         .filter((it: any) => it && (it.noLabel || it.no_label || it.id))
@@ -688,7 +697,7 @@ export function createApp() {
           updated_at: new Date().toISOString()
         }));
 
-      // 1. Cek nomor yang sudah ada di database per batch 500
+      // 1. Cek nomor yang sudah ada di database per batch 500 (Gagal-Aman)
       const allNos = incomingRecords.map(r => r.no_label);
       const existingMap = new Map<string, any>();
       const CHUNK_SIZE = 500;
@@ -699,7 +708,11 @@ export function createApp() {
           .from('labels')
           .select('*')
           .in('no_label', chunk);
-        if (!error && data) {
+        if (error) {
+          console.error("[Bulk Check Error] Gagal memeriksa nomor label yang sudah ada:", error);
+          return res.status(503).json({ error: "Gagal memeriksa nomor label yang sudah ada, coba lagi" });
+        }
+        if (data) {
           data.forEach(d => existingMap.set(d.no_label, d));
         }
       }
@@ -923,6 +936,65 @@ export function createApp() {
     } catch (err: any) {
       console.error("API error in POST /api/folders/nama-rs:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat menyimpan nama rumah sakit" });
+    }
+  });
+
+  // --- API: RENAME FOLDER RS (Protected: admin_utama & admin_teknik) ---
+  app.post("/api/folders/:prefix/rename-rs", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+    try {
+      const { prefix } = req.params;
+      const { namaRs } = req.body;
+
+      // 1. Validasi format prefix ^[A-Za-z0-9_-]{1,10}$
+      if (!prefix || !/^[A-Za-z0-9_-]{1,10}$/.test(prefix)) {
+        return res.status(400).json({ error: "Format prefix folder tidak valid" });
+      }
+
+      const cleanNamaRs = typeof namaRs === 'string' && namaRs.trim() ? namaRs.trim() : null;
+
+      // 2. Update kolom nama_rs untuk semua label "<prefix>.%" dalam satu query
+      const { data: updatedData, error: updateError } = await supabaseAdmin
+        .from('labels')
+        .update({
+          nama_rs: cleanNamaRs,
+          updated_at: new Date().toISOString()
+        })
+        .like('no_label', `${prefix}.%`)
+        .select('no_label');
+
+      if (updateError) {
+        console.error("Gagal update nama_rs folder labels:", updateError);
+        return res.status(500).json({ error: "Gagal memperbarui nama Rumah Sakit di database" });
+      }
+
+      // 3. Simpan juga metadata __meta_folder_rs_<prefix>
+      try {
+        await supabaseAdmin
+          .from('labels')
+          .upsert({
+            no_label: `__meta_folder_rs_${prefix}`,
+            status: 'metadata',
+            pdf_source: 'folder_rs_name',
+            nama_rs: cleanNamaRs,
+            pdforiginal_url: cleanNamaRs,
+            pdf_original_url: cleanNamaRs,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'no_label' });
+      } catch (metaErr) {
+        console.warn("Gagal memperbarui metadata folder rs:", metaErr);
+      }
+
+      await broadcastLabelsChanged();
+
+      res.json({
+        success: true,
+        updatedCount: updatedData ? updatedData.length : 0,
+        prefix,
+        namaRs: cleanNamaRs
+      });
+    } catch (err: any) {
+      console.error("API error in POST /api/folders/:prefix/rename-rs:", err);
+      res.status(500).json({ error: "Terjadi kesalahan sistem saat mengganti nama Rumah Sakit folder" });
     }
   });
 
