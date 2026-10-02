@@ -1263,7 +1263,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 >
                   <Search className="w-3.5 h-3.5" />
                   <span>
-                    {sphType === 'ecatalogue' ? 'Katalog Inaproc (139 Item)' : 'Katalog Brosur (121 Alat)'}
+                    {sphType === 'ecatalogue' ? `Katalog Inaproc (${SPH_ECATALOGUE_CATALOG.length} Item)` : `Katalog Brosur (${SPH_TARIFF_CATALOG.length} Alat)`}
                   </span>
                 </button>
 
@@ -1530,7 +1530,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     <span>Katalog Alat Medis PT. Sarana Multi Kalibrasi</span>
                   </h3>
                   <p className="text-xs text-[#D8D2CB]">
-                    Pilih alat dari E-Katalog LKPP Inaproc (139 Item) atau Tarif Brosur Standar (121 Item)
+                    Pilih alat dari E-Katalog LKPP Inaproc ({SPH_ECATALOGUE_CATALOG.length} Item) atau Tarif Brosur Standar ({SPH_TARIFF_CATALOG.length} Item)
                   </p>
                 </div>
                 <button
@@ -1554,7 +1554,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     }`}
                   >
                     <Globe className="w-3.5 h-3.5" />
-                    <span>E-Catalogue Inaproc ({filteredECatalogue.length}/139)</span>
+                    <span>E-Catalogue Inaproc ({filteredECatalogue.length}/{SPH_ECATALOGUE_CATALOG.length})</span>
                   </button>
                   <button
                     type="button"
@@ -1566,7 +1566,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     }`}
                   >
                     <FileText className="w-3.5 h-3.5" />
-                    <span>Brosur Standar ({filteredBrochureCatalog.length}/121)</span>
+                    <span>Brosur Standar ({filteredBrochureCatalog.length}/{SPH_TARIFF_CATALOG.length})</span>
                   </button>
                 </div>
               </div>

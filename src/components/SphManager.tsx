@@ -123,7 +123,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
               Surat Penawaran Harga (SPH) Kalibrasi
             </h1>
             <p className="text-sm text-[#D8D2CB] max-w-2xl mt-1 leading-relaxed">
-              Kelola dokumen penawaran harga resmi, katalog tarif 121 alat brosur, dan simulasi negosiasi target deal rumah sakit dengan perhitungan PPN 11% proporsional.
+              Kelola dokumen penawaran harga resmi, katalog tarif {SPH_TARIFF_CATALOG.length} alat brosur & 313 item E-Katalog Inaproc LKPP, dan simulasi negosiasi target deal rumah sakit dengan perhitungan PPN 11% proporsional.
             </p>
           </div>
 
@@ -133,7 +133,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
               className="px-4 py-2.5 bg-[#0F364C] hover:bg-[#144966] text-[#EEEEEE] text-xs font-semibold rounded-xl border border-[#398AB9]/40 transition-all flex items-center gap-2 shadow-sm"
             >
               <BookOpen className="w-4 h-4 text-[#398AB9]" />
-              <span>Katalog Tarif Brosur (121 Alat)</span>
+              <span>Katalog Tarif Brosur ({SPH_TARIFF_CATALOG.length} Alat)</span>
             </button>
 
             <button
@@ -563,7 +563,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
             </div>
 
             <div className="px-6 py-3 bg-[#EEEEEE] border-t border-[#D8D2CB] flex justify-between items-center text-xs text-slate-600">
-              <span className="font-medium">Total 121 Item Tarif Kalibrasi Resmi</span>
+              <span className="font-medium">Total {SPH_TARIFF_CATALOG.length} Item Tarif Kalibrasi Resmi Brosur</span>
               <button
                 onClick={() => setShowCatalogModal(false)}
                 className="px-4 py-1.5 bg-[#1C658C] hover:bg-[#398AB9] text-white font-semibold rounded-lg transition-colors shadow-xs"
