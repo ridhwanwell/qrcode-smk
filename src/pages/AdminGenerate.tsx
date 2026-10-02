@@ -132,6 +132,8 @@ export default function AdminGenerate() {
   // Existing folder summaries for continuation / suggestion
   const [existingFolders, setExistingFolders] = useState<ExistingFolderSummary[]>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [skippedExistingList, setSkippedExistingList] = useState<string[]>([]);
 
   // Hospital Name state (Optional)
   const [namaRs, setNamaRs] = useState('');
@@ -212,74 +214,20 @@ export default function AdminGenerate() {
   // Fetch summary of all existing folders & their max label numbers
   const fetchExistingFoldersSummary = async () => {
     setLoadingFolders(true);
+    setSummaryError(null);
     try {
-      const [sbLabelsRes, sbFolderMap, apiLabelsRes] = await Promise.all([
-        supabase
-          .from('labels')
-          .select('no_label, nama_rs')
-          .not('no_label', 'like', '__meta_%')
-          .not('no_label', 'like', '__aset_%')
-          .order('no_label', { ascending: true }),
-        fetchFolderRsFromSupabase(),
-        apiFetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => [])
-      ]);
-
-      const allItems: { noLabel: string; namaRs?: string | null }[] = [];
-      (sbLabelsRes.data || []).forEach((d: any) => {
-        if (d.no_label) allItems.push({ noLabel: d.no_label, namaRs: d.nama_rs });
-      });
-      (apiLabelsRes || []).forEach((d: any) => {
-        const key = d.noLabel || d.no_label;
-        if (key && !key.startsWith('__meta_') && !key.startsWith('__aset_')) {
-          allItems.push({ noLabel: key, namaRs: d.namaRs || d.nama_rs });
-        }
-      });
-
-      // Also check localStorage
-      try {
-        const local = JSON.parse(localStorage.getItem('smk_labels') || '[]');
-        local.forEach((l: any) => {
-          const k = l.noLabel || l.no_label;
-          if (k && !k.startsWith('__meta_') && !k.startsWith('__aset_')) {
-            allItems.push({ noLabel: k, namaRs: l.namaRs || l.nama_rs });
-          }
-        });
-      } catch (_) {}
-
-      // Group by 3-digit prefix
-      const map = new Map<string, { maxNum: number; count: number; namaRs: string | null }>();
-      allItems.forEach(it => {
-        const parts = it.noLabel.split('.');
-        if (parts.length === 2 && /^\d{3}$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
-          const prefix = parts[0];
-          const num = parseInt(parts[1], 10);
-          const curr = map.get(prefix) || { maxNum: 0, count: 0, namaRs: it.namaRs || sbFolderMap[prefix] || null };
-          if (num > curr.maxNum) curr.maxNum = num;
-          curr.count += 1;
-          if (!curr.namaRs && (it.namaRs || sbFolderMap[prefix])) {
-            curr.namaRs = it.namaRs || sbFolderMap[prefix] || null;
-          }
-          map.set(prefix, curr);
-        }
-      });
-
-      const summaries: ExistingFolderSummary[] = [];
-      map.forEach((val, prefix) => {
-        summaries.push({
-          prefix,
-          count: val.count,
-          maxNum: val.maxNum,
-          maxLabel: `${prefix}.${val.maxNum.toString().padStart(4, '0')}`,
-          nextNum: val.maxNum + 1,
-          nextLabel: `${prefix}.${(val.maxNum + 1).toString().padStart(4, '0')}`,
-          namaRs: val.namaRs
-        });
-      });
-
-      summaries.sort((a, b) => a.prefix.localeCompare(b.prefix, undefined, { numeric: true }));
-      setExistingFolders(summaries);
-    } catch (err) {
+      const res = await apiFetch('/api/labels/summary');
+      if (!res.ok) {
+        throw new Error(`Server mengembalikan status ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data || !Array.isArray(data.folders)) {
+        throw new Error("Format respons ringkasan label dari server tidak sesuai");
+      }
+      setExistingFolders(data.folders);
+    } catch (err: any) {
       console.warn('Could not fetch existing folders summary:', err);
+      setSummaryError("Gagal memuat nomor label terakhir dari server. Generate dinonaktifkan untuk mencegah nomor ganda.");
     } finally {
       setLoadingFolders(false);
     }
@@ -459,12 +407,6 @@ export default function AdminGenerate() {
         }))
       ];
 
-      // 1. Direct save to Supabase with chunked batching
-      const syncRes = await bulkSyncLabelsToSupabase(itemsToSave);
-      if (!syncRes.success) {
-        console.warn('Supabase bulk save warning: Primary sync failed, trying API fallback...');
-      }
-
       // If hospital name is provided, update folder metadata map in Supabase & API
       if (cleanNamaRs && labelsToGenerate.length > 0) {
         const prefixVal = labelsToGenerate[0].split('.')[0];
@@ -483,15 +425,27 @@ export default function AdminGenerate() {
         }
       }
 
-      // 2. Sync to API backend with Auth Token if available
-      try {
-        await apiFetch('/api/labels/bulk', {
-          method: 'POST',
-          body: JSON.stringify({ items: itemsToSave })
-        }).catch(err => console.warn('API bulk sync deferred:', err));
-      } catch (_) {}
+      // 1. Sync to API backend with Auth Token
+      let createdList: string[] = [];
+      const bulkRes = await apiFetch('/api/labels/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ items: itemsToSave })
+      });
 
-      // 3. Update localStorage labels as local backup and un-tombstone
+      if (!bulkRes.ok) {
+        const errData = await bulkRes.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gagal menyimpan label ke database server.');
+      }
+
+      const bulkData = await bulkRes.json();
+      if (Array.isArray(bulkData?.skippedExisting) && bulkData.skippedExisting.length > 0) {
+        setSkippedExistingList(bulkData.skippedExisting);
+      } else {
+        setSkippedExistingList([]);
+      }
+      createdList = bulkData?.created || [];
+
+      // 2. Update localStorage labels as local backup and un-tombstone
       try {
         const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
         const existingMap = new Map(localList.map((l: any) => [l.noLabel || l.no_label, l]));
@@ -519,6 +473,9 @@ export default function AdminGenerate() {
         const updatedL = delL.filter((x: string) => !genSet.has(x));
         localStorage.setItem('smk_deleted_labels', JSON.stringify(updatedL));
       } catch (_) {}
+
+      // Refresh folder summaries from server after save
+      fetchExistingFoldersSummary().catch(() => {});
 
       setGeneratedLabels(labelsToGenerate);
       setBreakdownInfo(currentBreakdown);
@@ -799,6 +756,25 @@ export default function AdminGenerate() {
           <p className="text-slate-500 text-sm mt-0.5">Generate nomor label dan unduh PDF stiker kalibrasi siap cetak.</p>
         </div>
       </div>
+
+      {/* Banner Merah: Gagal Memuat Ringkasan Nomor Label dari Server */}
+      {summaryError && (
+        <div className="p-4 bg-rose-50 border border-rose-300 text-rose-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span className="text-xs sm:text-sm font-semibold">{summaryError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchExistingFoldersSummary()}
+            disabled={loadingFolders}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 self-start sm:self-auto disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", loadingFolders && "animate-spin")} />
+            <span>Muat Ulang</span>
+          </button>
+        </div>
+      )}
 
       {!success ? (
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-8">
@@ -1149,8 +1125,12 @@ export default function AdminGenerate() {
 
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-slate-900 bg-amber-500 hover:bg-amber-400 focus:outline-none disabled:opacity-50 transition-colors"
+                disabled={loading || !!summaryError}
+                className={cn(
+                  "w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-slate-900 bg-amber-500 hover:bg-amber-400 focus:outline-none disabled:opacity-50 transition-colors",
+                  summaryError && "cursor-not-allowed opacity-50 bg-slate-200 text-slate-400 hover:bg-slate-200"
+                )}
+                title={summaryError ? "Muat ulang data dulu sebelum membuat label" : "Generate Label"}
               >
                 {loading ? (
                   <>
@@ -1179,10 +1159,23 @@ export default function AdminGenerate() {
               <div>
                 <h3 className="text-xl font-bold">Berhasil Dibuat!</h3>
                 <p className="text-sm text-emerald-700/80">
-                  Total {generatedLabels.length} label telah tersimpan di database.
+                  Total {generatedLabels.length} label telah diproses dan tersimpan di database.
                 </p>
               </div>
             </div>
+
+            {/* Peringatan Nomor Sudah Ada / Dilewati */}
+            {skippedExistingList.length > 0 && (
+              <div className="p-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl flex items-start gap-2.5 shadow-sm">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs">
+                  <p className="font-bold">Nomor sudah ada di database, tidak ditimpa:</p>
+                  <p className="mt-1 font-mono font-semibold text-amber-950 break-all leading-relaxed">
+                    {skippedExistingList.join(', ')}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Rincian Label Card Breakdown */}
             {breakdownInfo && (

@@ -4,7 +4,7 @@ import AdminGenerate from '../pages/AdminGenerate';
 import AdminTemplates from '../pages/AdminTemplates';
 import AdminDashboard from '../pages/AdminDashboard';
 import { Tags, FilePlus2, Palette, BarChart3, Database } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/apiClient';
 
 export const LabelModuleView: React.FC = () => {
   const [subTab, setSubTab] = useState<'labels' | 'generate' | 'templates' | 'dashboard'>('labels');
@@ -13,16 +13,15 @@ export const LabelModuleView: React.FC = () => {
   useEffect(() => {
     const checkCount = async () => {
       try {
-        const { count, error } = await supabase
-          .from('labels')
-          .select('*', { count: 'exact', head: true })
-          .not('no_label', 'like', '__meta_%')
-          .not('no_label', 'like', '__aset_%');
-        if (!error && count !== null) {
-          setDbStatus({ connected: true, count });
+        const res = await apiFetch('/api/labels/summary');
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data?.total === 'number') {
+            setDbStatus({ connected: true, count: data.total });
+          }
         }
       } catch (err) {
-        console.warn('Supabase label check:', err);
+        console.warn('Labels summary check:', err);
       }
     };
     checkCount();

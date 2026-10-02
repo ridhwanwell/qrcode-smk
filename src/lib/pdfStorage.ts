@@ -130,6 +130,7 @@ export async function deleteCertificateFromLabel(labelId: string): Promise<void>
     pdfUrl: null,
     pdfDriveUrl: null,
     pdfOriginalUrl: null,
+    clearCertificate: true
   };
 
   await apiFetch('/api/labels', {

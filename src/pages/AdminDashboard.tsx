@@ -200,20 +200,14 @@ END $$;`;
         if (key && !key.startsWith('__meta_') && !key.startsWith('__aset_')) apiMap[key] = d;
       });
 
-      // 2. Fetch Supabase labels for metadata
-      const { data } = await supabase
-        .from('labels')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      const folderMetaMap: Record<string, string> = {};
-      if (data && data.length > 0) {
-        data.forEach((d: any) => {
-          if (d.no_label?.startsWith('__meta_folder_')) {
-            folderMetaMap[d.no_label.replace('__meta_folder_', '')] = d.pdf_name;
-          }
-        });
-      }
+      // 2. Fetch folder metadata via API
+      let folderMetaMap: Record<string, string> = {};
+      try {
+        const fRes = await apiFetch('/api/folders/nama-rs');
+        if (fRes.ok) {
+          folderMetaMap = await fRes.json();
+        }
+      } catch (_) {}
 
       const formatted = rawApiLabels.map((d: any) => {
         const no = d.noLabel || d.no_label;
@@ -232,7 +226,7 @@ END $$;`;
           createdAt: d.createdAt || d.created_at,
           updatedAt: d.updatedAt || d.updated_at
         };
-      }).filter((d: any) => d.noLabel && !d.noLabel.startsWith('__meta_') && !d.noLabel.startsWith('__aset_'));
+      }).filter((d: any) => d.noLabel && !d.noLabel.startsWith('__meta_') && !d.noLabel.startsWith('__aset_') && !d.noLabel.startsWith('__item_') && !d.noLabel.startsWith('__tombstone_'));
 
       setLabels(formatted);
 

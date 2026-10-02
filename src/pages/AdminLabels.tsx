@@ -190,19 +190,11 @@ export default function AdminLabels() {
 
   const fetchLabels = useCallback(async () => {
     try {
-      // 1. Fetch labels from backend (/api/labels), folders, and Supabase
+      // 1. Fetch labels from backend (/api/labels) and folder metadata from /api/folders/nama-rs
       let rawApiLabels: any[] | null = null;
       let apiFolderRes: Record<string, string> = {};
-      let sbFolderMap: Record<string, string> = {};
 
-      const [sbLabelsRes, fetchedSbFolderMap, apiRes, apiFolderResult] = await Promise.all([
-        supabase
-          .from('labels')
-          .select('*')
-          .not('no_label', 'like', '__meta_%')
-          .not('no_label', 'like', '__aset_%')
-          .order('no_label', { ascending: true }),
-        fetchFolderRsFromSupabase().catch(() => ({})),
+      const [apiRes, apiFolderResult] = await Promise.all([
         apiFetch('/api/labels')
           .then(async (r) => {
             if (r.ok) {
@@ -219,7 +211,6 @@ export default function AdminLabels() {
 
       rawApiLabels = apiRes;
       apiFolderRes = apiFolderResult || {};
-      sbFolderMap = fetchedSbFolderMap || {};
 
       let cachedLabels: any[] = [];
       try {
@@ -260,16 +251,9 @@ export default function AdminLabels() {
         setLabelsLoadError(null);
       }
 
-      let apiMap: Record<string, any> = {};
-      rawApiLabels.forEach((d: any) => {
-        const key = d.noLabel || d.no_label;
-        if (key && !key.startsWith('__meta_') && !key.startsWith('__aset_')) apiMap[key] = d;
-      });
-
       const mergedFolderMap = {
         ...folderRsMap,
-        ...apiFolderRes,
-        ...sbFolderMap
+        ...apiFolderRes
       };
       setFolderRsMap(mergedFolderMap);
       try {
@@ -280,17 +264,15 @@ export default function AdminLabels() {
       const deletedFolders = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]'));
       const deletedLabels = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]'));
 
-      const existingNos = new Set<string>();
       const formatted: any[] = [];
 
-      // Prefer API data (which is paginated and holds all 1395+ labels)
+      // Format API data (which is paginated and holds all 1395+ labels)
       rawApiLabels.forEach((d: any) => {
         const no = d.noLabel || d.no_label || d.id;
-        if (!no || no.startsWith('__meta_') || no.startsWith('__aset_')) return;
+        if (!no || no.startsWith('__meta_') || no.startsWith('__aset_') || no.startsWith('__item_') || no.startsWith('__tombstone_')) return;
         const prefix = extractLabelPrefix(no);
         if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
 
-        existingNos.add(no);
         formatted.push({
           id: no,
           noLabel: no,
@@ -307,37 +289,6 @@ export default function AdminLabels() {
           validUntil: d.validUntil || d.valid_until || null,
           createdAt: d.createdAt || d.created_at || null,
           updatedAt: d.updatedAt || d.updated_at || null,
-        });
-      });
-
-      // Merge any sbLabels not in apiLabels
-      const sbData = (sbLabelsRes.data || []).filter((d: any) => {
-        const no = d.no_label;
-        if (!no || no.startsWith('__meta_') || no.startsWith('__aset_')) return false;
-        const prefix = extractLabelPrefix(no);
-        if (deletedFolders.has(prefix) || deletedLabels.has(no)) return false;
-        return !existingNos.has(no);
-      });
-
-      sbData.forEach((d: any) => {
-        const prefix = extractLabelPrefix(d.no_label);
-        existingNos.add(d.no_label);
-        formatted.push({
-          id: d.no_label,
-          noLabel: d.no_label,
-          namaRs: d.nama_rs || d.namaRs || mergedFolderMap[prefix] || null,
-          namaAlat: d.nama_alat || d.namaAlat || d.pdf_name || null,
-          ruangan: d.ruangan || null,
-          status: d.status || 'Menunggu Sertifikat',
-          pdfSource: d.pdf_source || null,
-          pdfUrl: d.pdf_url || null,
-          pdfDriveUrl: d.pdf_drive_url || null,
-          pdfOriginalUrl: d.pdforiginal_url || null,
-          pdfName: d.pdf_name || null,
-          calibratedAt: d.calibrated_at || null,
-          validUntil: d.valid_until || null,
-          createdAt: d.created_at || null,
-          updatedAt: d.updated_at || null,
         });
       });
 

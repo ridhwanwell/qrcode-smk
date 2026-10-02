@@ -123,6 +123,27 @@ async function fetchAllRows<T = any>(
   return allRows;
 }
 
+async function logActivity(req: AuthRequest | any, action: string, description: string, details?: any) {
+  try {
+    await supabaseAdmin.from('activity_log').insert({
+      user_id: req.user?.id || null,
+      user_email: req.user?.email || null,
+      user_role: req.userRole || req.user?.role || null,
+      action,
+      table_name: 'labels',
+      record_id: details?.noLabel || null,
+      payload: {
+        description,
+        ...(details || {})
+      },
+      ip_address: req.ip || null,
+      created_at: new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn('[ActivityLog Warning] Gagal mencatat log:', err);
+  }
+}
+
 /**
  * Creates and configures the Express application with all /api/* routes,
  * authentication middlewares, role validations, and security controls.
@@ -448,6 +469,94 @@ export function createApp() {
     return { success: true, count: totalSaved };
   }
 
+  // --- API: ADMIN LABELS SUMMARY (Protected by requireAuth, calculated across ALL labels) ---
+  app.get("/api/labels/summary", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const [allLabels, folderNameRes] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabaseAdmin
+            .from('labels')
+            .select('no_label, nama_rs, pdforiginal_url, pdf_original_url')
+            .order('no_label', { ascending: true })
+            .range(from, to)
+        ),
+        supabaseAdmin
+          .from('labels')
+          .select('no_label, pdforiginal_url, pdf_original_url')
+          .like('no_label', '__meta_folder_rs_%')
+      ]);
+
+      const folderRsMap: Record<string, string> = {};
+      (folderNameRes.data || []).forEach((r: any) => {
+        const prefix = r.no_label.replace('__meta_folder_rs_', '');
+        const val = r.pdforiginal_url || r.pdf_original_url;
+        if (prefix && val) folderRsMap[prefix] = val;
+      });
+
+      const prefixMap: Record<string, {
+        prefix: string;
+        count: number;
+        maxNum: number;
+        maxLabel: string;
+        nextNum: number;
+        nextLabel: string;
+        namaRs: string | null;
+      }> = {};
+
+      let totalLabels = 0;
+
+      (allLabels || []).forEach((row: any) => {
+        const no = row.no_label;
+        if (!no || no.startsWith('__meta_') || no.startsWith('__aset_') || no.startsWith('__item_') || no.startsWith('__tombstone_')) {
+          return;
+        }
+
+        totalLabels++;
+
+        const dotIdx = no.indexOf('.');
+        const prefix = dotIdx > 0 ? no.substring(0, dotIdx) : (no.length >= 3 ? no.substring(0, 3) : no);
+        const suffix = dotIdx > 0 ? no.substring(dotIdx + 1) : no;
+        const num = parseInt(suffix, 10);
+        const validNum = isNaN(num) ? 0 : num;
+
+        if (!prefixMap[prefix]) {
+          prefixMap[prefix] = {
+            prefix,
+            count: 0,
+            maxNum: 0,
+            maxLabel: no,
+            nextNum: 1,
+            nextLabel: `${prefix}.0001`,
+            namaRs: folderRsMap[prefix] || row.nama_rs || null
+          };
+        }
+
+        const entry = prefixMap[prefix];
+        entry.count++;
+        if (row.nama_rs && !entry.namaRs) {
+          entry.namaRs = row.nama_rs;
+        }
+        if (validNum >= entry.maxNum) {
+          entry.maxNum = validNum;
+          entry.maxLabel = no;
+          entry.nextNum = validNum + 1;
+          entry.nextLabel = `${prefix}.${String(validNum + 1).padStart(4, '0')}`;
+        }
+      });
+
+      const folders = Object.values(prefixMap).sort((a, b) => a.prefix.localeCompare(b.prefix, undefined, { numeric: true }));
+
+      res.json({
+        total: totalLabels,
+        folders,
+        prefixMap
+      });
+    } catch (err: any) {
+      console.error("API error in GET /api/labels/summary:", err);
+      res.status(500).json({ error: "Gagal memuat ringkasan label dari database" });
+    }
+  });
+
   // --- API: ADMIN LABELS (Protected by requireAuth and Role) ---
   app.post("/api/labels", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
@@ -463,29 +572,62 @@ export function createApp() {
         pdfOriginalUrl,
         pdfName,
         calibratedAt,
-        validUntil
+        validUntil,
+        clearCertificate
       } = req.body;
 
       if (!noLabel) {
         return res.status(400).json({ error: "Nomor label wajib diisi" });
       }
 
+      // 1. Cek record lama untuk proteksi sertifikat
+      const { data: oldData } = await supabaseAdmin
+        .from('labels')
+        .select('*')
+        .eq('no_label', noLabel)
+        .maybeSingle();
+
+      const isClearCertRequested = clearCertificate === true;
+
+      if (isClearCertRequested) {
+        if (req.user?.role !== 'admin_utama') {
+          return res.status(403).json({ error: "Hanya Admin Utama yang berhak mengosongkan sertifikat label" });
+        }
+        await logActivity(req, 'CLEAR_CERTIFICATE', `Sertifikat label ${noLabel} dikosongkan oleh Admin Utama`);
+      }
+
       const payload: any = {
         no_label: noLabel,
-        nama_rs: namaRs || null,
-        nama_alat: namaAlat || pdfName || null,
-        ruangan: ruangan || null,
-        status: status || 'Menunggu Sertifikat',
-        pdf_source: pdfSource || null,
-        pdf_url: pdfUrl || null,
-        pdf_drive_url: pdfDriveUrl || null,
-        pdforiginal_url: pdfOriginalUrl || null,
-        pdf_original_url: pdfOriginalUrl || null,
-        pdf_name: pdfName || null,
-        calibrated_at: calibratedAt || null,
-        valid_until: validUntil || null,
+        nama_rs: namaRs || (oldData?.nama_rs ?? null),
+        nama_alat: namaAlat || pdfName || (oldData?.nama_alat ?? null),
+        ruangan: ruangan || (oldData?.ruangan ?? null),
+        status: status || (oldData?.status ?? 'Menunggu Sertifikat'),
+        pdf_source: pdfSource || (oldData?.pdf_source ?? null),
+        pdf_url: pdfUrl || (oldData?.pdf_url ?? null),
+        pdf_drive_url: pdfDriveUrl || (oldData?.pdf_drive_url ?? null),
+        pdforiginal_url: pdfOriginalUrl || (oldData?.pdforiginal_url ?? oldData?.pdf_original_url ?? null),
+        pdf_original_url: pdfOriginalUrl || (oldData?.pdf_original_url ?? oldData?.pdforiginal_url ?? null),
+        pdf_name: pdfName || (oldData?.pdf_name ?? null),
+        calibrated_at: calibratedAt || (oldData?.calibrated_at ?? null),
+        valid_until: validUntil || (oldData?.valid_until ?? null),
         updated_at: new Date().toISOString()
       };
+
+      // Jika sertifikat TIDAK diminta dikosongkan, proteksi field sertifikat lama agar tidak terhapus
+      if (!isClearCertRequested && oldData) {
+        if (oldData.pdf_url && !pdfUrl) payload.pdf_url = oldData.pdf_url;
+        if (oldData.pdf_drive_url && !pdfDriveUrl) payload.pdf_drive_url = oldData.pdf_drive_url;
+        if ((oldData.pdforiginal_url || oldData.pdf_original_url) && !pdfOriginalUrl) {
+          payload.pdforiginal_url = oldData.pdforiginal_url || oldData.pdf_original_url;
+          payload.pdf_original_url = oldData.pdf_original_url || oldData.pdforiginal_url;
+        }
+        if (oldData.pdf_name && !pdfName) payload.pdf_name = oldData.pdf_name;
+        if (oldData.calibrated_at && !calibratedAt) payload.calibrated_at = oldData.calibrated_at;
+        if (oldData.valid_until && !validUntil) payload.valid_until = oldData.valid_until;
+        if (oldData.status === 'Sertifikat Tertaut' && (!status || status === 'Menunggu Sertifikat')) {
+          payload.status = 'Sertifikat Tertaut';
+        }
+      }
 
       // Save folder RS name to metadata if applicable
       if (namaRs && typeof namaRs === 'string' && namaRs.trim()) {
@@ -520,12 +662,14 @@ export function createApp() {
 
   app.post("/api/labels/bulk", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
-      const { items } = req.body;
+      const { items, mode } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
-        return res.json({ success: true, count: 0 });
+        return res.json({ success: true, count: 0, created: [], skippedExisting: [] });
       }
 
-      const records = items
+      const isUpdateMode = mode === 'update' && (req.user?.role === 'admin_utama' || req.user?.role === 'admin_teknik');
+
+      const incomingRecords = items
         .filter((it: any) => it && (it.noLabel || it.no_label || it.id))
         .map((it: any) => ({
           no_label: it.noLabel || it.no_label || it.id,
@@ -543,6 +687,57 @@ export function createApp() {
           valid_until: it.validUntil || it.valid_until || null,
           updated_at: new Date().toISOString()
         }));
+
+      // 1. Cek nomor yang sudah ada di database per batch 500
+      const allNos = incomingRecords.map(r => r.no_label);
+      const existingMap = new Map<string, any>();
+      const CHUNK_SIZE = 500;
+
+      for (let i = 0; i < allNos.length; i += CHUNK_SIZE) {
+        const chunk = allNos.slice(i, i + CHUNK_SIZE);
+        const { data, error } = await supabaseAdmin
+          .from('labels')
+          .select('*')
+          .in('no_label', chunk);
+        if (!error && data) {
+          data.forEach(d => existingMap.set(d.no_label, d));
+        }
+      }
+
+      let recordsToSave: any[] = [];
+      let created: string[] = [];
+      let skippedExisting: string[] = [];
+
+      if (isUpdateMode) {
+        // Mode update: boleh upsert tapi field sertifikat lama TIDAK boleh tertimpa jadi null
+        recordsToSave = incomingRecords.map(rec => {
+          const oldItem = existingMap.get(rec.no_label);
+          if (oldItem) {
+            return {
+              ...rec,
+              nama_rs: rec.nama_rs || oldItem.nama_rs || null,
+              nama_alat: rec.nama_alat || oldItem.nama_alat || oldItem.pdf_name || null,
+              ruangan: rec.ruangan || oldItem.ruangan || null,
+              status: (oldItem.status === 'Sertifikat Tertaut' && (!rec.status || rec.status === 'Menunggu Sertifikat')) ? oldItem.status : (rec.status || oldItem.status),
+              pdf_source: rec.pdf_source || oldItem.pdf_source || null,
+              pdf_url: rec.pdf_url || oldItem.pdf_url || null,
+              pdf_drive_url: rec.pdf_drive_url || oldItem.pdf_drive_url || null,
+              pdforiginal_url: rec.pdforiginal_url || oldItem.pdforiginal_url || oldItem.pdf_original_url || null,
+              pdf_original_url: rec.pdf_original_url || oldItem.pdf_original_url || oldItem.pdforiginal_url || null,
+              pdf_name: rec.pdf_name || oldItem.pdf_name || null,
+              calibrated_at: rec.calibrated_at || oldItem.calibrated_at || null,
+              valid_until: rec.valid_until || oldItem.valid_until || null
+            };
+          }
+          return rec;
+        });
+        created = recordsToSave.map(r => r.no_label);
+      } else {
+        // Mode default: HANYA TAMBAH BARU (nomor yang sudah ada dilewati)
+        recordsToSave = incomingRecords.filter(r => !existingMap.has(r.no_label));
+        created = recordsToSave.map(r => r.no_label);
+        skippedExisting = incomingRecords.filter(r => existingMap.has(r.no_label)).map(r => r.no_label);
+      }
 
       // Extract unique folder RS names if any and save to metadata
       const folderRsMap: Record<string, string> = {};
@@ -569,15 +764,22 @@ export function createApp() {
         } catch (_) {}
       }
 
-      const result = await upsertLabelsAdmin(records);
+      if (recordsToSave.length > 0) {
+        const result = await upsertLabelsAdmin(recordsToSave);
 
-      if (!result.success) {
-        console.error("Supabase bulk label upsert error:", result.error);
-        return res.status(500).json({ error: "Gagal menyimpan label secara massal ke database" });
+        if (!result.success) {
+          console.error("Supabase bulk label upsert error:", result.error);
+          return res.status(500).json({ error: "Gagal menyimpan label baru ke database" });
+        }
       }
 
       await broadcastLabelsChanged();
-      res.json({ success: true, count: result.count });
+      res.json({
+        success: true,
+        count: recordsToSave.length,
+        created,
+        skippedExisting
+      });
     } catch (err: any) {
       console.error("API error in POST /api/labels/bulk:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat menyimpan label secara massal" });
