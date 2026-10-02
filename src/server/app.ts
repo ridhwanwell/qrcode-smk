@@ -95,6 +95,35 @@ async function saveIdempotencyRecord(key: string, statusCode: number, body: any,
 }
 
 /**
+ * Helper function to fetch all rows with pagination (1000 rows/page)
+ * to bypass Supabase's default 1000-row limit per request.
+ */
+async function fetchAllRows<T = any>(
+  queryFactory: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>,
+  pageSize: number = 1000
+): Promise<T[]> {
+  let allRows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await queryFactory(from, from + pageSize - 1);
+    if (error) {
+      throw error;
+    }
+    if (!data || data.length === 0) {
+      break;
+    }
+    allRows.push(...data);
+    if (data.length < pageSize) {
+      break;
+    }
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
+/**
  * Creates and configures the Express application with all /api/* routes,
  * authentication middlewares, role validations, and security controls.
  * Suitable for both local dev server and Vercel serverless function runtime.
@@ -274,22 +303,20 @@ export function createApp() {
     }
   });
 
-  // --- API: ADMIN LABELS (Protected by requireAuth) ---
+  // --- API: ADMIN LABELS (Protected by requireAuth with Pagination for ALL labels) ---
   app.get("/api/labels", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { data, error } = await supabaseAdmin
-        .from('labels')
-        .select('*')
-        .not('no_label', 'like', '__meta_%')
-        .not('no_label', 'like', '__aset_%')
-        .not('no_label', 'like', '__item_%')
-        .not('no_label', 'like', '__tombstone_%')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error("Supabase labels fetch error:", error);
-        return res.status(500).json({ error: "Gagal mengambil data label dari database" });
-      }
+      const data = await fetchAllRows((from, to) =>
+        supabaseAdmin
+          .from('labels')
+          .select('*')
+          .not('no_label', 'like', '__meta_%')
+          .not('no_label', 'like', '__aset_%')
+          .not('no_label', 'like', '__item_%')
+          .not('no_label', 'like', '__tombstone_%')
+          .order('no_label', { ascending: true })
+          .range(from, to)
+      );
 
       const formatted = (data || []).map((it: any) => ({
         noLabel: it.no_label,
@@ -311,7 +338,7 @@ export function createApp() {
       res.json(formatted);
     } catch (err: any) {
       console.error("API error in GET /api/labels:", err);
-      res.status(500).json({ error: "Terjadi kesalahan sistem saat mengambil data label" });
+      res.status(500).json({ error: "Gagal mengambil seluruh data label dari database" });
     }
   });
 
@@ -626,18 +653,17 @@ export function createApp() {
     }
   });
 
-  // Folder RS Name Mapping endpoints
+  // Folder RS Name Mapping endpoints (Paginated to fetch all metadata rows)
   app.get("/api/folders/nama-rs", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { data, error } = await supabaseAdmin
-        .from('labels')
-        .select('no_label, nama_rs, pdforiginal_url, pdf_original_url')
-        .or('no_label.like.__meta_folder_rs_%,no_label.like.__meta_folder_%');
-
-      if (error) {
-        console.error("Supabase fetch folder RS error:", error);
-        return res.status(500).json({ error: "Gagal mengambil data folder rumah sakit" });
-      }
+      const data = await fetchAllRows((from, to) =>
+        supabaseAdmin
+          .from('labels')
+          .select('no_label, nama_rs, pdforiginal_url, pdf_original_url')
+          .or('no_label.like.__meta_folder_rs_%,no_label.like.__meta_folder_%')
+          .order('no_label', { ascending: true })
+          .range(from, to)
+      );
 
       const map: Record<string, string> = {};
       (data || []).forEach((row: any) => {
@@ -873,16 +899,20 @@ export function createApp() {
         return res.status(403).json({ error: "Akun belum memiliki hak akses untuk melihat koleksi ini" });
       }
 
-      // 1. Fetch tombstones for permanently deleted items (tanpa ID hardcoded)
+      // 1. Fetch tombstones for permanently deleted items (dengan pagination)
       const itemPrefix = `__item_${name}_`;
       const tombstonePrefix = `__tombstone_${name}_`;
       const deletedIdSet = new Set<string>();
 
       try {
-        const { data: tombstoneRows } = await supabaseAdmin
-          .from('labels')
-          .select('pdf_name')
-          .like('no_label', `${tombstonePrefix}%`);
+        const tombstoneRows = await fetchAllRows((from, to) =>
+          supabaseAdmin
+            .from('labels')
+            .select('pdf_name')
+            .like('no_label', `${tombstonePrefix}%`)
+            .order('no_label', { ascending: true })
+            .range(from, to)
+        );
         if (tombstoneRows && tombstoneRows.length > 0) {
           tombstoneRows.forEach(tr => {
             if (tr.pdf_name) deletedIdSet.add(String(tr.pdf_name).trim());
@@ -921,10 +951,28 @@ export function createApp() {
         return res.status(500).json({ error: "Gagal mengambil data koleksi aset" });
       }
 
-      const { data: itemRows } = await supabaseAdmin
-        .from('labels')
-        .select('no_label, pdf_url')
-        .like('no_label', `${itemPrefix}%`);
+      let individualItems: any[] = [];
+      try {
+        const itemRows = await fetchAllRows((from, to) =>
+          supabaseAdmin
+            .from('labels')
+            .select('no_label, pdf_url')
+            .like('no_label', `${itemPrefix}%`)
+            .order('no_label', { ascending: true })
+            .range(from, to)
+        );
+
+        if (itemRows && itemRows.length > 0) {
+          itemRows.forEach(row => {
+            if (row.pdf_url) {
+              try {
+                const parsed = JSON.parse(row.pdf_url);
+                if (parsed && typeof parsed === 'object') individualItems.push(parsed);
+              } catch (_) {}
+            }
+          });
+        }
+      } catch (_) {}
 
       let mainItems: any[] = [];
       if (mainData?.pdf_url) {
@@ -932,18 +980,6 @@ export function createApp() {
           const parsed = JSON.parse(mainData.pdf_url);
           if (Array.isArray(parsed)) mainItems = parsed;
         } catch (_) {}
-      }
-
-      let individualItems: any[] = [];
-      if (itemRows && itemRows.length > 0) {
-        itemRows.forEach(row => {
-          if (row.pdf_url) {
-            try {
-              const parsed = JSON.parse(row.pdf_url);
-              if (parsed && typeof parsed === 'object') individualItems.push(parsed);
-            } catch (_) {}
-          }
-        });
       }
 
       if (!mainData && individualItems.length === 0) {
