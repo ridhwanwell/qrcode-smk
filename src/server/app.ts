@@ -99,7 +99,7 @@ async function saveIdempotencyRecord(key: string, statusCode: number, body: any,
  * to bypass Supabase's default 1000-row limit per request.
  */
 async function fetchAllRows<T = any>(
-  queryFactory: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>,
+  queryFactory: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }> | any,
   pageSize: number = 1000
 ): Promise<T[]> {
   let allRows: T[] = [];

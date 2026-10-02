@@ -18,8 +18,18 @@ const formatDateSafe = (dateVal: any) => {
 };
 
 export default function AdminDashboard() {
-  const [labels, setLabels] = useState<any[]>([]);
+  const [labels, setLabels] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('smk_labels');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  });
   const [loading, setLoading] = useState(true);
+  const [labelsLoadError, setLabelsLoadError] = useState<string | null>(null);
   const [supabaseStatus, setSupabaseStatus] = useState<{
     connected?: boolean;
     tableReady?: boolean;
@@ -132,65 +142,112 @@ END $$;`;
 
   const fetchLabels = useCallback(async () => {
     try {
-      // 1. Fetch Cloud SQL API labels
-      let apiMap: Record<string, any> = {};
+      // 1. Fetch Cloud SQL / backend API labels
+      let rawApiLabels: any[] | null = null;
       try {
         const res = await apiFetch('/api/labels');
         if (res.ok) {
           const apiData = await res.json();
-          (apiData || []).forEach((d: any) => {
-            const key = d.noLabel || d.no_label;
-            if (key) apiMap[key] = d;
-          });
+          if (Array.isArray(apiData)) {
+            rawApiLabels = apiData;
+          }
         }
       } catch (_) {}
 
-      // 2. Fetch Supabase labels
+      // Cache read for safety checking
+      let cachedLabels: any[] = [];
+      try {
+        const raw = localStorage.getItem('smk_labels');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) cachedLabels = parsed;
+        }
+      } catch (_) {}
+
+      // Kondisi b: GAGAL
+      if (!rawApiLabels) {
+        setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
+        console.warn('[AdminDashboard] Gagal memuat label dari server API');
+        if (labels.length === 0 && cachedLabels.length > 0) {
+          setLabels(cachedLabels);
+        }
+        return;
+      }
+
+      // Kondisi c: SERVER MENGEMBALIKAN ARRAY KOSONG padahal cache berisi > 0 label
+      if (rawApiLabels.length === 0 && cachedLabels.length > 0) {
+        setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
+        console.warn('[AdminDashboard] Server mengembalikan 0 label padahal cache berisi', cachedLabels.length, 'label');
+        if (labels.length === 0) {
+          setLabels(cachedLabels);
+        }
+        return;
+      }
+
+      // Pengaman jumlah: jika jumlah label dari server LEBIH SEDIKIT dari 50% jumlah di cache 'smk_labels'
+      const isCountSuspicious = cachedLabels.length > 0 && rawApiLabels.length < (cachedLabels.length * 0.5);
+      if (isCountSuspicious) {
+        setLabelsLoadError('Jumlah label dari server jauh lebih sedikit dari biasanya, periksa koneksi lalu muat ulang.');
+        console.warn('[AdminDashboard] Jumlah label dari server jauh lebih sedikit dari biasanya:', rawApiLabels.length, 'vs cache:', cachedLabels.length);
+      } else {
+        // Kondisi a: BERHASIL normal
+        setLabelsLoadError(null);
+      }
+
+      let apiMap: Record<string, any> = {};
+      rawApiLabels.forEach((d: any) => {
+        const key = d.noLabel || d.no_label;
+        if (key && !key.startsWith('__meta_') && !key.startsWith('__aset_')) apiMap[key] = d;
+      });
+
+      // 2. Fetch Supabase labels for metadata
       const { data } = await supabase
         .from('labels')
         .select('*')
         .order('created_at', { ascending: false });
 
+      const folderMetaMap: Record<string, string> = {};
       if (data && data.length > 0) {
-        const folderMetaMap: Record<string, string> = {};
         data.forEach((d: any) => {
           if (d.no_label?.startsWith('__meta_folder_')) {
             folderMetaMap[d.no_label.replace('__meta_folder_', '')] = d.pdf_name;
           }
         });
+      }
 
-        const actualLabels = data.filter((d: any) => !d.no_label?.startsWith('__meta_') && !d.no_label?.startsWith('__aset_'));
+      const formatted = rawApiLabels.map((d: any) => {
+        const no = d.noLabel || d.no_label;
+        const prefix = no ? no.split('.')[0] : '';
+        return {
+          id: no || d.id,
+          noLabel: no,
+          namaRs: d.namaRs || d.nama_rs || folderMetaMap[prefix] || null,
+          status: d.status || 'Menunggu Sertifikat',
+          pdfSource: d.pdfSource || d.pdf_source,
+          pdfUrl: d.pdfUrl || d.pdf_url,
+          pdfDriveUrl: d.pdfDriveUrl || d.pdf_drive_url,
+          pdfName: d.pdfName || d.pdf_name,
+          calibratedAt: d.calibratedAt || d.calibrated_at,
+          validUntil: d.validUntil || d.valid_until,
+          createdAt: d.createdAt || d.created_at,
+          updatedAt: d.updatedAt || d.updated_at
+        };
+      }).filter((d: any) => d.noLabel && !d.noLabel.startsWith('__meta_') && !d.noLabel.startsWith('__aset_'));
 
-        setLabels(actualLabels.map((d: any) => {
-          const local = apiMap[d.no_label] || {};
-          const prefix = d.no_label ? d.no_label.split('.')[0] : '';
-          return {
-            id: d.no_label,
-            noLabel: d.no_label,
-            namaRs: local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || folderMetaMap[prefix] || null,
-            status: d.status || local.status,
-            pdfSource: d.pdf_source || local.pdfSource,
-            pdfUrl: d.pdf_url || local.pdfUrl,
-            pdfDriveUrl: d.pdf_drive_url || local.pdfDriveUrl,
-            pdfName: d.pdf_name || local.pdfName,
-            calibratedAt: d.calibrated_at || local.calibratedAt,
-            validUntil: d.valid_until || local.validUntil,
-            createdAt: d.created_at || local.createdAt,
-            updatedAt: d.updated_at || local.updatedAt
-          };
-        }));
-      } else {
-        setLabels(Object.values(apiMap).map((d: any) => ({
-          ...d,
-          namaRs: d.namaRs || d.nama_rs || null,
-        })));
+      setLabels(formatted);
+
+      if (!isCountSuspicious) {
+        try {
+          localStorage.setItem('smk_labels', JSON.stringify(formatted));
+        } catch (_) {}
       }
     } catch (err) {
       console.warn('Dashboard fetch error:', err);
+      setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [labels.length]);
 
   const checkSupabaseStatus = useCallback(async () => {
     try {
@@ -291,7 +348,28 @@ END $$;`;
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Ringkasan Sistem</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Ringkasan Sistem</h2>
+      </div>
+
+      {/* Banner Peringatan Gagal Muat / Data Tidak Lengkap */}
+      {labelsLoadError && (
+        <div className="p-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <span className="text-xs sm:text-sm font-medium">{labelsLoadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchLabels()}
+            disabled={loading}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 self-start sm:self-auto disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+            <span>Muat Ulang</span>
+          </button>
+        </div>
+      )}
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

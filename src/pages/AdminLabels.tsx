@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
   getPdfBlobUrl, 
@@ -37,7 +37,9 @@ import {
   FileCheck,
   Camera,
   Building2,
-  Pencil
+  Pencil,
+  RefreshCw,
+  FilePlus2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -72,8 +74,18 @@ export function extractLabelPrefix(noLabel: string): string {
 }
 
 export default function AdminLabels() {
-  const [labels, setLabels] = useState<any[]>([]);
+  const [labels, setLabels] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('smk_labels');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  });
   const [loading, setLoading] = useState(true);
+  const [labelsLoadError, setLabelsLoadError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Navigation & Search State
@@ -178,30 +190,86 @@ export default function AdminLabels() {
 
   const fetchLabels = useCallback(async () => {
     try {
-      // 1. Fetch Supabase labels AND folder metadata in parallel with Cloud SQL API
-      let apiMap: Record<string, any> = {};
+      // 1. Fetch labels from backend (/api/labels), folders, and Supabase
+      let rawApiLabels: any[] | null = null;
+      let apiFolderRes: Record<string, string> = {};
+      let sbFolderMap: Record<string, string> = {};
 
-      const [sbLabelsRes, sbFolderMap, apiLabelsRes, apiFolderRes] = await Promise.all([
+      const [sbLabelsRes, fetchedSbFolderMap, apiRes, apiFolderResult] = await Promise.all([
         supabase
           .from('labels')
           .select('*')
           .not('no_label', 'like', '__meta_%')
           .not('no_label', 'like', '__aset_%')
           .order('no_label', { ascending: true }),
-        fetchFolderRsFromSupabase(),
-        apiFetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch('/api/folders/nama-rs').then(r => r.ok ? r.json() : {}).catch(() => ({}))
+        fetchFolderRsFromSupabase().catch(() => ({})),
+        apiFetch('/api/labels')
+          .then(async (r) => {
+            if (r.ok) {
+              const data = await r.json();
+              return Array.isArray(data) ? data : null;
+            }
+            return null;
+          })
+          .catch(() => null),
+        apiFetch('/api/folders/nama-rs')
+          .then(r => r.ok ? r.json() : {})
+          .catch(() => ({}))
       ]);
 
-      (apiLabelsRes || []).forEach((d: any) => {
+      rawApiLabels = apiRes;
+      apiFolderRes = apiFolderResult || {};
+      sbFolderMap = fetchedSbFolderMap || {};
+
+      let cachedLabels: any[] = [];
+      try {
+        const rawCache = localStorage.getItem('smk_labels');
+        if (rawCache) {
+          const parsed = JSON.parse(rawCache);
+          if (Array.isArray(parsed)) cachedLabels = parsed;
+        }
+      } catch (_) {}
+
+      // Kondisi b: GAGAL (res.ok false, error jaringan, timeout, atau respons bukan array)
+      if (!rawApiLabels) {
+        setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
+        console.warn('[AdminLabels] Gagal mengambil data label dari server API');
+        if (labels.length === 0 && cachedLabels.length > 0) {
+          setLabels(cachedLabels);
+        }
+        return;
+      }
+
+      // Kondisi c: SERVER MENGEMBALIKAN ARRAY KOSONG padahal cache 'smk_labels' berisi lebih dari 0 label
+      if (rawApiLabels.length === 0 && cachedLabels.length > 0) {
+        setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
+        console.warn('[AdminLabels] Server mengembalikan 0 label padahal cache berisi', cachedLabels.length, 'label');
+        if (labels.length === 0) {
+          setLabels(cachedLabels);
+        }
+        return;
+      }
+
+      // Pengaman jumlah: jika jumlah label dari server LEBIH SEDIKIT dari 50% jumlah di cache 'smk_labels'
+      const isCountSuspicious = cachedLabels.length > 0 && rawApiLabels.length < (cachedLabels.length * 0.5);
+      if (isCountSuspicious) {
+        setLabelsLoadError('Jumlah label dari server jauh lebih sedikit dari biasanya, periksa koneksi lalu muat ulang.');
+        console.warn('[AdminLabels] Jumlah label dari server jauh lebih sedikit dari biasanya:', rawApiLabels.length, 'vs cache:', cachedLabels.length);
+      } else {
+        // Kondisi a: BERHASIL normal
+        setLabelsLoadError(null);
+      }
+
+      let apiMap: Record<string, any> = {};
+      rawApiLabels.forEach((d: any) => {
         const key = d.noLabel || d.no_label;
         if (key && !key.startsWith('__meta_') && !key.startsWith('__aset_')) apiMap[key] = d;
       });
 
       const mergedFolderMap = {
         ...folderRsMap,
-        ...(apiFolderRes || {}),
-        ...(sbFolderMap || {})
+        ...apiFolderRes,
+        ...sbFolderMap
       };
       setFolderRsMap(mergedFolderMap);
       try {
@@ -212,181 +280,82 @@ export default function AdminLabels() {
       const deletedFolders = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]'));
       const deletedLabels = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]'));
 
+      const existingNos = new Set<string>();
+      const formatted: any[] = [];
+
+      // Prefer API data (which is paginated and holds all 1395+ labels)
+      rawApiLabels.forEach((d: any) => {
+        const no = d.noLabel || d.no_label || d.id;
+        if (!no || no.startsWith('__meta_') || no.startsWith('__aset_')) return;
+        const prefix = extractLabelPrefix(no);
+        if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
+
+        existingNos.add(no);
+        formatted.push({
+          id: no,
+          noLabel: no,
+          namaRs: d.namaRs || d.nama_rs || mergedFolderMap[prefix] || null,
+          namaAlat: d.namaAlat || d.nama_alat || d.pdfName || d.pdf_name || null,
+          ruangan: d.ruangan || null,
+          status: d.status || 'Menunggu Sertifikat',
+          pdfSource: d.pdfSource || d.pdf_source || null,
+          pdfUrl: d.pdfUrl || d.pdf_url || null,
+          pdfDriveUrl: d.pdfDriveUrl || d.pdf_drive_url || null,
+          pdfOriginalUrl: d.pdfOriginalUrl || d.pdforiginal_url || null,
+          pdfName: d.pdfName || d.pdf_name || null,
+          calibratedAt: d.calibratedAt || d.calibrated_at || null,
+          validUntil: d.validUntil || d.valid_until || null,
+          createdAt: d.createdAt || d.created_at || null,
+          updatedAt: d.updatedAt || d.updated_at || null,
+        });
+      });
+
+      // Merge any sbLabels not in apiLabels
       const sbData = (sbLabelsRes.data || []).filter((d: any) => {
         const no = d.no_label;
         if (!no || no.startsWith('__meta_') || no.startsWith('__aset_')) return false;
         const prefix = extractLabelPrefix(no);
         if (deletedFolders.has(prefix) || deletedLabels.has(no)) return false;
-        return true;
+        return !existingNos.has(no);
       });
 
-      if (sbData && sbData.length > 0) {
-        const formatted = sbData.map((d: any) => {
-          const local = apiMap[d.no_label] || {};
-          const prefix = extractLabelPrefix(d.no_label);
-          const effectiveNamaRs = local.namaRs || local.nama_rs || d.nama_rs || d.namaRs || mergedFolderMap[prefix] || null;
-
-          return {
-            id: d.no_label,
-            noLabel: d.no_label,
-            namaRs: effectiveNamaRs,
-            namaAlat: d.nama_alat || d.namaAlat || d.pdf_name || local.namaAlat || local.pdfName || null,
-            ruangan: d.ruangan || local.ruangan || null,
-            status: d.status || local.status || 'Menunggu Sertifikat',
-            pdfSource: d.pdf_source || local.pdfSource || null,
-            pdfUrl: d.pdf_url || local.pdfUrl || null,
-            pdfDriveUrl: d.pdf_drive_url || local.pdfDriveUrl || null,
-            pdfOriginalUrl: d.pdforiginal_url || local.pdfOriginalUrl || null,
-            pdfName: d.pdf_name || local.pdfName || null,
-            calibratedAt: d.calibrated_at || local.calibratedAt || null,
-            validUntil: d.valid_until || local.validUntil || null,
-            createdAt: d.created_at || local.createdAt || null,
-            updatedAt: d.updated_at || local.updatedAt || null,
-          };
+      sbData.forEach((d: any) => {
+        const prefix = extractLabelPrefix(d.no_label);
+        existingNos.add(d.no_label);
+        formatted.push({
+          id: d.no_label,
+          noLabel: d.no_label,
+          namaRs: d.nama_rs || d.namaRs || mergedFolderMap[prefix] || null,
+          namaAlat: d.nama_alat || d.namaAlat || d.pdf_name || null,
+          ruangan: d.ruangan || null,
+          status: d.status || 'Menunggu Sertifikat',
+          pdfSource: d.pdf_source || null,
+          pdfUrl: d.pdf_url || null,
+          pdfDriveUrl: d.pdf_drive_url || null,
+          pdfOriginalUrl: d.pdforiginal_url || null,
+          pdfName: d.pdf_name || null,
+          calibratedAt: d.calibrated_at || null,
+          validUntil: d.valid_until || null,
+          createdAt: d.created_at || null,
+          updatedAt: d.updated_at || null,
         });
+      });
 
-        // Add any labels in apiMap or localStorage that weren't in Supabase
-        const existingNos = new Set(formatted.map(f => f.noLabel));
-        Object.values(apiMap).forEach((item: any) => {
-          const no = item.noLabel || item.no_label;
-          if (no && !existingNos.has(no)) {
-            const prefix = extractLabelPrefix(no);
-            if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
-            existingNos.add(no);
-            formatted.push({
-              id: no,
-              noLabel: no,
-              namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
-              namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
-              ruangan: item.ruangan || null,
-              status: item.status || 'Menunggu Sertifikat',
-              pdfSource: item.pdfSource || null,
-              pdfUrl: item.pdfUrl || null,
-              pdfDriveUrl: item.pdfDriveUrl || null,
-              pdfOriginalUrl: item.pdfOriginalUrl || null,
-              pdfName: item.pdfName || null,
-              calibratedAt: item.calibratedAt || null,
-              validUntil: item.validUntil || null,
-              createdAt: item.createdAt || null,
-              updatedAt: item.updatedAt || null,
-            });
-          }
-        });
+      setLabels(formatted);
 
+      // Only write to localStorage cache if NOT suspicious and NOT failed
+      if (!isCountSuspicious) {
         try {
-          const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
-          const cleanLocalList: any[] = [];
-          localList.forEach((item: any) => {
-            const no = item.noLabel || item.no_label || item.id;
-            if (no && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
-              const prefix = extractLabelPrefix(no);
-              if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
-
-              cleanLocalList.push(item);
-              if (!existingNos.has(no)) {
-                existingNos.add(no);
-                formatted.push({
-                  id: no,
-                  noLabel: no,
-                  namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
-                  namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
-                  ruangan: item.ruangan || null,
-                  status: item.status || 'Menunggu Sertifikat',
-                  pdfSource: item.pdfSource || null,
-                  pdfUrl: item.pdfUrl || null,
-                  pdfDriveUrl: item.pdfDriveUrl || null,
-                  pdfOriginalUrl: item.pdfOriginalUrl || null,
-                  pdfName: item.pdfName || null,
-                  calibratedAt: item.calibratedAt || null,
-                  validUntil: item.validUntil || null,
-                  createdAt: item.createdAt || null,
-                  updatedAt: item.updatedAt || null,
-                });
-              }
-            }
-          });
-          if (cleanLocalList.length !== localList.length) {
-            localStorage.setItem('smk_labels', JSON.stringify(cleanLocalList));
-          }
+          localStorage.setItem('smk_labels', JSON.stringify(formatted));
         } catch (_) {}
-
-        setLabels(formatted);
-      } else {
-        const existingNos = new Set<string>();
-        const formatted: any[] = [];
-
-        Object.values(apiMap).forEach((d: any) => {
-          const no = d.noLabel || d.no_label;
-          if (no && !existingNos.has(no) && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
-            const prefix = extractLabelPrefix(no);
-            if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
-            existingNos.add(no);
-            formatted.push({
-              id: no,
-              noLabel: no,
-              namaRs: d.namaRs || d.nama_rs || mergedFolderMap[prefix] || null,
-              namaAlat: d.namaAlat || d.nama_alat || d.pdfName || d.pdf_name || null,
-              ruangan: d.ruangan || null,
-              status: d.status || 'Menunggu Sertifikat',
-              pdfSource: d.pdfSource || null,
-              pdfUrl: d.pdfUrl || null,
-              pdfDriveUrl: d.pdfDriveUrl || null,
-              pdfOriginalUrl: d.pdfOriginalUrl || null,
-              pdfName: d.pdfName || null,
-              calibratedAt: d.calibratedAt || null,
-              validUntil: d.validUntil || null,
-              createdAt: d.createdAt || null,
-              updatedAt: d.updatedAt || null,
-            });
-          }
-        });
-
-        try {
-          const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
-          const cleanLocalList: any[] = [];
-          localList.forEach((item: any) => {
-            const no = item.noLabel || item.no_label || item.id;
-            if (no && !no.startsWith('__meta_') && !no.startsWith('__aset_')) {
-              const prefix = extractLabelPrefix(no);
-              if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
-
-              cleanLocalList.push(item);
-              if (!existingNos.has(no)) {
-                existingNos.add(no);
-                formatted.push({
-                  id: no,
-                  noLabel: no,
-                  namaRs: item.namaRs || item.nama_rs || mergedFolderMap[prefix] || null,
-                  namaAlat: item.namaAlat || item.nama_alat || item.pdfName || item.pdf_name || null,
-                  ruangan: item.ruangan || null,
-                  status: item.status || 'Menunggu Sertifikat',
-                  pdfSource: item.pdfSource || null,
-                  pdfUrl: item.pdfUrl || null,
-                  pdfDriveUrl: item.pdfDriveUrl || null,
-                  pdfOriginalUrl: item.pdfOriginalUrl || null,
-                  pdfName: item.pdfName || null,
-                  calibratedAt: item.calibratedAt || null,
-                  validUntil: item.validUntil || null,
-                  createdAt: item.createdAt || null,
-                  updatedAt: item.updatedAt || null,
-                });
-              }
-            }
-          });
-          if (cleanLocalList.length !== localList.length) {
-            localStorage.setItem('smk_labels', JSON.stringify(cleanLocalList));
-          }
-        } catch (_) {}
-
-        setLabels(formatted);
       }
     } catch (err: any) {
       console.error('Error fetching labels:', err);
-      setError('Gagal memuat daftar label.');
+      setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [folderRsMap, labels.length]);
 
   useEffect(() => {
     fetchLabels();
@@ -860,6 +829,21 @@ export default function AdminLabels() {
         </div>
         
         <div className="flex flex-wrap items-center gap-2.5">
+          <Link
+            to="/admin/generate"
+            className={cn(
+              "px-3.5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0",
+              labelsLoadError && "opacity-50 pointer-events-none cursor-not-allowed"
+            )}
+            title={labelsLoadError ? "Muat ulang data dulu sebelum menghapus atau membuat label" : "Generate Label Baru"}
+            onClick={(e) => {
+              if (labelsLoadError) e.preventDefault();
+            }}
+          >
+            <FilePlus2 className="w-4 h-4" />
+            <span>Generate Label Baru</span>
+          </Link>
+
           <button
             type="button"
             onClick={() => setIsCameraOpen(true)}
@@ -909,6 +893,25 @@ export default function AdminLabels() {
           )}
         </div>
       </div>
+
+      {/* Banner Peringatan Gagal Muat / Data Tidak Lengkap */}
+      {labelsLoadError && (
+        <div className="p-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <span className="text-xs sm:text-sm font-medium">{labelsLoadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchLabels()}
+            disabled={loading}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 self-start sm:self-auto disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+            <span>Muat Ulang</span>
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 text-sm flex items-start rounded-r-lg">
@@ -1068,11 +1071,15 @@ export default function AdminLabels() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (labelsLoadError) return;
                             promptDeleteEntireFolder(folder);
                           }}
-                          disabled={isDeleting}
-                          className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors flex items-center justify-center"
-                          title={`Hapus Seluruh Folder ${folder.prefix}`}
+                          disabled={isDeleting || !!labelsLoadError}
+                          className={cn(
+                            "text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors flex items-center justify-center",
+                            labelsLoadError && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
+                          )}
+                          title={labelsLoadError ? "Muat ulang data dulu sebelum menghapus atau membuat label" : `Hapus Seluruh Folder ${folder.prefix}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1125,13 +1132,33 @@ export default function AdminLabels() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <Link
+                to={`/admin/generate?folder=${activeFolder.prefix}`}
+                className={cn(
+                  "px-3.5 py-2 text-xs font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm",
+                  labelsLoadError && "opacity-50 pointer-events-none cursor-not-allowed"
+                )}
+                title={labelsLoadError ? "Muat ulang data dulu sebelum menghapus atau membuat label" : "Generate Label di Folder Ini"}
+                onClick={(e) => {
+                  if (labelsLoadError) e.preventDefault();
+                }}
+              >
+                <FilePlus2 className="w-3.5 h-3.5" />
+                <span>Generate Label Baru</span>
+              </Link>
               <button
                 type="button"
-                onClick={() => promptDeleteEntireFolder(activeFolder)}
-                disabled={isDeleting}
-                className="px-3.5 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
-                title="Hapus seluruh file di folder ini"
+                onClick={() => {
+                  if (labelsLoadError) return;
+                  promptDeleteEntireFolder(activeFolder);
+                }}
+                disabled={isDeleting || !!labelsLoadError}
+                className={cn(
+                  "px-3.5 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm",
+                  labelsLoadError && "opacity-50 cursor-not-allowed hover:bg-rose-50 hover:text-rose-700"
+                )}
+                title={labelsLoadError ? "Muat ulang data dulu sebelum menghapus atau membuat label" : "Hapus seluruh file di folder ini"}
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Hapus Folder ({activeFolder.totalCount} File)
@@ -1296,9 +1323,16 @@ export default function AdminLabels() {
                               )}
                               <button 
                                 type="button"
-                                onClick={() => promptDeleteLabel(label)}
-                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                                title="Hapus Label Ini"
+                                onClick={() => {
+                                  if (labelsLoadError) return;
+                                  promptDeleteLabel(label);
+                                }}
+                                disabled={!!labelsLoadError}
+                                className={cn(
+                                  "p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors",
+                                  labelsLoadError && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
+                                )}
+                                title={labelsLoadError ? "Muat ulang data dulu sebelum menghapus atau membuat label" : "Hapus Label Ini"}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
