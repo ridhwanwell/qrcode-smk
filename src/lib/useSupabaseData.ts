@@ -1,19 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from './AuthContext';
-import { supabase } from './supabase';
+import { supabase } from './supabaseClient';
+import { apiFetch } from './apiClient';
+import { enqueueOfflineItem, subscribePendingCount, flushOfflineQueue } from './offlineQueue';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const getCollectionItemKey = (i: any): string => {
-  return String(i?.id || i?.sphNumber || i?.workOrderNumber || i?.noLabel || i?.no_label || '').trim();
+  return String(i?.id || i?.sphNumber || i?.workOrderNumber || i?.bapNumber || i?.noLabel || i?.no_label || '').trim();
 };
 
 const getPersistedDeletedIds = (key: string, collName: string): Set<string> => {
   const set = new Set<string>();
-  // Pre-seed known explicitly deleted schedule IDs requested by user
-  if (collName === 'schedules') {
-    set.add('SCH-007241');
-    set.add('SCH-594702');
-  }
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
@@ -36,8 +32,8 @@ const persistDeletedId = (key: string, collName: string, id: string) => {
 
 /**
  * Universal React Hook for durable data persistence and live Realtime cross-device sync.
- * Connects directly to Supabase cloud table 'app_collections' from any device (laptop, mobile phone, tablet)
- * with instant WebSocket postgres_changes and fallback backend proxy synchronization.
+ * Strictly uses secure backend API (apiFetch) with token authentication, offline IndexedDB queue,
+ * version conflict detection, and WebSocket Broadcast channels.
  */
 export function useSupabaseData<T extends { id: string }>(
   collectionName: string,
@@ -62,7 +58,6 @@ export function useSupabaseData<T extends { id: string }>(
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
           const cleaned = filterDeleted(parsed as T[]);
-          // If already initialized, respect whatever is cached
           if (isInited || cleaned.length > 0) {
             return cleaned;
           }
@@ -74,9 +69,17 @@ export function useSupabaseData<T extends { id: string }>(
 
   const [loading, setLoading] = useState<boolean>(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(false);
-  const { user } = useAuth();
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
   const dataRef = useRef<T[]>(data);
   dataRef.current = data;
+
+  // Listen to pending offline queue count
+  useEffect(() => {
+    const unsubscribe = subscribePendingCount(setPendingSyncCount);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const updateCache = useCallback((nextItems: T[]) => {
     const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
@@ -92,7 +95,7 @@ export function useSupabaseData<T extends { id: string }>(
   const initialFallbackRef = useRef(initialFallback);
   initialFallbackRef.current = initialFallback;
 
-  // Broadcast function to notify all other clients instantly via Supabase WebSocket
+  // Broadcast function to notify all other clients instantly via Supabase WebSocket Broadcast
   const broadcastSync = useCallback(() => {
     try {
       if (channelRef.current) {
@@ -110,27 +113,11 @@ export function useSupabaseData<T extends { id: string }>(
     }
   }, [collectionName]);
 
-  // Direct fetch from Supabase (Works everywhere: mobile, tablet, laptop, Vercel, etc.)
-  const fetchDirectFromSupabase = useCallback(async (): Promise<T[] | null> => {
+  // Fetch from backend API proxy
+  const fetchFromServer = useCallback(async (): Promise<T[] | null> => {
     const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
-    // 1. First priority: Direct Supabase client query
     try {
-      const { data: supaRow, error } = await supabase
-        .from('app_collections')
-        .select('data')
-        .eq('collection_name', collectionName)
-        .maybeSingle();
-
-      if (!error && supaRow && Array.isArray(supaRow.data)) {
-        return (supaRow.data as T[]).filter(it => !deletedSet.has(getCollectionItemKey(it)));
-      }
-    } catch (e) {
-      console.warn(`[useSupabaseData] Direct fetch failed for ${collectionName}:`, e);
-    }
-
-    // 2. Second priority: Backend API proxy
-    try {
-      const res = await fetch(`/api/collections/${encodeURIComponent(collectionName)}?_t=${Date.now()}`);
+      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}?_t=${Date.now()}`);
       if (res.ok) {
         const json = await res.json();
         if (json && json.found === true && Array.isArray(json.items)) {
@@ -144,38 +131,23 @@ export function useSupabaseData<T extends { id: string }>(
     return null;
   }, [collectionName, deletedKey]);
 
-  // Direct write to Supabase (Writes to both direct Supabase cloud table AND backend proxy)
-  const saveToSupabase = useCallback(async (items: T[]) => {
-    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
-    const cleanItems = items.filter(it => !deletedSet.has(getCollectionItemKey(it)));
-
-    // 1. Direct Supabase Cloud Table Upsert
-    try {
-      await supabase.from('app_collections').upsert({
-        collection_name: collectionName,
-        data: cleanItems,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'collection_name' });
-    } catch (e) {
-      console.warn(`[useSupabaseData] Direct Supabase upsert error on ${collectionName}:`, e);
+  // Conflict notification helper
+  const handleConflictWarning = useCallback((conflicts: any[]) => {
+    console.warn(`[useSupabaseData] Terdeteksi konflik versi pada koleksi ${collectionName}:`, conflicts);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('app_data_conflict', {
+          detail: {
+            collection: collectionName,
+            conflicts,
+            message: `Data ${collectionName} telah diperbarui oleh pengguna lain di server. Memuat versi terbaru...`
+          }
+        })
+      );
     }
+  }, [collectionName]);
 
-    // 2. Backend API Proxy as backup
-    try {
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cleanItems, replaceAll: true })
-      });
-    } catch (e) {
-      console.warn(`[useSupabaseData] API Proxy save error on ${collectionName}:`, e);
-    }
-
-    // 3. Realtime Broadcast
-    broadcastSync();
-  }, [collectionName, broadcastSync, deletedKey]);
-
-  // 2. Fetch from Supabase and set up Supabase Realtime channel
+  // 2. Fetch from Backend API and set up Supabase Realtime Broadcast Channel
   useEffect(() => {
     let isMounted = true;
     let debounceTimer: any = null;
@@ -183,11 +155,9 @@ export function useSupabaseData<T extends { id: string }>(
     const loadData = async () => {
       try {
         const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
-        const serverItems = await fetchDirectFromSupabase();
+        const serverItems = await fetchFromServer();
 
         if (serverItems !== null) {
-          // Server is the authoritative single source of truth across all devices.
-          // Filter out any permanently deleted IDs and strictly update local cache.
           const cleanServerItems = serverItems.filter(it => !deletedSet.has(getCollectionItemKey(it)));
           if (isMounted) {
             updateCache(cleanServerItems);
@@ -196,14 +166,13 @@ export function useSupabaseData<T extends { id: string }>(
           return;
         }
 
-        // If not found in database yet, check if initialized locally
+        // If not found on server yet, initialize fallback
         const isInited = localStorage.getItem(initKey) === 'true';
         if (!isInited && initialFallbackRef.current.length > 0) {
           const cleanFallback = initialFallbackRef.current.filter(it => !deletedSet.has(getCollectionItemKey(it)));
           if (isMounted) {
             updateCache(cleanFallback);
           }
-          await saveToSupabase(cleanFallback);
         }
       } catch (err) {
         console.warn(`[useSupabaseData] Error loading ${collectionName}:`, err);
@@ -212,79 +181,30 @@ export function useSupabaseData<T extends { id: string }>(
       }
     };
 
-    // Debounced loader to prevent thundering herd
     const debouncedLoadData = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         if (isMounted) {
           loadData();
         }
-      }, 150);
+      }, 200);
     };
 
     // Initial data fetch
     loadData();
 
-    // 3. Supabase Realtime Channel Subscription
-    // Subscribes directly to Postgres table changes on 'app_collections' AND 'labels'
-    const channelName = `realtime_coll_${collectionName}_${Math.random().toString(36).substring(2, 6)}`;
+    // 3. Supabase Realtime Broadcast Channel Subscription (No direct postgres_changes)
+    const channelName = `broadcast_channel_${collectionName}`;
     const channel = supabase.channel(channelName);
     channelRef.current = channel;
 
     channel
       .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'app_collections'
-        },
-        (payload: any) => {
-          const row = (payload.new || payload.old) as any;
-          if (row && row.collection_name === collectionName) {
-            console.log(`[useSupabaseData] Realtime postgres_changes on app_collections for ${collectionName}`);
-            if (Array.isArray(row.data)) {
-              const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
-              const cleanData = row.data.filter((it: any) => !deletedSet.has(getCollectionItemKey(it)));
-              if (isMounted) {
-                updateCache(cleanData);
-                setLoading(false);
-              }
-            } else {
-              debouncedLoadData();
-            }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'labels'
-        },
-        (payload: any) => {
-          const row = (payload.new || payload.old) as any;
-          if (
-            row &&
-            (row.pdf_source === collectionName ||
-             row.no_label === `__aset_coll_${collectionName}` ||
-             (typeof row.no_label === 'string' && (
-               row.no_label.startsWith(`__item_${collectionName}_`) ||
-               row.no_label.includes(`_${collectionName}_`) ||
-               row.no_label.endsWith(`_${collectionName}`)
-             )))
-          ) {
-            debouncedLoadData();
-          }
-        }
-      )
-      .on(
         'broadcast',
         { event: `sync_${collectionName}` },
         (msg: any) => {
           if (msg?.payload?.senderId !== clientIdRef.current) {
-            console.log(`[useSupabaseData] Broadcast received on ${collectionName} from other device`);
+            console.log(`[useSupabaseData] Realtime broadcast received on ${collectionName}`);
             debouncedLoadData();
           }
         }
@@ -311,12 +231,7 @@ export function useSupabaseData<T extends { id: string }>(
         }
       });
 
-    // Fallback polling every 5 seconds to ensure absolute consistency
-    const pollInterval = setInterval(() => {
-      loadData();
-    }, 5000);
-
-    // Sync immediately when user switches back to this tab/window (mobile app switch / tab switch)
+    // Sync when user switches back to tab
     const handleFocus = () => {
       loadData();
     };
@@ -327,7 +242,6 @@ export function useSupabaseData<T extends { id: string }>(
     return () => {
       isMounted = false;
       if (debounceTimer) clearTimeout(debounceTimer);
-      clearInterval(pollInterval);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
       if (channel) {
@@ -337,32 +251,104 @@ export function useSupabaseData<T extends { id: string }>(
       }
       channelRef.current = null;
     };
-  }, [collectionName, updateCache, initKey, fetchDirectFromSupabase, saveToSupabase, deletedKey]);
+  }, [collectionName, updateCache, initKey, fetchFromServer, deletedKey]);
 
-  // Add an item
+  // Add an item (Saves ONLY the changed item with local updatedAt, queues in IndexedDB if offline)
   const add = async (item: T) => {
+    const itemWithTime: T = {
+      ...item,
+      updatedAt: new Date().toISOString()
+    } as any;
+
     const current = dataRef.current;
-    const targetId = getCollectionItemKey(item);
-    const next = [item, ...current.filter(i => getCollectionItemKey(i) !== targetId)];
+    const targetId = getCollectionItemKey(itemWithTime);
+    const next = [itemWithTime, ...current.filter(i => getCollectionItemKey(i) !== targetId)];
     updateCache(next);
-    await saveToSupabase(next);
+
+    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `idem_add_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    try {
+      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
+        },
+        body: JSON.stringify({
+          items: [itemWithTime],
+          replaceAll: false
+        })
+      });
+
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (json && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
+          handleConflictWarning(json.conflicts);
+          await forcePullFromSupabase();
+        }
+      } else {
+        // Enqueue to IndexedDB for offline retry
+        await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+      }
+    } catch (e) {
+      await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+    }
+
+    broadcastSync();
   };
 
-  // Update an item
+  // Update an item (Saves ONLY the changed item with local updatedAt, queues in IndexedDB if offline)
   const update = async (item: T) => {
+    const itemWithTime: T = {
+      ...item,
+      updatedAt: new Date().toISOString()
+    } as any;
+
     const current = dataRef.current;
-    const targetId = getCollectionItemKey(item);
+    const targetId = getCollectionItemKey(itemWithTime);
     const next = current.map(i => {
-      return getCollectionItemKey(i) === targetId ? item : i;
+      return getCollectionItemKey(i) === targetId ? itemWithTime : i;
     });
     updateCache(next);
-    await saveToSupabase(next);
+
+    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `idem_upd_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    try {
+      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
+        },
+        body: JSON.stringify({
+          items: [itemWithTime],
+          replaceAll: false
+        })
+      });
+
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (json && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
+          handleConflictWarning(json.conflicts);
+          await forcePullFromSupabase();
+        }
+      } else {
+        // Enqueue to IndexedDB for offline retry
+        await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+      }
+    } catch (e) {
+      await enqueueOfflineItem(collectionName, itemWithTime, idempotencyKey, 'upsert');
+    }
+
+    broadcastSync();
   };
 
   // Remove an item permanently with tombstone persistence and server purge
   const remove = async (id: string) => {
-    console.log(`[useSupabaseData] Permanently deleting item ${id} from ${collectionName}`);
-    // 1. Record tombstone locally immediately so it can never be resurrected
     persistDeletedId(deletedKey, collectionName, id);
     const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
 
@@ -374,27 +360,26 @@ export function useSupabaseData<T extends { id: string }>(
     
     updateCache(next);
 
-    // 2. Call backend DELETE API proxy to remove from both labels and app_collections table
+    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `idem_del_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
     try {
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}`, {
-        method: 'DELETE'
+      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: {
+          'Idempotency-Key': idempotencyKey
+        }
       });
+
+      if (!res.ok && res.status !== 404) {
+        await enqueueOfflineItem(collectionName, { id }, idempotencyKey, 'delete');
+      }
     } catch (e) {
-      console.warn(`[useSupabaseData] Server DELETE API proxy error for ${id} in ${collectionName}:`, e);
+      await enqueueOfflineItem(collectionName, { id }, idempotencyKey, 'delete');
     }
 
-    // 3. Direct Supabase cloud table upsert
-    try {
-      await supabase.from('app_collections').upsert({
-        collection_name: collectionName,
-        data: next,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'collection_name' });
-    } catch (e) {
-      console.warn(`[useSupabaseData] Direct Supabase upsert error on delete in ${collectionName}:`, e);
-    }
-
-    // 4. Broadcast permanent deletion to all open tabs and connected devices
+    // Broadcast permanent deletion to all open tabs and connected devices
     try {
       if (channelRef.current) {
         channelRef.current.send({
@@ -414,8 +399,6 @@ export function useSupabaseData<T extends { id: string }>(
 
   // Clear all items in collection
   const clearAll = async () => {
-    console.log(`[useSupabaseData] Clearing all items from ${collectionName}`);
-    // Record all current items as deleted
     dataRef.current.forEach(i => {
       const key = getCollectionItemKey(i);
       if (key) persistDeletedId(deletedKey, collectionName, key);
@@ -424,17 +407,9 @@ export function useSupabaseData<T extends { id: string }>(
     updateCache([]);
 
     try {
-      await fetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+      await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
         method: 'DELETE'
       });
-    } catch (_) {}
-
-    try {
-      await supabase.from('app_collections').upsert({
-        collection_name: collectionName,
-        data: [],
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'collection_name' });
     } catch (_) {}
 
     broadcastSync();
@@ -445,8 +420,13 @@ export function useSupabaseData<T extends { id: string }>(
     try {
       const current = dataRef.current;
       if (Array.isArray(current)) {
-        console.log(`[useSupabaseData] Force-pushing ${current.length} items to Supabase for ${collectionName}...`);
-        await saveToSupabase(current);
+        await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: current, replaceAll: true })
+        });
+        await flushOfflineQueue();
+        broadcastSync();
         return true;
       }
       return false;
@@ -454,13 +434,13 @@ export function useSupabaseData<T extends { id: string }>(
       console.warn(`[useSupabaseData] forceSync error on ${collectionName}:`, e);
       return false;
     }
-  }, [collectionName, saveToSupabase]);
+  }, [collectionName, broadcastSync]);
 
-  // Force pull latest data directly from Supabase server (overwrites any local state)
+  // Force pull latest data directly from Supabase server
   const forcePullFromSupabase = useCallback(async () => {
     try {
       setLoading(true);
-      const serverItems = await fetchDirectFromSupabase();
+      const serverItems = await fetchFromServer();
       if (serverItems !== null) {
         updateCache(serverItems);
         setLoading(false);
@@ -473,7 +453,7 @@ export function useSupabaseData<T extends { id: string }>(
       setLoading(false);
       return false;
     }
-  }, [fetchDirectFromSupabase, updateCache]);
+  }, [fetchFromServer, updateCache]);
 
   return { 
     data, 
@@ -485,6 +465,7 @@ export function useSupabaseData<T extends { id: string }>(
     forcePullFromSupabase,
     setData: updateCache, 
     loading, 
-    isRealtimeConnected 
+    isRealtimeConnected,
+    pendingSyncCount
   };
 }

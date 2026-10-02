@@ -11,6 +11,7 @@ import {
   getPdfBlobUrl, 
   getGoogleDriveEmbedUrl 
 } from '../lib/pdfStorage';
+import { apiFetch } from '../lib/apiClient';
 import { 
   Verified, 
   FileText, 
@@ -90,101 +91,68 @@ export default function PublicScanPage() {
     setLoading(true);
     setError(false);
 
-    const targetClean = cleanNoLabel.trim().toLowerCase();
-    const candidateList = generateLabelSearchCandidates(cleanNoLabel).map(c => c.trim().toLowerCase());
-    const candidateSet = new Set([targetClean, ...candidateList]);
-
     try {
-      // 1. Query Supabase
-      const { data: supaLabels, error: supaErr } = await supabase
-        .from('labels')
-        .select('*');
-
-      let found: any = null;
-      const folderMetaMap: Record<string, string> = {};
-
-      if (supaLabels && supaLabels.length > 0) {
-        for (const row of supaLabels) {
-          const rawNo = (row.no_label || '').toString().trim().toLowerCase();
-          
-          // Collect metadata rows
-          if (rawNo.startsWith('__meta_folder_')) {
-            const p = row.no_label.replace('__meta_folder_', '');
-            if (p && row.pdf_name) folderMetaMap[p] = row.pdf_name;
-            continue;
-          }
-
-          const cleanNo = cleanLabelString(row.no_label || '')?.toLowerCase();
-          if (candidateSet.has(rawNo) || (cleanNo && candidateSet.has(cleanNo))) {
-            found = {
-              id: row.no_label,
-              noLabel: row.no_label,
-              namaRs: row.nama_rs || row.namaRs || null,
-              namaAlat: row.nama_alat || row.namaAlat || row.pdf_name || null,
-              ruangan: row.ruangan || null,
-              status: row.status,
-              pdfSource: row.pdf_source,
-              pdfUrl: row.pdf_url,
-              pdfDriveUrl: row.pdf_drive_url,
-              pdfOriginalUrl: row.pdforiginal_url,
-              pdfName: row.pdf_name,
-              calibratedAt: row.calibrated_at,
-              validUntil: row.valid_until,
-              createdAt: row.created_at,
-              updatedAt: row.updated_at
-            };
-            // Do not break immediately so we also collect any metadata rows
-          }
-        }
-      }
-
-      // If found but namaRs is not set directly on label, inherit from folder metadata
-      if (found && !found.namaRs) {
-        const prefix = found.noLabel ? found.noLabel.split('.')[0] : '';
-        if (prefix && folderMetaMap[prefix]) {
-          found.namaRs = folderMetaMap[prefix];
-        }
-      }
-
-      // 2. Fallback or enrich with API backend (Cloud SQL has namaRs & folder hospital name)
-      if (!found) {
-        const res = await fetch(`/api/labels/${encodeURIComponent(cleanNoLabel)}`);
-        if (res.ok) {
-          const apiLabel = await res.json();
-          if (apiLabel) found = apiLabel;
-        }
-      } else if (!found.namaRs) {
-        try {
-          const res = await fetch(`/api/labels/${encodeURIComponent(found.noLabel)}`);
-          if (res.ok) {
-            const apiLabel = await res.json();
-            if (apiLabel?.namaRs) {
-              found.namaRs = apiLabel.namaRs;
-            }
-          }
-        } catch (_) {}
-      }
-
-      if (found) {
-        setLabelData(found);
-        setResolvedLabelId(found.noLabel || cleanNoLabel);
-        setError(false);
-      } else {
-        const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
-        if (/\d{2,}/.test(norm)) {
+      // Use standard fetch for public QR scan endpoint (no auth required)
+      const res = await fetch(`/api/labels/${encodeURIComponent(cleanNoLabel)}`);
+      
+      if (res.ok) {
+        const found = await res.json();
+        if (found && (found.noLabel || found.id)) {
           setLabelData({
-            noLabel: norm,
-            status: 'Menunggu Sertifikat',
-            isPrePrinted: true
+            id: found.noLabel || found.id,
+            noLabel: found.noLabel || found.id,
+            namaRs: found.namaRs || null,
+            namaAlat: found.namaAlat || null,
+            ruangan: found.ruangan || null,
+            status: found.status || 'Sertifikat Tertaut',
+            pdfSource: found.pdfSource,
+            pdfUrl: found.pdfUrl,
+            pdfDriveUrl: found.pdfDriveUrl,
+            calibratedAt: found.calibratedAt,
+            validUntil: found.validUntil,
+            createdAt: found.createdAt,
+            updatedAt: found.updatedAt
           });
-          setResolvedLabelId(norm);
+          setResolvedLabelId(found.noLabel || cleanNoLabel);
           setError(false);
-        } else {
-          setError(true);
+          return;
         }
       }
-    } catch (err) {
-      console.warn("Error fetching label from Supabase:", err);
+
+      // If not found with exact match, try candidate search candidates
+      const candidates = generateLabelSearchCandidates(cleanNoLabel);
+      for (const cand of candidates) {
+        if (cand && cand.trim().toLowerCase() !== cleanNoLabel.trim().toLowerCase()) {
+          try {
+            const candRes = await fetch(`/api/labels/${encodeURIComponent(cand.trim())}`);
+            if (candRes.ok) {
+              const found = await candRes.json();
+              if (found && (found.noLabel || found.id)) {
+                setLabelData({
+                  id: found.noLabel || found.id,
+                  noLabel: found.noLabel || found.id,
+                  namaRs: found.namaRs || null,
+                  namaAlat: found.namaAlat || null,
+                  ruangan: found.ruangan || null,
+                  status: found.status || 'Sertifikat Tertaut',
+                  pdfSource: found.pdfSource,
+                  pdfUrl: found.pdfUrl,
+                  pdfDriveUrl: found.pdfDriveUrl,
+                  calibratedAt: found.calibratedAt,
+                  validUntil: found.validUntil,
+                  createdAt: found.createdAt,
+                  updatedAt: found.updatedAt
+                });
+                setResolvedLabelId(found.noLabel || cand);
+                setError(false);
+                return;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      // If still not found, check if it looks like a preprinted label number
       const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
       if (/\d{2,}/.test(norm)) {
         setLabelData({
@@ -193,6 +161,21 @@ export default function PublicScanPage() {
           isPrePrinted: true
         });
         setResolvedLabelId(norm);
+        setError(false);
+      } else {
+        setError(true);
+      }
+    } catch (err) {
+      console.warn("[PublicScan] Error fetching label:", err);
+      const norm = normalizeLabelFormat(cleanNoLabel) || cleanNoLabel;
+      if (/\d{2,}/.test(norm)) {
+        setLabelData({
+          noLabel: norm,
+          status: 'Menunggu Sertifikat',
+          isPrePrinted: true
+        });
+        setResolvedLabelId(norm);
+        setError(false);
       } else {
         setError(true);
       }
@@ -204,18 +187,18 @@ export default function PublicScanPage() {
   useEffect(() => {
     fetchLabelData();
 
-    // Realtime Supabase updates with unique channel ID
-    const channelId = `public_scan_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // Listen to broadcast events on labels channel
+    const channelId = `public_scan_bc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     let channel: any = null;
     try {
       channel = supabase
         .channel(channelId)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+        .on('broadcast', { event: 'labels_updated' }, () => {
           fetchLabelData();
         })
         .subscribe();
     } catch (err) {
-      console.warn('[PublicScan] Realtime error:', err);
+      console.warn('[PublicScan] Realtime broadcast error:', err);
     }
 
     return () => {

@@ -292,8 +292,18 @@ function AsetPortalMain() {
     const handleLogout = () => {
       logout();
     };
+    const handleConflict = (e: any) => {
+      const msg = e?.detail?.message || 'Data telah diubah oleh pengguna lain di server. Memuat versi terbaru...';
+      showToast(`⚠️ ${msg}`);
+    };
+
     window.addEventListener('app:logout', handleLogout as EventListener);
-    return () => window.removeEventListener('app:logout', handleLogout as EventListener);
+    window.addEventListener('app_data_conflict', handleConflict as EventListener);
+
+    return () => {
+      window.removeEventListener('app:logout', handleLogout as EventListener);
+      window.removeEventListener('app_data_conflict', handleConflict as EventListener);
+    };
   }, [logout]);
 
   // Check Sync Modal State

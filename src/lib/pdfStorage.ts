@@ -1,5 +1,4 @@
-import { supabase } from './supabase';
-import { upsertLabelsToSupabase } from './supabaseSync';
+import { apiFetch } from './apiClient';
 
 /**
  * Validates and extracts a Google Drive File ID from various link formats
@@ -56,7 +55,7 @@ export async function getPdfBlobUrl(_labelId: string): Promise<{ url: string; bl
 }
 
 /**
- * Link a Google Drive certificate to a label
+ * Link a Google Drive certificate to a label via server API
  */
 export async function linkGoogleDriveToLabel(
   labelId: string, 
@@ -89,39 +88,14 @@ export async function linkGoogleDriveToLabel(
     updatePayload.namaRs = dates.namaRs;
   }
 
-  // 1. Update API backend
-  await fetch('/api/labels', {
+  await apiFetch('/api/labels', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updatePayload),
   });
-
-  // 2. Update Supabase
-  try {
-    const supaPayload: any = {
-      no_label: labelId,
-      status: 'Sertifikat Tertaut',
-      pdf_source: 'drive',
-      pdf_url: embedUrl,
-      pdf_drive_url: viewUrl,
-      pdforiginal_url: driveUrl.trim(),
-      pdf_original_url: driveUrl.trim(),
-      pdf_name: finalNamaAlat || `Sertifikat Kalibrasi ${labelId}`,
-      nama_alat: finalNamaAlat || null,
-      ruangan: finalRuangan || null,
-      calibrated_at: dates?.calibratedAt || null,
-      valid_until: dates?.validUntil || null,
-      updated_at: new Date().toISOString()
-    };
-
-    await upsertLabelsToSupabase([supaPayload]);
-  } catch (err) {
-    console.warn('Supabase linkGoogleDriveToLabel error:', err);
-  }
 }
 
 /**
- * Update calibration and expiration dates for a label
+ * Update calibration and expiration dates for a label via server API
  */
 export async function updateLabelDates(
   labelId: string,
@@ -138,32 +112,10 @@ export async function updateLabelDates(
   }
   if (extraObj?.ruangan !== undefined) payload.ruangan = extraObj.ruangan;
 
-  await fetch('/api/labels', {
+  await apiFetch('/api/labels', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-
-  try {
-    const supaPayload: any = {
-      calibrated_at: calibratedAt,
-      valid_until: validUntil,
-      updated_at: new Date().toISOString()
-    };
-    if (extraObj?.namaAlat !== undefined) {
-      supaPayload.nama_alat = extraObj.namaAlat;
-      supaPayload.pdf_name = extraObj.namaAlat;
-    }
-    if (extraObj?.ruangan !== undefined) {
-      supaPayload.ruangan = extraObj.ruangan;
-    }
-    const res = await supabase.from('labels').update(supaPayload).eq('no_label', labelId);
-    if (res.error) {
-      console.warn('Supabase updateLabelDates warning:', res.error.message);
-    }
-  } catch (err) {
-    console.warn('Supabase updateLabelDates error:', err);
-  }
 }
 
 /**
@@ -180,37 +132,12 @@ export async function deleteCertificateFromLabel(labelId: string): Promise<void>
     pdfOriginalUrl: null,
   };
 
-  await fetch('/api/labels', {
+  await apiFetch('/api/labels', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-
-  try {
-    const updateObj: any = {
-      status: 'Menunggu Sertifikat',
-      pdf_source: null,
-      pdf_name: null,
-      pdf_url: null,
-      pdf_drive_url: null,
-      pdforiginal_url: null,
-      pdf_original_url: null,
-      updated_at: new Date().toISOString()
-    };
-    let { error } = await supabase.from('labels').update(updateObj).eq('no_label', labelId);
-    if (error) {
-      delete updateObj.pdforiginal_url;
-      delete updateObj.pdf_original_url;
-      await supabase.from('labels').update(updateObj).eq('no_label', labelId);
-    }
-  } catch (err) {
-    console.warn('Supabase deleteCertificateFromLabel error:', err);
-  }
 }
 
-/**
- * Helper to extract prefix
- */
 function getPrefix(no: string): string {
   if (!no) return '';
   const dot = no.indexOf('.');
@@ -244,15 +171,9 @@ export async function deleteLabelCompletely(labelId: string): Promise<void> {
     console.warn('LocalStorage deleteLabelCompletely cleanup warning:', err);
   }
 
-  await fetch(`/api/labels/${encodeURIComponent(labelId)}`, {
+  await apiFetch(`/api/labels/${encodeURIComponent(labelId)}`, {
     method: 'DELETE',
-  }).catch(() => {});
-
-  try {
-    await supabase.from('labels').delete().eq('no_label', labelId);
-  } catch (err) {
-    console.warn('Supabase deleteLabelCompletely error:', err);
-  }
+  });
 }
 
 /**
@@ -282,28 +203,17 @@ export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
     console.warn('LocalStorage deleteBatchLabels cleanup warning:', err);
   }
 
-  try {
-    await fetch('/api/labels/batch-delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ noLabels: labelIds })
-    });
-  } catch (e) {
-    console.warn('API deleteBatchLabels error:', e);
-  }
-
-  try {
-    await supabase.from('labels').delete().in('no_label', labelIds);
-  } catch (err) {
-    console.warn('Supabase deleteBatchLabels error:', err);
-  }
+  await apiFetch('/api/labels/batch-delete', {
+    method: 'POST',
+    body: JSON.stringify({ noLabels: labelIds })
+  });
 }
 
 /**
  * Delete an entire folder and all its labels
  */
 export async function deleteFolderCompletely(prefix: string, labelIds?: string[]): Promise<void> {
-  // 1. Purge from local storage immediately so it can NEVER resurrect on client refresh/polling
+  // 1. Purge from local storage immediately
   try {
     const rawLabels = localStorage.getItem('smk_labels');
     if (rawLabels) {
@@ -324,7 +234,7 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     delete map[prefix];
     localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
 
-    // Register folder in tombstone to block any resurrection
+    // Register folder in tombstone
     const deletedFolders = JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]');
     if (!deletedFolders.includes(prefix)) {
       deletedFolders.push(prefix);
@@ -342,31 +252,13 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     console.warn('LocalStorage deleteFolderCompletely cleanup warning:', err);
   }
 
-  // 2. Delete on backend API (which deletes from database instantly)
-  try {
-    await fetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
-    await fetch(`/api/folders/prefix/${encodeURIComponent(prefix)}`, { method: 'DELETE' }).catch(() => {});
-    if (labelIds && labelIds.length > 0) {
-      await fetch('/api/labels/batch-delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ noLabels: labelIds })
-      }).catch(() => {});
-    }
-  } catch (err) {
-    console.warn('API delete folder error:', err);
-  }
-
-  // 3. Direct Supabase deletion for instant client-side sync
-  try {
-    await supabase.from('labels').delete().like('no_label', `${prefix}.%`);
-    await supabase.from('labels').delete().eq('no_label', prefix);
-    await supabase.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
-    await supabase.from('labels').delete().eq('no_label', `__meta_folder_rs_${prefix}`);
-    if (labelIds && labelIds.length > 0) {
-      await supabase.from('labels').delete().in('no_label', labelIds);
-    }
-  } catch (err) {
-    console.warn('Supabase deleteFolderCompletely error:', err);
+  // 2. Delete on backend API
+  await apiFetch(`/api/folders/${encodeURIComponent(prefix)}`, { method: 'DELETE' });
+  await apiFetch(`/api/folders/prefix/${encodeURIComponent(prefix)}`, { method: 'DELETE' }).catch(() => {});
+  if (labelIds && labelIds.length > 0) {
+    await apiFetch('/api/labels/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ noLabels: labelIds })
+    }).catch(() => {});
   }
 }

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { apiFetch } from './apiClient';
 
 /**
  * Helper to convert file to Base64 Data URL (resilient fallback if Cloud Storage fails or is offline)
@@ -121,7 +122,7 @@ export const getDocumentAccessUrl = async (
     throw new Error('Autentikasi diperlukan: Silakan login terlebih dahulu untuk mengakses dokumen ini');
   }
 
-  const response = await fetch('/api/storage/signed-url', {
+  const response = await apiFetch('/api/storage/signed-url', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

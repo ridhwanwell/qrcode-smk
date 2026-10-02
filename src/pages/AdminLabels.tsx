@@ -12,6 +12,7 @@ import {
   extractGoogleDriveFileId
 } from '../lib/pdfStorage';
 import { fetchFolderRsFromSupabase, saveFolderRsToSupabase, upsertLabelsToSupabase } from '../lib/supabaseSync';
+import { apiFetch } from '../lib/apiClient';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 import { 
   Search, 
@@ -153,7 +154,7 @@ export default function AdminLabels() {
       setFolderRsMap(map);
       localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
 
-      fetch('/api/folders/nama-rs', {
+      apiFetch('/api/folders/nama-rs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prefix, namaRs: val || null })
@@ -188,8 +189,8 @@ export default function AdminLabels() {
           .not('no_label', 'like', '__aset_%')
           .order('no_label', { ascending: true }),
         fetchFolderRsFromSupabase(),
-        fetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/folders/nama-rs').then(r => r.ok ? r.json() : {}).catch(() => ({}))
+        apiFetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch('/api/folders/nama-rs').then(r => r.ok ? r.json() : {}).catch(() => ({}))
       ]);
 
       (apiLabelsRes || []).forEach((d: any) => {

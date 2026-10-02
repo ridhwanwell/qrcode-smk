@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/apiClient';
 import { FileText, Clock, CheckCircle2, Tags, Database, RefreshCw, Copy, Check, ExternalLink, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -134,7 +135,7 @@ END $$;`;
       // 1. Fetch Cloud SQL API labels
       let apiMap: Record<string, any> = {};
       try {
-        const res = await fetch('/api/labels');
+        const res = await apiFetch('/api/labels');
         if (res.ok) {
           const apiData = await res.json();
           (apiData || []).forEach((d: any) => {
@@ -193,7 +194,7 @@ END $$;`;
 
   const checkSupabaseStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/supabase/status');
+      const res = await apiFetch('/api/supabase/status');
       if (res.ok) {
         const data = await res.json();
         setSupabaseStatus(data);
@@ -244,7 +245,7 @@ END $$;`;
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch('/api/supabase/sync', { method: 'POST' });
+      const res = await apiFetch('/api/supabase/sync', { method: 'POST' });
       const text = await res.text();
       let data: any = {};
       try {

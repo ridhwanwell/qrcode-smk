@@ -22,7 +22,7 @@ import {
   CloudUpload
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/apiClient';
 
 export interface CollectionSyncItem {
   id: string;
@@ -101,32 +101,18 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         }
       } catch (_) {}
 
-      // Server count directly from Supabase app_collections first, then API
+      // Server count via backend API
       let serverCount = 0;
       try {
-        const { data: supaRow, error } = await supabase
-          .from('app_collections')
-          .select('data')
-          .eq('collection_name', col.name)
-          .maybeSingle();
-
-        if (!error && supaRow && Array.isArray(supaRow.data)) {
-          const cleanServer = supaRow.data.filter((it: any) => {
-            const k = it?.id || it?.sphNumber || it?.workOrderNumber;
-            return !k || !deletedSet.has(String(k).trim());
-          });
-          serverCount = cleanServer.length;
-        } else {
-          const res = await fetch(`/api/collections/${encodeURIComponent(col.name)}`);
-          if (res.ok) {
-            const json = await res.json();
-            if (json && json.found && Array.isArray(json.items)) {
-              const cleanItems = json.items.filter((it: any) => {
-                const k = it?.id || it?.sphNumber || it?.workOrderNumber;
-                return !k || !deletedSet.has(String(k).trim());
-              });
-              serverCount = cleanItems.length;
-            }
+        const res = await apiFetch(`/api/collections/${encodeURIComponent(col.name)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.found && Array.isArray(json.items)) {
+            const cleanItems = json.items.filter((it: any) => {
+              const k = it?.id || it?.sphNumber || it?.workOrderNumber || it?.bapNumber || it?.noLabel;
+              return !k || !deletedSet.has(String(k).trim());
+            });
+            serverCount = cleanItems.length;
           }
         }
       } catch (_) {}
@@ -177,10 +163,6 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
     setSyncingKey(item.name);
     try {
       let deletedSet = new Set<string>();
-      if (item.name === 'schedules') {
-        deletedSet.add('SCH-007241');
-        deletedSet.add('SCH-594702');
-      }
       try {
         const delRaw = localStorage.getItem(`smk_deleted_${item.name}`);
         if (delRaw) JSON.parse(delRaw).forEach((d: string) => deletedSet.add(d));
@@ -192,19 +174,12 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         if (raw) localData = JSON.parse(raw);
         if (Array.isArray(localData)) {
           localData = localData.filter((x: any) => {
-            const k = x?.id || x?.sphNumber || x?.workOrderNumber;
+            const k = x?.id || x?.sphNumber || x?.workOrderNumber || x?.bapNumber || x?.noLabel;
             return !k || !deletedSet.has(String(k).trim());
           });
         }
         
-        // Direct write to Supabase
-        await supabase.from('app_collections').upsert({
-          collection_name: item.name,
-          data: localData,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'collection_name' });
-
-        await fetch(`/api/collections/${encodeURIComponent(item.name)}`, {
+        await apiFetch(`/api/collections/${encodeURIComponent(item.name)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items: localData, replaceAll: true })
@@ -212,26 +187,18 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         onShowToast(`Koleksi ${item.label} berhasil diunggah ke Supabase server!`);
       } else {
         // pull from server to local
-        const { data: supaRow } = await supabase
-          .from('app_collections')
-          .select('data')
-          .eq('collection_name', item.name)
-          .maybeSingle();
-
-        let serverItems = supaRow?.data;
-        if (!Array.isArray(serverItems)) {
-          const res = await fetch(`/api/collections/${encodeURIComponent(item.name)}`);
-          if (res.ok) {
-            const json = await res.json();
-            if (json && json.found && Array.isArray(json.items)) {
-              serverItems = json.items;
-            }
+        let serverItems: any[] = [];
+        const res = await apiFetch(`/api/collections/${encodeURIComponent(item.name)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.found && Array.isArray(json.items)) {
+            serverItems = json.items;
           }
         }
 
         if (Array.isArray(serverItems)) {
           const cleanServer = serverItems.filter((x: any) => {
-            const k = x?.id || x?.sphNumber || x?.workOrderNumber;
+            const k = x?.id || x?.sphNumber || x?.workOrderNumber || x?.bapNumber || x?.noLabel;
             return !k || !deletedSet.has(String(k).trim());
           });
           localStorage.setItem(`smk_supa_${item.name}`, JSON.stringify(cleanServer));
@@ -272,14 +239,13 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
         await onForcePullAll();
       } else {
         for (const col of COLLECTIONS_CONFIG) {
-          const { data: supaRow } = await supabase
-            .from('app_collections')
-            .select('data')
-            .eq('collection_name', col.name)
-            .maybeSingle();
-          if (supaRow && Array.isArray(supaRow.data)) {
-            localStorage.setItem(`smk_supa_${col.name}`, JSON.stringify(supaRow.data));
-            localStorage.setItem(`smk_inited_${col.name}`, 'true');
+          const res = await apiFetch(`/api/collections/${encodeURIComponent(col.name)}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && Array.isArray(json.items)) {
+              localStorage.setItem(`smk_supa_${col.name}`, JSON.stringify(json.items));
+              localStorage.setItem(`smk_inited_${col.name}`, 'true');
+            }
           }
         }
       }

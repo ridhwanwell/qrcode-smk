@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from './supabase.ts';
-import { upsertLabelsToSupabase } from './supabaseSync';
+import { apiFetch } from './apiClient';
 
 export const DEFAULT_LOGO_URL = '/logo-smk.webp';
 
@@ -10,7 +9,7 @@ export interface AppConfig {
 }
 
 /**
- * Hook to retrieve app logo and config from Supabase, API & localStorage.
+ * Hook to retrieve app logo and config from API & localStorage.
  */
 export function useAppConfig() {
   const getInitialLogo = () => {
@@ -30,35 +29,8 @@ export function useAppConfig() {
     let isMounted = true;
 
     async function loadConfig() {
-      // 1. First fetch from Supabase (unified across all devices & Vercel)
       try {
-        const { data, error } = await supabase
-          .from('labels')
-          .select('*')
-          .eq('no_label', '__meta_app_config')
-          .maybeSingle();
-
-        const rawJson = (data as any)?.pdforiginal_url || (data as any)?.pdf_original_url || (data as any)?.pdf_url;
-        if (!error && rawJson) {
-          try {
-            const parsed = JSON.parse(rawJson);
-            if (parsed && parsed.logoUrl && isMounted) {
-              setLogoUrlState(parsed.logoUrl);
-              try {
-                localStorage.setItem('smk_app_logo', parsed.logoUrl);
-              } catch {}
-              setLoading(false);
-              return;
-            }
-          } catch (_) {}
-        }
-      } catch (sbErr) {
-        console.warn('Supabase appConfig fetch warning:', sbErr);
-      }
-
-      // 2. Fallback to API if available
-      try {
-        const res = await fetch('/api/settings/appConfig');
+        const res = await apiFetch('/api/settings/appConfig');
         if (res.ok) {
           const data = await res.json();
           if (data && data.value && isMounted) {
@@ -72,7 +44,7 @@ export function useAppConfig() {
           }
         }
       } catch (err) {
-        // quiet fallback
+        console.warn('[appConfig] Error fetching app config:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -89,7 +61,7 @@ export function useAppConfig() {
 }
 
 /**
- * Save new Logo URL to Supabase, API, and localStorage so all devices update instantly.
+ * Save new Logo URL to server API and localStorage.
  */
 export async function saveAppLogo(newLogoUrl: string) {
   const cleanUrl = newLogoUrl.trim() || DEFAULT_LOGO_URL;
@@ -99,33 +71,18 @@ export async function saveAppLogo(newLogoUrl: string) {
     localStorage.setItem('smk_app_logo', cleanUrl);
   } catch {}
 
-  // 2. Save to Supabase (unified database)
+  // 2. Save to API backend
   try {
-    const configPayload = JSON.stringify({
-      logoUrl: cleanUrl,
-      updatedAt: new Date().toISOString()
-    });
-    await upsertLabelsToSupabase([{
-      no_label: '__meta_app_config',
-      status: 'metadata',
-      pdf_source: 'app_config',
-      pdforiginal_url: configPayload,
-      pdf_original_url: configPayload,
-      updated_at: new Date().toISOString()
-    }]);
-  } catch (sbErr) {
-    console.warn('Supabase saveAppLogo warning:', sbErr);
-  }
-
-  // 3. Save to API backend if available
-  fetch('/api/settings/appConfig', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      value: JSON.stringify({
-        logoUrl: cleanUrl,
-        updatedAt: new Date().toISOString()
+    await apiFetch('/api/settings/appConfig', {
+      method: 'POST',
+      body: JSON.stringify({
+        value: JSON.stringify({
+          logoUrl: cleanUrl,
+          updatedAt: new Date().toISOString()
+        })
       })
-    })
-  }).catch(() => {});
+    });
+  } catch (err) {
+    console.warn('[appConfig] Error saving logo to API:', err);
+  }
 }

@@ -1,5 +1,4 @@
-import { supabase } from './supabase.ts';
-import { upsertLabelsToSupabase } from './supabaseSync';
+import { apiFetch } from './apiClient';
 
 export interface TemplateConfig {
   imageUrl?: string;
@@ -38,48 +37,13 @@ export function getCachedTemplateConfigs(): TemplateConfigs {
 }
 
 /**
- * Fetch template configs from unified Supabase database
+ * Fetch template configs from server API
  */
 export async function fetchTemplateConfigs(): Promise<TemplateConfigs> {
   const result: TemplateConfigs = getCachedTemplateConfigs();
 
   try {
-    // 1. Fetch directly from Supabase (unified across all devices & accounts)
-    const { data, error } = await supabase
-      .from('labels')
-      .select('*')
-      .in('no_label', ['__meta_template_kecil', '__meta_template_besar', '__meta_template_besar_tidak_laik']);
-
-    if (!error && data && data.length > 0) {
-      for (const row of data as any[]) {
-        const rawJson = row.pdforiginal_url || row.pdf_original_url || row.pdf_url;
-        if (rawJson) {
-          if (row.no_label === '__meta_template_kecil') {
-            try { result.kecil = JSON.parse(rawJson); } catch (_) {}
-          }
-          if (row.no_label === '__meta_template_besar') {
-            try { result.besar = JSON.parse(rawJson); } catch (_) {}
-          }
-          if (row.no_label === '__meta_template_besar_tidak_laik') {
-            try { result.besarTidakLaik = JSON.parse(rawJson); } catch (_) {}
-          }
-        }
-      }
-
-      // Save to localStorage cache
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result));
-      } catch (_) {}
-
-      return result;
-    }
-  } catch (sbErr) {
-    console.warn('Supabase fetchTemplateConfigs warning:', sbErr);
-  }
-
-  // 2. Fallback to API if Supabase call didn't yield results
-  try {
-    const res = await fetch('/api/settings/templates');
+    const res = await apiFetch('/api/settings/templates');
     if (res.ok) {
       const apiData = await res.json();
       if (apiData && apiData.value) {
@@ -95,14 +59,14 @@ export async function fetchTemplateConfigs(): Promise<TemplateConfigs> {
       }
     }
   } catch (apiErr) {
-    console.warn('API fetchTemplateConfigs fallback warning:', apiErr);
+    console.warn('[templateStorage] Error fetching template configs:', apiErr);
   }
 
   return result;
 }
 
 /**
- * Save template configs to unified Supabase database
+ * Save template configs to server API
  */
 export async function saveTemplateConfigs(configs: TemplateConfigs): Promise<{ success: boolean; error?: string }> {
   // 1. Cache immediately in localStorage
@@ -110,72 +74,21 @@ export async function saveTemplateConfigs(configs: TemplateConfigs): Promise<{ s
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(configs));
   } catch (_) {}
 
-  let supabaseSuccess = false;
-  let lastError = '';
-
-  // 2. Persist to Supabase so EVERY device and account immediately has it
+  // 2. Persist to API backend
   try {
-    const payloadItems: any[] = [];
+    const res = await apiFetch('/api/settings/templates', {
+      method: 'POST',
+      body: JSON.stringify({ value: configs }),
+    });
 
-    if (configs.kecil) {
-      payloadItems.push({
-        no_label: '__meta_template_kecil',
-        status: 'metadata',
-        pdf_source: 'template_kecil',
-        pdforiginal_url: JSON.stringify(configs.kecil),
-        pdf_original_url: JSON.stringify(configs.kecil),
-        updated_at: new Date().toISOString(),
-      });
-    }
-
-    if (configs.besar) {
-      payloadItems.push({
-        no_label: '__meta_template_besar',
-        status: 'metadata',
-        pdf_source: 'template_besar',
-        pdforiginal_url: JSON.stringify(configs.besar),
-        pdf_original_url: JSON.stringify(configs.besar),
-        updated_at: new Date().toISOString(),
-      });
-    }
-
-    if (configs.besarTidakLaik) {
-      payloadItems.push({
-        no_label: '__meta_template_besar_tidak_laik',
-        status: 'metadata',
-        pdf_source: 'template_besar_tidak_laik',
-        pdforiginal_url: JSON.stringify(configs.besarTidakLaik),
-        pdf_original_url: JSON.stringify(configs.besarTidakLaik),
-        updated_at: new Date().toISOString(),
-      });
-    }
-
-    if (payloadItems.length > 0) {
-      const res = await upsertLabelsToSupabase(payloadItems);
-      if (res.success) {
-        supabaseSuccess = true;
-      } else {
-        lastError = res.error?.message || 'Gagal menyimpan template ke Supabase';
-        console.warn('Supabase saveTemplateConfigs error:', lastError);
-      }
+    if (res.ok) {
+      return { success: true };
     } else {
-      supabaseSuccess = true;
+      const errJson = await res.json().catch(() => ({}));
+      return { success: false, error: errJson.error || 'Gagal menyimpan template' };
     }
   } catch (err: any) {
-    lastError = err?.message || 'Gagal menyimpan ke database Supabase';
-    console.warn('Supabase saveTemplateConfigs exception:', err);
+    console.warn('[templateStorage] Error saving templates to server:', err);
+    return { success: false, error: err?.message };
   }
-
-  // 3. Background sync to local Express/Cloud SQL API if running
-  fetch('/api/settings/templates', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value: configs }),
-  }).catch(() => {});
-
-  if (supabaseSuccess) {
-    return { success: true };
-  }
-
-  return { success: true, error: lastError || undefined };
 }

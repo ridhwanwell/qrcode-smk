@@ -22,6 +22,7 @@ import QRCode from 'qrcode';
 import { cn } from '../lib/utils';
 import { fetchTemplateConfigs } from '../lib/templateStorage';
 import { saveFolderRsToSupabase, bulkSyncLabelsToSupabase, fetchFolderRsFromSupabase } from '../lib/supabaseSync';
+import { apiFetch } from '../lib/apiClient';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 
 export interface LabelBatchCalculation {
@@ -173,7 +174,7 @@ export default function AdminGenerate() {
           setTemplateConfigs(tplConfigs);
         }
 
-        const genRes = await fetch('/api/settings/general').catch(() => null);
+        const genRes = await apiFetch('/api/settings/general').catch(() => null);
         if (genRes && genRes.ok) {
           const genData = await genRes.json();
           if (genData?.value) {
@@ -220,7 +221,7 @@ export default function AdminGenerate() {
           .not('no_label', 'like', '__aset_%')
           .order('no_label', { ascending: true }),
         fetchFolderRsFromSupabase(),
-        fetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => [])
+        apiFetch('/api/labels').then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       const allItems: { noLabel: string; namaRs?: string | null }[] = [];
@@ -474,7 +475,7 @@ export default function AdminGenerate() {
             currentFolderMap[prefixVal] = cleanNamaRs;
             localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(currentFolderMap));
           } catch (_) {}
-          fetch('/api/folders/nama-rs', {
+          apiFetch('/api/folders/nama-rs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prefix: prefixVal, namaRs: cleanNamaRs })
@@ -484,14 +485,8 @@ export default function AdminGenerate() {
 
       // 2. Sync to API backend with Auth Token if available
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const apiHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (session?.access_token) {
-          apiHeaders['Authorization'] = `Bearer ${session.access_token}`;
-        }
-        await fetch('/api/labels/bulk', {
+        await apiFetch('/api/labels/bulk', {
           method: 'POST',
-          headers: apiHeaders,
           body: JSON.stringify({ items: itemsToSave })
         }).catch(err => console.warn('API bulk sync deferred:', err));
       } catch (_) {}

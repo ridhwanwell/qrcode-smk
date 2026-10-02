@@ -21,6 +21,7 @@ import { getUrgencyInfo } from '../utils/helpers';
 import { CompanyLogo } from './CompanyLogo';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { useAuth } from '../lib/AuthContext';
+import { subscribePendingCount } from '../lib/offlineQueue';
 
 export type AppTab = 'dashboard' | 'sph' | 'labels' | 'schedules' | 'billing' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates';
 
@@ -194,6 +195,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  useEffect(() => {
+    const unsub = subscribePendingCount(setPendingSyncCount);
+    return () => unsub();
+  }, []);
+
   return (
     <header className="bg-[#1C658C] text-white sticky top-0 z-40 border-b border-[#144966] shadow-xl select-none">
       {/* Top Micro Information Bar */}
@@ -212,6 +219,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}></span>
               {isRealtimeConnected ? 'Supabase Realtime Terhubung' : 'Menghubungkan Realtime...'}
             </span>
+            {pendingSyncCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 bg-amber-950/80 text-amber-300 border border-amber-500/50 px-2 py-0.5 rounded-full text-[10px] font-medium shadow-sm animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span>{pendingSyncCount} perubahan menunggu sinkron</span>
+              </span>
+            )}
             {onForceSyncAll && (
               <button
                 id="btn-sync-laptop-supabase"

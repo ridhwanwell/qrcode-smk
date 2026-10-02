@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { apiFetch } from '../lib/apiClient';
 
 interface CompanyLogoProps {
   className?: string;
@@ -19,7 +19,7 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
   const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load custom logo from localStorage and Supabase settings table
+  // Load custom logo from localStorage and server settings
   useEffect(() => {
     try {
       const saved = localStorage.getItem('smk_custom_logo_data');
@@ -30,23 +30,21 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
       // Ignore storage errors
     }
 
-    // Try fetching synced branding logo from Supabase settings
+    // Try fetching synced branding logo from server settings API
     const fetchCloudLogo = async () => {
       try {
-        const { data } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'branding')
-          .maybeSingle();
-
-        if (data && data.value) {
-          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-          if (parsed?.logoDataUrl) {
-            setCustomLogoUrl(parsed.logoDataUrl);
-            try {
-              localStorage.setItem('smk_custom_logo_data', parsed.logoDataUrl);
-            } catch {
-              // Ignore localStorage quota
+        const res = await apiFetch('/api/settings/branding');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.value) {
+            const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+            if (parsed?.logoDataUrl) {
+              setCustomLogoUrl(parsed.logoDataUrl);
+              try {
+                localStorage.setItem('smk_custom_logo_data', parsed.logoDataUrl);
+              } catch {
+                // Ignore localStorage quota
+              }
             }
           }
         }
@@ -84,18 +82,19 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
             // LocalStorage might be full
           }
 
-          // Persist to Supabase settings so all users and devices see it
+          // Persist to server settings via apiFetch
           try {
-            await supabase.from('settings').upsert({
-              key: 'branding',
-              value: JSON.stringify({
-                logoDataUrl: result,
-                updatedAt: new Date().toISOString()
-              }),
-              updated_at: new Date().toISOString()
+            await apiFetch('/api/settings/branding', {
+              method: 'POST',
+              body: JSON.stringify({
+                value: {
+                  logoDataUrl: result,
+                  updatedAt: new Date().toISOString()
+                }
+              })
             });
           } catch (err) {
-            console.warn('Could not sync logo to Supabase:', err);
+            console.warn('Could not sync logo to server:', err);
           }
         }
       };

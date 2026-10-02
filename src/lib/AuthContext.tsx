@@ -1,66 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
+import { apiFetch } from './apiClient';
 
 export type UserRole = 'admin_utama' | 'admin_teknik' | 'admin_keuangan' | 'hanya_sph';
 
-export interface UserDirectoryInfo {
-  username: string;
-  role: UserRole;
-  fullName: string;
-  roleLabel: string;
-}
-
-export const OFFICIAL_USERS_DIRECTORY: Record<string, UserDirectoryInfo> = {
-  'ridhwanwell@smk.co.id': {
-    username: 'ridhwanwell',
-    role: 'admin_utama',
-    fullName: 'Ridhwan Well',
-    roleLabel: 'Admin Utama'
-  },
-  'hafizh@smk.co.id': {
-    username: 'hafizh',
-    role: 'admin_utama',
-    fullName: 'Hafizh',
-    roleLabel: 'Admin Utama'
-  },
-  'sheva@smk.co.id': {
-    username: 'sheva',
-    role: 'admin_utama',
-    fullName: 'Sheva',
-    roleLabel: 'Admin Utama'
-  },
-  'alinu@smk.co.id': {
-    username: 'alinu',
-    role: 'admin_teknik',
-    fullName: 'Alinu',
-    roleLabel: 'Admin Teknik'
-  },
-  'fitri@smk.co.id': {
-    username: 'fitri',
-    role: 'admin_keuangan',
-    fullName: 'Fitri',
-    roleLabel: 'Admin Keuangan'
-  },
-  'nissa@smk.co.id': {
-    username: 'nissa',
-    role: 'hanya_sph',
-    fullName: 'Nissa',
-    roleLabel: 'Hanya SPH'
-  },
-  'erwin@smk.co.id': {
-    username: 'erwin',
-    role: 'hanya_sph',
-    fullName: 'Erwin',
-    roleLabel: 'Hanya SPH'
-  },
-  'sulis@smk.co.id': {
-    username: 'sulis',
-    role: 'hanya_sph',
-    fullName: 'Sulis',
-    roleLabel: 'Hanya SPH'
-  }
-};
+export const OFFICIAL_ROLES: readonly UserRole[] = [
+  'admin_utama',
+  'admin_teknik',
+  'admin_keuangan',
+  'hanya_sph'
+] as const;
 
 export interface AppUser {
   id: string;
@@ -79,7 +29,8 @@ interface AuthContextType {
   supabaseUser: User | null;
   session: Session | null;
   isAdmin: boolean;
-  role: UserRole;
+  role: UserRole | '';
+  isOnline: boolean;
   loading: boolean;
   error: string | null;
   setError: (err: string | null) => void;
@@ -93,7 +44,8 @@ const AuthContext = createContext<AuthContextType>({
   supabaseUser: null,
   session: null,
   isAdmin: false,
-  role: 'admin_utama',
+  role: '',
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   loading: true,
   error: null,
   setError: () => {},
@@ -104,9 +56,6 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-/**
- * Normalizes username inputs to their respective official login emails.
- */
 function normalizeEmail(input: string): string {
   const trimmed = input.trim().toLowerCase();
   if (trimmed.includes('@')) {
@@ -114,24 +63,16 @@ function normalizeEmail(input: string): string {
   }
   const clean = trimmed.replace(/[\s_.-]+/g, '');
 
-  // Check against known usernames
-  for (const [email, info] of Object.entries(OFFICIAL_USERS_DIRECTORY)) {
-    if (info.username.toLowerCase() === clean || clean === info.fullName.toLowerCase().replace(/\s+/g, '')) {
-      return email;
-    }
-  }
-
-  // Common aliases
   if (clean === 'adminutama' || clean === 'admin' || clean === 'ridhwan') {
     return 'ridhwanwell@smk.co.id';
   }
-  if (clean === 'adminteknik' || clean === 'teknik') {
+  if (clean === 'adminteknik' || clean === 'teknik' || clean === 'alinu') {
     return 'alinu@smk.co.id';
   }
-  if (clean === 'adminkeuangan' || clean === 'keuangan') {
+  if (clean === 'adminkeuangan' || clean === 'keuangan' || clean === 'fitri') {
     return 'fitri@smk.co.id';
   }
-  if (clean === 'sph' || clean === 'hanyasph') {
+  if (clean === 'sph' || clean === 'hanyasph' || clean === 'nissa') {
     return 'nissa@smk.co.id';
   }
 
@@ -141,60 +82,142 @@ function normalizeEmail(input: string): string {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<AppUser | null>(() => {
-    try {
-      const cached = localStorage.getItem('smk_cached_profile');
-      if (cached) return JSON.parse(cached);
-    } catch (_) {}
-    return null;
-  });
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
-  // Fetch role and profile from public.profiles table or official directory
-  const loadUserProfile = async (sbUser: User): Promise<AppUser> => {
+  // Monitor network online/offline state
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      supabase.auth.getSession().catch(() => {});
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (_) {}
+    setUser(null);
+    setSupabaseUser(null);
+    setSession(null);
+    localStorage.removeItem('smk_cached_profile');
+    localStorage.removeItem('smk_auth_user');
+    localStorage.removeItem('smk_admin_user_session');
+  };
+
+  /**
+   * ATURAN WAJIB (Point 5):
+   * Selalu ambil role dari server (public.profiles).
+   * Jangan gunakan localStorage sebagai sumber kebenaran.
+   * Jika profil tidak ditemukan atau role bukan 4 role resmi:
+   * JANGAN pakai role default 'admin_utama' -> tampilkan pesan "Akun belum diaktifkan, hubungi Admin Utama" dan logout.
+   */
+  const loadUserProfile = async (sbUser: User): Promise<AppUser | null> => {
     const emailStr = (sbUser.email || '').toLowerCase().trim();
-    const matchedDir = OFFICIAL_USERS_DIRECTORY[emailStr];
-
-    let role: UserRole = matchedDir?.role || 'admin_utama';
-    let fullName = matchedDir?.fullName || sbUser.email || 'Pengguna PT SMK';
-    let roleLabel = matchedDir?.roleLabel || (role === 'admin_utama' ? 'Admin Utama' : role === 'admin_keuangan' ? 'Admin Keuangan' : role === 'admin_teknik' ? 'Admin Teknik' : 'Hanya SPH');
-    let username = matchedDir?.username || emailStr.split('@')[0] || 'admin';
 
     try {
-      const { data, error: profileErr } = await supabase
+      // Fetch authenticated profile and verified role from backend
+      const res = await apiFetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.role && OFFICIAL_ROLES.includes(data.role as UserRole)) {
+          const role = data.role as UserRole;
+          const fullName = data.fullName || emailStr.split('@')[0] || 'Pengguna PT SMK';
+          const roleLabel = role === 'admin_utama'
+            ? 'Admin Utama'
+            : role === 'admin_keuangan'
+              ? 'Admin Keuangan'
+              : role === 'admin_teknik'
+                ? 'Admin Teknik'
+                : 'Hanya SPH';
+
+          const username = emailStr.split('@')[0] || 'pengguna';
+          const displayName = fullName;
+          const avatarLetter = (displayName.charAt(0) || 'P').toUpperCase();
+
+          const appUser: AppUser = {
+            id: data.id || sbUser.id,
+            email: data.email || sbUser.email || emailStr,
+            role,
+            roleLabel,
+            fullName,
+            displayName,
+            username,
+            avatarLetter
+          };
+
+          return appUser;
+        }
+      }
+
+      if (res.status === 403) {
+        console.warn(`[AuthContext] Akun ${sbUser.id} (${emailStr}) tidak memiliki profil/role resmi di database.`);
+        const unactivatedMsg = 'Akun belum diaktifkan, hubungi Admin Utama';
+        setError(unactivatedMsg);
+        await logout();
+        return null;
+      }
+
+      // Fallback to direct profiles query if backend was temporarily unreachable
+      const { data: profile, error: profileErr } = await supabase
         .from('profiles')
         .select('role, full_name')
         .eq('id', sbUser.id)
         .maybeSingle();
 
-      if (!profileErr && data) {
-        if (data.role) role = data.role as UserRole;
-        if (data.full_name) fullName = data.full_name;
+      if (profileErr || !profile || !profile.role || !OFFICIAL_ROLES.includes(profile.role as UserRole)) {
+        console.warn(`[AuthContext] Akun ${sbUser.id} (${emailStr}) tidak memiliki profil/role resmi di database.`);
+        const unactivatedMsg = 'Akun belum diaktifkan, hubungi Admin Utama';
+        setError(unactivatedMsg);
+        await logout();
+        return null;
       }
-    } catch (err) {
-      console.warn('Could not fetch user profile from Supabase:', err);
+
+      const role = profile.role as UserRole;
+      const fullName = profile.full_name || emailStr.split('@')[0] || 'Pengguna PT SMK';
+      const roleLabel = role === 'admin_utama'
+        ? 'Admin Utama'
+        : role === 'admin_keuangan'
+          ? 'Admin Keuangan'
+          : role === 'admin_teknik'
+            ? 'Admin Teknik'
+            : 'Hanya SPH';
+
+      const username = emailStr.split('@')[0] || 'pengguna';
+      const displayName = fullName;
+      const avatarLetter = (displayName.charAt(0) || 'P').toUpperCase();
+
+      const appUser: AppUser = {
+        id: sbUser.id,
+        email: sbUser.email || emailStr,
+        role,
+        roleLabel,
+        fullName,
+        displayName,
+        username,
+        avatarLetter
+      };
+
+      return appUser;
+    } catch (err: any) {
+      console.error('[AuthContext] Gagal memuat profil pengguna:', err);
+      setError('Layanan autentikasi sedang bermasalah, silakan coba lagi.');
+      await logout();
+      return null;
     }
-
-    const displayName = fullName;
-    const avatarLetter = (displayName.charAt(0) || 'A').toUpperCase();
-
-    const appUser: AppUser = {
-      id: sbUser.id,
-      email: sbUser.email || emailStr,
-      role,
-      roleLabel,
-      fullName,
-      displayName,
-      username,
-      avatarLetter
-    };
-
-    try {
-      localStorage.setItem('smk_cached_profile', JSON.stringify(appUser));
-    } catch (_) {}
-
-    return appUser;
   };
 
   useEffect(() => {
@@ -225,7 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSupabaseUser(newSession.user);
         const profile = await loadUserProfile(newSession.user);
         if (isMounted) setUser(profile);
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setSupabaseUser(null);
         localStorage.removeItem('smk_cached_profile');
@@ -233,9 +256,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
+    // 3. Listen to session expired event from apiClient
+    const handleExpired = () => {
+      setError('Sesi login telah kedaluwarsa, silakan login kembali.');
+      logout();
+    };
+    window.addEventListener('auth_session_expired', handleExpired);
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      window.removeEventListener('auth_session_expired', handleExpired);
     };
   }, []);
 
@@ -263,6 +294,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSupabaseUser(data.user);
         setSession(data.session);
         const profile = await loadUserProfile(data.user);
+        if (!profile) {
+          setLoading(false);
+          return { success: false, error: 'Akun belum diaktifkan, hubungi Admin Utama' };
+        }
         setUser(profile);
         setLoading(false);
         return { success: true };
@@ -278,20 +313,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (_) {}
-    setUser(null);
-    setSupabaseUser(null);
-    setSession(null);
-    localStorage.removeItem('smk_cached_profile');
-    localStorage.removeItem('smk_auth_user');
-    localStorage.removeItem('smk_admin_user_session');
-  };
-
-  const role: UserRole = user?.role || 'admin_utama';
-  const isAdmin = !!user;
+  const role: UserRole | '' = user?.role || '';
+  const isAdmin = user?.role === 'admin_utama';
 
   return (
     <AuthContext.Provider
@@ -301,6 +324,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         session,
         isAdmin,
         role,
+        isOnline,
         loading,
         error,
         setError,
