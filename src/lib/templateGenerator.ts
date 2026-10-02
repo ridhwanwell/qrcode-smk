@@ -378,6 +378,45 @@ function wrapUrlToWidth(url: string, maxWidth: number, font: any, fontSize: numb
   return lines.length > 0 ? lines : [clean];
 }
 
+/**
+ * Helper to wrap text into multiple lines ensuring each line's measured width
+ * strictly never exceeds maxWidth for the given font and fontSize.
+ */
+function wrapTextByFontWidth(text: string, maxWidth: number, font: any, fontSize: number): string[] {
+  if (!text) return [];
+  const clean = safePdfText(text);
+  const words = clean.split(/\s+/);
+  const lines: string[] = [];
+  let cur = '';
+
+  for (const w of words) {
+    const test = cur ? `${cur} ${w}` : w;
+    const testW = font.widthOfTextAtSize(test, fontSize);
+    if (testW <= maxWidth) {
+      cur = test;
+    } else {
+      if (cur) {
+        lines.push(cur);
+        cur = w;
+      } else {
+        // If a single word is wider than maxWidth, break character by character
+        let chunk = '';
+        for (const char of w) {
+          if (font.widthOfTextAtSize(chunk + char, fontSize) <= maxWidth) {
+            chunk += char;
+          } else {
+            if (chunk) lines.push(chunk);
+            chunk = char;
+          }
+        }
+        cur = chunk;
+      }
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length > 0 ? lines : [clean];
+}
+
 export interface SphTablePageChunk {
   pageIndex: number;
   items: any[];
@@ -1310,12 +1349,13 @@ export async function createAuthenticSphPdf(
         if (data.terbilang) {
           const rawTerbilang = data.terbilang.startsWith('"') ? data.terbilang : `"${data.terbilang}"`;
           const fullTerbilangStr = `Terbilang: ${rawTerbilang}`;
-          const terbilangLines = wrapPdfText(fullTerbilangStr, 52);
-          const fontSz = 11;
-          const lineHeight = 14;
+          const fontSz = 10.5;
+          const maxTerbW = terbBoxWidth - 16;
+          const terbilangLines = wrapTextByFontWidth(fullTerbilangStr, maxTerbW, fontBoldOblique, fontSz);
+          const lineHeight = fontSz + 3.5;
           const totalTextH = terbilangLines.length * lineHeight;
           // Calculate starting Y to center text vertically inside terbBox
-          let tY = terbBoxY + (terbBoxH / 2) + (totalTextH / 2) - 10;
+          let tY = terbBoxY + (terbBoxH / 2) + (totalTextH / 2) - 8;
 
           for (const tl of terbilangLines) {
             const safeTl = safePdfText(tl);
@@ -1691,24 +1731,76 @@ export async function createAuthenticSphPdf(
 
         ecatTableY -= sumRowH;
 
-        // Row 2: Terbilang Box spanning full width (12pt font)
-        const terbilangH = 26;
-        pageE.drawRectangle({
-          x: ecatColX.no,
-          y: ecatTableY - terbilangH,
-          width: ecatTableWidth,
-          height: terbilangH,
-          borderColor: COLOR_BORDER,
-          borderWidth: 0.5,
-          color: COLOR_WHITE
-        });
-
+        // Row 2: Terbilang Box spanning full width (with auto-wrap & dynamic height to prevent text exceeding the table)
         if (data.terbilang) {
           const rawTerbilang = data.terbilang.startsWith('"') ? data.terbilang : `"${data.terbilang}"`;
           const terbilangFullStr = `Terbilang: ${rawTerbilang}`;
-          const tW = fontBoldOblique.widthOfTextAtSize(terbilangFullStr, 12);
-          const tX = ecatColX.no + (ecatTableWidth - tW) / 2;
-          pageE.drawText(terbilangFullStr, { x: Math.max(ecatColX.no + 8, tX), y: ecatTableY - 17.5, size: 12, font: fontBoldOblique, color: COLOR_BLACK });
+          
+          // Width available for text inside the terbilang box with 16pt margin padding on each side
+          const maxAvailableW = ecatTableWidth - 32;
+
+          // Determine font size & wrap lines
+          let fontSz = 11;
+          let terbilangLines: string[] = [];
+          
+          const singleLineW = fontBoldOblique.widthOfTextAtSize(terbilangFullStr, fontSz);
+          if (singleLineW <= maxAvailableW) {
+            terbilangLines = [terbilangFullStr];
+          } else {
+            // Try 10.5pt for 1 line
+            fontSz = 10.5;
+            const single105W = fontBoldOblique.widthOfTextAtSize(terbilangFullStr, fontSz);
+            if (single105W <= maxAvailableW) {
+              terbilangLines = [terbilangFullStr];
+            } else {
+              // Wrap lines strictly within maxAvailableW
+              terbilangLines = wrapTextByFontWidth(terbilangFullStr, maxAvailableW, fontBoldOblique, fontSz);
+            }
+          }
+
+          // Calculate dynamic box height based on number of lines
+          const lineHeight = fontSz + 4;
+          const terbPaddingY = 6;
+          const terbilangH = Math.max(26, (terbilangLines.length * lineHeight) + (terbPaddingY * 2));
+
+          pageE.drawRectangle({
+            x: ecatColX.no,
+            y: ecatTableY - terbilangH,
+            width: ecatTableWidth,
+            height: terbilangH,
+            borderColor: COLOR_BORDER,
+            borderWidth: 0.5,
+            color: COLOR_WHITE
+          });
+
+          // Draw each line centered horizontally and vertically in the box
+          const totalTextBlockH = (terbilangLines.length - 1) * lineHeight;
+          let currentY = (ecatTableY - (terbilangH / 2)) + (totalTextBlockH / 2) - (fontSz * 0.32);
+
+          for (const tl of terbilangLines) {
+            const safeTl = safePdfText(tl);
+            const lineW = fontBoldOblique.widthOfTextAtSize(safeTl, fontSz);
+            const lineX = ecatColX.no + (ecatTableWidth - lineW) / 2;
+            pageE.drawText(safeTl, {
+              x: Math.max(ecatColX.no + 12, lineX),
+              y: currentY,
+              size: fontSz,
+              font: fontBoldOblique,
+              color: COLOR_BLACK
+            });
+            currentY -= lineHeight;
+          }
+        } else {
+          const terbilangH = 26;
+          pageE.drawRectangle({
+            x: ecatColX.no,
+            y: ecatTableY - terbilangH,
+            width: ecatTableWidth,
+            height: terbilangH,
+            borderColor: COLOR_BORDER,
+            borderWidth: 0.5,
+            color: COLOR_WHITE
+          });
         }
       }
     }
