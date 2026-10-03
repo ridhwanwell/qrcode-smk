@@ -154,21 +154,20 @@ export default function AdminGenerate() {
   // Kode verifikasi QR per nomor label (dari server, wajib ada di QR stiker baru)
   const [verifyCodes, setVerifyCodes] = useState<Record<string, string>>({});
 
-  // Pengaturan cetak (disimpan di browser ini): geser posisi & cetak kode di stiker
+  // Pengaturan cetak (disimpan di browser ini): geser posisi cetak printer
   const readPrintSettings = () => {
     try {
       const raw = JSON.parse(localStorage.getItem('smk_print_settings') || '{}');
       return {
         offsetX: Number(raw.offsetX) || 0,
-        offsetY: Number(raw.offsetY) || 0,
-        printCode: raw.printCode !== false
+        offsetY: Number(raw.offsetY) || 0
       };
     } catch (_) {
-      return { offsetX: 0, offsetY: 0, printCode: true };
+      return { offsetX: 0, offsetY: 0 };
     }
   };
   const [printSettings, setPrintSettings] = useState(readPrintSettings);
-  const updatePrintSettings = (patch: Partial<{ offsetX: number; offsetY: number; printCode: boolean }>) => {
+  const updatePrintSettings = (patch: Partial<{ offsetX: number; offsetY: number }>) => {
     setPrintSettings(prev => {
       const next = { ...prev, ...patch };
       // Batasi geser maksimal ±10 mm agar tidak keluar kertas
@@ -540,19 +539,12 @@ export default function AdminGenerate() {
   // QR lebih tahan rusak (level Q = tetap terbaca walau ±25% tergores) + bingkai putih tipis
   const QR_OPTIONS = { errorCorrectionLevel: 'Q' as const, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } };
 
-  /** Tulis nomor label (+ kode verifikasi kecil di belakangnya bila diaktifkan). */
-  const drawLabelText = (pdf: jsPDF, labelStr: string, code: string | undefined, x: number, baselineY: number, ptSize: number) => {
+  /** Tulis nomor label. Kode verifikasi TIDAK dicetak sebagai tulisan (hanya tersimpan di dalam QR). */
+  const drawLabelText = (pdf: jsPDF, labelStr: string, x: number, baselineY: number, ptSize: number) => {
     pdf.setFont("helvetica", "bold");
     pdf.setTextColor('#000000');
     pdf.setFontSize(ptSize);
     pdf.text(labelStr, x, baselineY);
-    if (code && printSettings.printCode) {
-      const numberWidth = pdf.getTextWidth(labelStr);
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(ptSize * 0.55);
-      pdf.text(code, x + numberWidth + 0.8, baselineY);
-      pdf.setFontSize(ptSize);
-    }
   };
 
   const downloadPDF = async (opts?: { testSheet?: boolean }) => {
@@ -701,12 +693,11 @@ export default function AdminGenerate() {
               activeConfig.qr.height * scaleY
             );
 
-            // C. Text Nomor Label (+ kode verifikasi kecil)
+            // C. Text Nomor Label
             const ptSize = activeConfig.text.fontSize * scaleY * 2.83465;
             drawLabelText(
               pdf,
               labelStr,
-              isTestSheet ? 'ABC234' : verifyCodes[labelStr],
               x + (activeConfig.text.x * scaleX),
               y + (activeConfig.text.y * scaleY) + (ptSize * 0.3527),
               ptSize
@@ -774,7 +765,6 @@ export default function AdminGenerate() {
           drawLabelText(
             pdf,
             labelStr,
-            verifyCodes[labelStr],
             offX + activeConfig.text.x * scaleX,
             offY + (activeConfig.text.y * scaleY) + (ptSize * 0.3527),
             ptSize
@@ -1397,7 +1387,7 @@ export default function AdminGenerate() {
               <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-1.5">
                 <Ruler className="w-4 h-4 text-slate-500" /> Pengaturan Cetak (tersimpan di komputer ini)
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <label className="space-y-1">
                   <span className="font-semibold text-slate-600">Geser Kanan/Kiri (mm)</span>
                   <input
@@ -1424,18 +1414,6 @@ export default function AdminGenerate() {
                   />
                   <span className="text-[10px] text-slate-400">+ ke bawah, − ke atas</span>
                 </label>
-                <label className="flex items-start gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={printSettings.printCode}
-                    onChange={e => updatePrintSettings({ printCode: e.target.checked })}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-semibold text-slate-700 block">Cetak kode verifikasi kecil</span>
-                    <span className="text-[10px] text-slate-500">Di belakang nomor label, untuk cari manual bila QR rusak</span>
-                  </span>
-                </label>
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
@@ -1452,7 +1430,7 @@ export default function AdminGenerate() {
               </div>
               <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 flex items-start gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                QR stiker baru berisi kode verifikasi rahasia, sehingga sertifikat tidak bisa dibuka hanya dengan menebak nomor label. QR juga dibuat lebih tahan goresan & usapan alkohol.
+                QR stiker baru berisi kode verifikasi rahasia (tidak tercetak sebagai tulisan), sehingga sertifikat hanya bisa dibuka dengan memindai QR, bukan dengan menebak nomor label. QR juga dibuat lebih tahan goresan & usapan alkohol.
               </p>
             </div>
 

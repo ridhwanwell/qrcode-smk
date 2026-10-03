@@ -70,7 +70,6 @@ export default function PublicScanPage() {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [manualSearch, setManualSearch] = useState('');
-  const [manualCode, setManualCode] = useState('');
 
   // Kode verifikasi dari QR stiker (?k=XXXXXX)
   const verifyCode = useMemo(
@@ -84,9 +83,8 @@ export default function PublicScanPage() {
     e.preventDefault();
     if (!manualSearch.trim()) return;
     const cleaned = cleanLabelString(manualSearch.trim());
-    const code = manualCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (cleaned) {
-      navigate(`/sertifikat/${cleaned}${code ? `?k=${code}` : ''}`);
+      navigate(`/sertifikat/${cleaned}`);
     }
   };
 
@@ -367,7 +365,7 @@ export default function PublicScanPage() {
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">Verifikasi Sertifikat Kalibrasi</h2>
             <p className="text-slate-600 text-sm mb-6 leading-relaxed">
-              Silakan pindai QR Code pada stiker fisik menggunakan kamera, atau masukkan nomor label beserta kode kecil yang tercetak di belakangnya:
+              Silakan pindai QR Code pada stiker fisik menggunakan kamera, atau masukkan nomor label di bawah ini:
             </p>
 
             <div className="flex flex-col gap-3 mb-6">
@@ -393,16 +391,7 @@ export default function PublicScanPage() {
                     value={manualSearch}
                     onChange={(e) => setManualSearch(e.target.value)}
                     placeholder="Contoh: 002.0020"
-                    className="flex-1 min-w-0 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
-                  />
-                  <input
-                    type="text"
-                    value={manualCode}
-                    onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                    placeholder="Kode"
-                    maxLength={12}
-                    title="Kode verifikasi kecil yang tercetak di belakang nomor label (untuk stiker baru)"
-                    className="w-24 px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                    className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
                   />
                   <button
                     type="submit"
@@ -706,29 +695,16 @@ export default function PublicScanPage() {
             {labelData?.isPrePrinted && !verifyCode && (
               <div className="mb-4 text-left text-xs bg-blue-50 border border-blue-200 text-blue-900 rounded-xl p-3 space-y-2">
                 <p className="font-semibold flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5" /> Stiker baru memakai kode verifikasi
+                  <KeyRound className="w-3.5 h-3.5" /> Untuk stiker baru, sertifikat hanya bisa dibuka dengan memindai QR
                 </p>
-                <p>Jika di belakang nomor label tercetak kode kecil (misalnya <span className="font-mono font-bold">K7QX2M</span>), masukkan kode tersebut:</p>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const code = manualCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-                    if (code) navigate(`/sertifikat/${displayLabel}?k=${code}`);
-                  }}
-                  className="flex items-center gap-2"
+                <p>Demi keamanan data rumah sakit, nomor label yang diketik manual tidak menampilkan sertifikat. Silakan pindai QR Code pada stiker.</p>
+                <button
+                  type="button"
+                  onClick={() => setIsCameraOpen(true)}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center gap-1.5"
                 >
-                  <input
-                    type="text"
-                    value={manualCode}
-                    onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                    placeholder="Kode verifikasi"
-                    maxLength={12}
-                    className="flex-1 px-3 py-2 bg-white border border-blue-300 rounded-lg font-mono uppercase text-sm"
-                  />
-                  <button type="submit" className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
-                    Buka
-                  </button>
-                </form>
+                  <Camera className="w-3.5 h-3.5" /> Pindai QR Sekarang
+                </button>
               </div>
             )}
 
