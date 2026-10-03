@@ -1093,12 +1093,10 @@ function AsetPortalMain() {
                 bapDocuments={bapDocuments}
                 onSaveDealData={handleSaveDealData}
                 onNavigateToSchedules={() => setActiveTab('schedules')}
-                onOpenBapModal={handleOpenBap}
                 onApplyBapPdf={(updatedBap, isNew) => {
                   if (isNew) addBapDocument(updatedBap);
                   else updateBapDocument(updatedBap);
-                  const realized = updatedBap.items.reduce((sum, it) => sum + (Number(it.total) || 0), 0);
-                  showToast(`Realisasi BAP ${updatedBap.sphNumber} diperbarui dari PDF (${realized} unit). Harga BO/FP/KWP sudah disesuaikan.`);
+                  showToast(`BAP ${updatedBap.sphNumber} diperbarui dari PDF. Harga BO/FP/KWP sudah disesuaikan.`);
                 }}
               />
             </motion.div>
