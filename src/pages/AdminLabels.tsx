@@ -39,7 +39,10 @@ import {
   Building2,
   Pencil,
   RefreshCw,
-  FilePlus2
+  FilePlus2,
+  Ban,
+  Undo2,
+  ShieldCheck
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -297,6 +300,10 @@ export default function AdminLabels() {
           pdfName: d.pdfName || d.pdf_name || null,
           calibratedAt: d.calibratedAt || d.calibrated_at || null,
           validUntil: d.validUntil || d.valid_until || null,
+          verifyCode: d.verifyCode || d.verify_code || null,
+          qrSecured: d.qrSecured === true || d.qr_secured === true,
+          voidReason: d.voidReason || d.void_reason || null,
+          voidedAt: d.voidedAt || d.voided_at || null,
           createdAt: d.createdAt || d.created_at || null,
           updatedAt: d.updatedAt || d.updated_at || null,
         });
@@ -718,12 +725,49 @@ export default function AdminLabels() {
     }
   };
 
-  const handleCopyScanLink = (noLabel: string) => {
+  // Tautan scan publik + kode verifikasi (wajib untuk label baru)
+  const scanPath = (label: { noLabel: string; verifyCode?: string | null }) =>
+    `/sertifikat/${label.noLabel}${label.verifyCode ? `?k=${label.verifyCode}` : ''}`;
+
+  // Tandai / batalkan status Void (stiker rusak, hilang, salah tempel)
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  const handleToggleVoid = async (label: any) => {
+    const isVoid = label.status === 'Void / Rusak';
+    let reason = '';
+    if (!isVoid) {
+      reason = (window.prompt(
+        `Tandai label ${label.noLabel} sebagai VOID / RUSAK?\n\nNomor tetap tercatat untuk audit, dan halaman scan akan menampilkan "Label Tidak Berlaku".\n\nTulis alasannya (contoh: rusak saat cetak, hilang, salah tempel):`
+      ) || '').trim();
+      if (!reason) return;
+    } else if (!window.confirm(`Batalkan status Void untuk label ${label.noLabel}?`)) {
+      return;
+    }
+    setVoidingId(label.noLabel);
+    try {
+      const res = await apiFetch(`/api/labels/${encodeURIComponent(label.noLabel)}/${isVoid ? 'unvoid' : 'void'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Gagal mengubah status void');
+      }
+      await fetchLabels();
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengubah status void');
+    } finally {
+      setVoidingId(null);
+    }
+  };
+
+  const handleCopyScanLink = (label: { noLabel: string; verifyCode?: string | null }) => {
+    const noLabel = label.noLabel;
     let base = window.location.origin;
     if (base.includes('ais-dev-')) {
       base = base.replace('ais-dev-', 'ais-pre-');
     }
-    const url = `${base}/sertifikat/${noLabel}`;
+    const url = `${base}${scanPath(label)}`;
     navigator.clipboard.writeText(url);
     setCopiedId(noLabel);
     setTimeout(() => setCopiedId(null), 2000);
@@ -1127,6 +1171,37 @@ export default function AdminLabels() {
             </div>
           </div>
 
+          {/* Ringkasan status stiker di folder ini (untuk audit) */}
+          {(() => {
+            const items = activeFolder.items || [];
+            const isVoidItem = (l: any) => l.status === 'Void / Rusak';
+            const isCertItem = (l: any) => !isVoidItem(l) && (l.status === 'Sertifikat Tertaut' || l.hasPdf || !!l.pdfUrl || l.pdfSource === 'drive' || !!l.pdfDriveUrl);
+            const voidCount = items.filter(isVoidItem).length;
+            const certCount = items.filter(isCertItem).length;
+            const waitCount = items.length - voidCount - certCount;
+            const securedCount = items.filter((l: any) => l.qrSecured).length;
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 text-xs">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                  <p className="text-[10px] font-bold text-emerald-700 uppercase">Sertifikat Tertaut</p>
+                  <p className="font-black text-emerald-900 text-base">{certCount}</p>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  <p className="text-[10px] font-bold text-amber-700 uppercase">Belum Tertaut</p>
+                  <p className="font-black text-amber-900 text-base">{waitCount}</p>
+                </div>
+                <div className="bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                  <p className="text-[10px] font-bold text-rose-700 uppercase">Void / Rusak</p>
+                  <p className="font-black text-rose-900 text-base">{voidCount}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2" title="Jumlah stiker yang QR-nya wajib memakai kode verifikasi">
+                  <p className="text-[10px] font-bold text-slate-600 uppercase">QR Berkode</p>
+                  <p className="font-black text-slate-900 text-base">{securedCount} / {items.length}</p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Table of Files inside Active Folder */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
@@ -1157,11 +1232,27 @@ export default function AdminLabels() {
                       return (
                         <tr key={label.id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <div className="font-bold text-slate-900 font-mono text-xs">{label.noLabel}</div>
+                            <div className="font-bold text-slate-900 font-mono text-xs flex items-center gap-1.5">
+                              {label.noLabel}
+                              {label.verifyCode && (
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-semibold border",
+                                    label.qrSecured ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"
+                                  )}
+                                  title={label.qrSecured
+                                    ? "Kode verifikasi QR (wajib untuk membuka sertifikat)"
+                                    : "Kode verifikasi QR. Stiker lama: sertifikat tetap bisa dibuka tanpa kode."}
+                                >
+                                  {label.qrSecured && <ShieldCheck className="w-2.5 h-2.5" />}
+                                  {label.verifyCode}
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <button
                                 type="button"
-                                onClick={() => window.open(`/sertifikat/${label.noLabel}`, '_blank')}
+                                onClick={() => window.open(scanPath(label), '_blank')}
                                 className="inline-flex items-center text-[10px] text-amber-600 hover:text-amber-800 font-medium hover:underline"
                                 title="Buka halaman verifikasi scan publik"
                               >
@@ -1170,7 +1261,7 @@ export default function AdminLabels() {
                               <span className="text-slate-300">•</span>
                               <button
                                 type="button"
-                                onClick={() => handleCopyScanLink(label.noLabel)}
+                                onClick={() => handleCopyScanLink(label)}
                                 className="inline-flex items-center text-[10px] text-slate-500 hover:text-slate-800"
                                 title="Salin tautan scan"
                               >
@@ -1199,6 +1290,14 @@ export default function AdminLabels() {
                           </td>
 
                           <td className="px-3 py-2.5 whitespace-nowrap">
+                            {label.status === 'Void / Rusak' ? (
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/70"
+                                title={label.voidReason ? `Alasan: ${label.voidReason}` : 'Label dibatalkan'}
+                              >
+                                <Ban className="w-3 h-3 mr-1" /> Void / Rusak
+                              </span>
+                            ) : (
                             <span className={cn(
                               "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
                               hasCertificate 
@@ -1208,6 +1307,10 @@ export default function AdminLabels() {
                               {hasCertificate ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
                               {hasCertificate ? 'Sertifikat Tertaut' : 'Menunggu Sertifikat'}
                             </span>
+                            )}
+                            {label.status === 'Void / Rusak' && label.voidReason && (
+                              <div className="text-[10px] text-rose-600 mt-0.5 max-w-[150px] truncate" title={label.voidReason}>{label.voidReason}</div>
+                            )}
                           </td>
 
                           <td className="px-3 py-2.5">
@@ -1282,6 +1385,22 @@ export default function AdminLabels() {
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleVoid(label)}
+                                disabled={voidingId === label.noLabel}
+                                className={cn(
+                                  "p-1 rounded-md transition-colors disabled:opacity-50",
+                                  label.status === 'Void / Rusak'
+                                    ? "text-emerald-600 hover:bg-emerald-50"
+                                    : "text-slate-400 hover:text-orange-600 hover:bg-orange-50"
+                                )}
+                                title={label.status === 'Void / Rusak' ? 'Batalkan status Void' : 'Tandai Void / Rusak (stiker rusak, hilang, salah tempel)'}
+                              >
+                                {voidingId === label.noLabel
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : label.status === 'Void / Rusak' ? <Undo2 className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                              </button>
                               <button 
                                 type="button"
                                 onClick={() => {

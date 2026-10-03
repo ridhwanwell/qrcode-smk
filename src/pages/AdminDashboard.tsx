@@ -223,6 +223,7 @@ END $$;`;
           pdfName: d.pdfName || d.pdf_name,
           calibratedAt: d.calibratedAt || d.calibrated_at,
           validUntil: d.validUntil || d.valid_until,
+          verifyCode: d.verifyCode || d.verify_code || null,
           createdAt: d.createdAt || d.created_at,
           updatedAt: d.updatedAt || d.updated_at
         };
@@ -571,7 +572,7 @@ END $$;`;
                       {formatDateSafe(label.createdAt)}
                     </td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                       <a href={`/sertifikat/${label.noLabel}`} target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:text-amber-700 font-medium text-xs hover:underline">
+                       <a href={`/sertifikat/${label.noLabel}${label.verifyCode ? `?k=${label.verifyCode}` : ''}`} target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:text-amber-700 font-medium text-xs hover:underline">
                          Lihat Publik
                        </a>
                     </td>

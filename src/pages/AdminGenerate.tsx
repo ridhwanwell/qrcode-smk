@@ -15,7 +15,9 @@ import {
   ArrowRight, 
   Sparkles, 
   Layers, 
-  Info 
+  Info,
+  ShieldCheck,
+  Ruler
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
@@ -148,6 +150,34 @@ export default function AdminGenerate() {
   const [breakdownInfo, setBreakdownInfo] = useState<LabelBreakdown | null>(null);
   const labelType = 'besar'; // Always use Template Besar (6x2,5 cm)
   const [bulkFormat, setBulkFormat] = useState<'a3_plus' | 'individual'>('a3_plus');
+
+  // Kode verifikasi QR per nomor label (dari server, wajib ada di QR stiker baru)
+  const [verifyCodes, setVerifyCodes] = useState<Record<string, string>>({});
+
+  // Pengaturan cetak (disimpan di browser ini): geser posisi & cetak kode di stiker
+  const readPrintSettings = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('smk_print_settings') || '{}');
+      return {
+        offsetX: Number(raw.offsetX) || 0,
+        offsetY: Number(raw.offsetY) || 0,
+        printCode: raw.printCode !== false
+      };
+    } catch (_) {
+      return { offsetX: 0, offsetY: 0, printCode: true };
+    }
+  };
+  const [printSettings, setPrintSettings] = useState(readPrintSettings);
+  const updatePrintSettings = (patch: Partial<{ offsetX: number; offsetY: number; printCode: boolean }>) => {
+    setPrintSettings(prev => {
+      const next = { ...prev, ...patch };
+      // Batasi geser maksimal ±10 mm agar tidak keluar kertas
+      next.offsetX = Math.max(-10, Math.min(10, Number(next.offsetX) || 0));
+      next.offsetY = Math.max(-10, Math.min(10, Number(next.offsetY) || 0));
+      try { localStorage.setItem('smk_print_settings', JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+  };
   const [templateConfigs, setTemplateConfigs] = useState<any>(() => {
     try {
       const saved = localStorage.getItem('smk_template_configs');
@@ -444,6 +474,12 @@ export default function AdminGenerate() {
         setSkippedExistingList([]);
       }
       createdList = bulkData?.created || [];
+      const codesFromServer: Record<string, string> = bulkData?.codes || {};
+      const missingCodes = labelsToGenerate.filter(l => !codesFromServer[l]);
+      if (missingCodes.length > 0) {
+        throw new Error(`Kode verifikasi QR tidak diterima untuk ${missingCodes.length} label (contoh: ${missingCodes[0]}). Pastikan server sudah versi terbaru, lalu coba lagi.`);
+      }
+      setVerifyCodes(codesFromServer);
 
       // 2. Update localStorage labels as local backup and un-tombstone
       try {
@@ -497,10 +533,37 @@ export default function AdminGenerate() {
     if (!base.startsWith('http://') && !base.startsWith('https://')) {
       base = `https://${base}`;
     }
-    return `${base}/sertifikat/${label}`;
+    const code = verifyCodes[label];
+    return code ? `${base}/sertifikat/${label}?k=${code}` : `${base}/sertifikat/${label}`;
   };
 
-  const downloadPDF = async () => {
+  // QR lebih tahan rusak (level Q = tetap terbaca walau ±25% tergores) + bingkai putih tipis
+  const QR_OPTIONS = { errorCorrectionLevel: 'Q' as const, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } };
+
+  /** Tulis nomor label (+ kode verifikasi kecil di belakangnya bila diaktifkan). */
+  const drawLabelText = (pdf: jsPDF, labelStr: string, code: string | undefined, x: number, baselineY: number, ptSize: number) => {
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor('#000000');
+    pdf.setFontSize(ptSize);
+    pdf.text(labelStr, x, baselineY);
+    if (code && printSettings.printCode) {
+      const numberWidth = pdf.getTextWidth(labelStr);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(ptSize * 0.55);
+      pdf.text(code, x + numberWidth + 0.8, baselineY);
+      pdf.setFontSize(ptSize);
+    }
+  };
+
+  const downloadPDF = async (opts?: { testSheet?: boolean }) => {
+    const isTestSheet = opts?.testSheet === true;
+    // Lembar uji: 85 stiker contoh tanpa menyimpan apa pun ke database
+    const labelsForPdf: string[] = isTestSheet
+      ? Array.from({ length: 85 }, (_, i) => `UJI.${String(i + 1).padStart(4, '0')}`)
+      : generatedLabels;
+    const offX = printSettings.offsetX;
+    const offY = printSettings.offsetY;
+
     const configLaik = templateConfigs?.besar;
     const configTidakLaik = templateConfigs?.besarTidakLaik || configLaik;
 
@@ -525,12 +588,14 @@ export default function AdminGenerate() {
       const scaleX = labelWidth / previewWidth;
       const scaleY = labelHeight / previewHeight;
 
-      const isBulkA3 = (mode === 'bulk' || generatedLabels.length > 1) && bulkFormat === 'a3_plus';
+      const isBulkA3 = isTestSheet || ((mode === 'bulk' || labelsForPdf.length > 1) && bulkFormat === 'a3_plus');
 
       let isAllTidakLaik = false;
-      let cutoffTidakLaikIndex = generatedLabels.length;
+      let cutoffTidakLaikIndex = labelsForPdf.length;
 
-      if (breakdownInfo) {
+      if (isTestSheet) {
+        // lembar uji selalu memakai template Laik Pakai
+      } else if (breakdownInfo) {
         if (breakdownInfo.type === 'tidak_laik') {
           isAllTidakLaik = true;
           cutoffTidakLaikIndex = 0;
@@ -559,12 +624,12 @@ export default function AdminGenerate() {
         const gapY = 2; // 2mm kiss-cut gap antar stiker
 
         const totalGridWidth = cols * labelWidth + (cols - 1) * gapX; // 308 mm
-        const marginLeft = (sheetWidth - totalGridWidth) / 2; // 6 mm
+        const marginLeft = (sheetWidth - totalGridWidth) / 2 + offX; // 6 mm (+ geser printer)
 
         const totalGridHeight = rows * labelHeight + (rows - 1) * gapY; // 457 mm
-        const marginTop = (sheetHeight - totalGridHeight) / 2; // 11.5 mm margin atas & bawah
+        const marginTop = (sheetHeight - totalGridHeight) / 2 + offY; // 11.5 mm margin atas & bawah (+ geser printer)
 
-        const totalSheets = Math.ceil(generatedLabels.length / labelsPerSheet);
+        const totalSheets = Math.ceil(labelsForPdf.length / labelsPerSheet);
 
         const pdf = new jsPDF({
           orientation: 'portrait',
@@ -576,7 +641,7 @@ export default function AdminGenerate() {
           if (sheetIdx > 0) pdf.addPage();
 
           const startIdx = sheetIdx * labelsPerSheet;
-          const endIdx = Math.min(startIdx + labelsPerSheet, generatedLabels.length);
+          const endIdx = Math.min(startIdx + labelsPerSheet, labelsForPdf.length);
           const sheetCount = endIdx - startIdx;
 
           setProgressMsg(`Membuat lembar A3+ (${sheetIdx + 1}/${totalSheets})...`);
@@ -586,7 +651,7 @@ export default function AdminGenerate() {
           pdf.setFont("helvetica", "bold");
           pdf.setFontSize(7.5);
           pdf.setTextColor(110, 110, 110);
-          const headerText = `PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  Ukuran Besar 60x25 mm / 6x2,5 cm (Maks 85/lbr)  •  Label ${generatedLabels[startIdx]} s/d ${generatedLabels[endIdx - 1]}`;
+          const headerText = `${isTestSheet ? 'LEMBAR UJI POSISI (TIDAK UNTUK DIPASANG)  •  ' : ''}PT SARANA MULTI KALIBRASI  •  LEMBAR A3+ KISSCUT/DIECUT  •  Lembar ${sheetIdx + 1}/${totalSheets} (${sheetCount} Stiker)  •  Ukuran Besar 60x25 mm / 6x2,5 cm (Maks 85/lbr)  •  Label ${labelsForPdf[startIdx]} s/d ${labelsForPdf[endIdx - 1]}`;
           pdf.text(headerText, marginLeft, Math.max(5, marginTop - 3.5));
 
           // 2. Optical Registration Crop Marks pada 4 sudut grid
@@ -610,7 +675,7 @@ export default function AdminGenerate() {
           // 3. Render Setiap Stiker di dalam Grid Lembar A3+
           for (let k = 0; k < sheetCount; k++) {
             const globalIdx = startIdx + k;
-            const labelStr = generatedLabels[globalIdx];
+            const labelStr = labelsForPdf[globalIdx];
 
             const col = k % cols;
             const row = Math.floor(k / cols);
@@ -625,12 +690,8 @@ export default function AdminGenerate() {
             pdf.addImage(activeConfig.imageUrl, 'JPEG', x, y, labelWidth, labelHeight);
 
             // B. QR Code
-            const qrUrl = getPublicUrl(labelStr);
-            const qrDataUrl = await QRCode.toDataURL(qrUrl, { 
-              margin: 0, 
-              width: 260, 
-              color: { dark: '#000000', light: '#FFFFFF' } 
-            });
+            const qrUrl = isTestSheet ? `${getPublicUrl('UJI')}` : getPublicUrl(labelStr);
+            const qrDataUrl = await QRCode.toDataURL(qrUrl, { ...QR_OPTIONS, width: 300 });
             pdf.addImage(
               qrDataUrl,
               'PNG',
@@ -640,15 +701,15 @@ export default function AdminGenerate() {
               activeConfig.qr.height * scaleY
             );
 
-            // C. Text Nomor Label
-            pdf.setFont("helvetica", "bold");
-            pdf.setTextColor('#000000');
+            // C. Text Nomor Label (+ kode verifikasi kecil)
             const ptSize = activeConfig.text.fontSize * scaleY * 2.83465;
-            pdf.setFontSize(ptSize);
-            pdf.text(
+            drawLabelText(
+              pdf,
               labelStr,
+              isTestSheet ? 'ABC234' : verifyCodes[labelStr],
               x + (activeConfig.text.x * scaleX),
-              y + (activeConfig.text.y * scaleY) + (ptSize * 0.3527)
+              y + (activeConfig.text.y * scaleY) + (ptSize * 0.3527),
+              ptSize
             );
 
             // D. Marker visual jika Tidak Laik Pakai dan belum punya template khusus
@@ -669,7 +730,9 @@ export default function AdminGenerate() {
         }
 
         setProgressMsg('Menyimpan PDF A3+...');
-        const fileName = `Labels_A3Plus_KissCut_Besar_${generatedLabels[0]}_to_${generatedLabels[generatedLabels.length - 1]}.pdf`;
+        const fileName = isTestSheet
+          ? `Lembar_Uji_Posisi_A3Plus_X${offX}_Y${offY}.pdf`
+          : `Labels_A3Plus_KissCut_Besar_${labelsForPdf[0]}_to_${labelsForPdf[labelsForPdf.length - 1]}.pdf`;
         pdf.save(fileName);
       } else {
         // Mode satuan (1 label per halaman individual landscape)
@@ -679,58 +742,58 @@ export default function AdminGenerate() {
           format: [labelWidth, labelHeight],
         });
 
-        for (let i = 0; i < generatedLabels.length; i++) {
+        for (let i = 0; i < labelsForPdf.length; i++) {
           if (i > 0) pdf.addPage();
           
           if (i % 25 === 0) {
-             setProgressMsg(`Membuat halaman PDF... (${i + 1}/${generatedLabels.length})`);
+             setProgressMsg(`Membuat halaman PDF... (${i + 1}/${labelsForPdf.length})`);
              await new Promise(r => setTimeout(r, 10));
           }
 
-          const labelStr = generatedLabels[i];
+          const labelStr = labelsForPdf[i];
           const isTidakLaik = isAllTidakLaik || (i >= cutoffTidakLaikIndex);
           const activeConfig = isTidakLaik && configTidakLaik?.imageUrl ? configTidakLaik : configLaik;
           
           // 1. Draw Background
-          pdf.addImage(activeConfig.imageUrl, 'JPEG', 0, 0, labelWidth, labelHeight);
+          pdf.addImage(activeConfig.imageUrl, 'JPEG', offX, offY, labelWidth, labelHeight);
           
           // 2. Draw QR Code
           const qrUrl = getPublicUrl(labelStr);
-          const qrDataUrl = await QRCode.toDataURL(qrUrl, { margin: 0, width: 300, color: { dark: '#000000', light: '#FFFFFF' } });
+          const qrDataUrl = await QRCode.toDataURL(qrUrl, { ...QR_OPTIONS, width: 300 });
           pdf.addImage(
             qrDataUrl, 
             'PNG', 
-            activeConfig.qr.x * scaleX, 
-            activeConfig.qr.y * scaleY, 
+            offX + activeConfig.qr.x * scaleX, 
+            offY + activeConfig.qr.y * scaleY, 
             activeConfig.qr.width * scaleX, 
             activeConfig.qr.height * scaleY
           );
           
           // 3. Draw Text
-          pdf.setFont("helvetica", "bold");
-          pdf.setTextColor('#000000');
           const ptSize = (activeConfig.text.fontSize * scaleY * 2.83465); 
-          pdf.setFontSize(ptSize);
-          pdf.text(
-            labelStr, 
-            activeConfig.text.x * scaleX, 
-            (activeConfig.text.y * scaleY) + (ptSize * 0.3527)
+          drawLabelText(
+            pdf,
+            labelStr,
+            verifyCodes[labelStr],
+            offX + activeConfig.text.x * scaleX,
+            offY + (activeConfig.text.y * scaleY) + (ptSize * 0.3527),
+            ptSize
           );
 
           if (isTidakLaik && (!templateConfigs?.besarTidakLaik || !templateConfigs.besarTidakLaik.imageUrl)) {
             pdf.setFillColor(225, 29, 72);
-            pdf.rect(labelWidth - 18, 1, 17, 3.5, 'F');
+            pdf.rect(offX + labelWidth - 18, offY + 1, 17, 3.5, 'F');
             pdf.setFont("helvetica", "bold");
             pdf.setFontSize(3.8);
             pdf.setTextColor(255, 255, 255);
-            pdf.text("TIDAK LAIK PAKAI", labelWidth - 17.2, 3.5);
+            pdf.text("TIDAK LAIK PAKAI", offX + labelWidth - 17.2, offY + 3.5);
           }
         }
         
         setProgressMsg('Menyimpan PDF...');
-        const fileName = generatedLabels.length === 1 
-          ? `Label_${generatedLabels[0]}.pdf` 
-          : `Labels_${generatedLabels[0]}_to_${generatedLabels[generatedLabels.length - 1]}.pdf`;
+        const fileName = labelsForPdf.length === 1 
+          ? `Label_${labelsForPdf[0]}.pdf` 
+          : `Labels_${labelsForPdf[0]}_to_${labelsForPdf[labelsForPdf.length - 1]}.pdf`;
         pdf.save(fileName);
       }
     } catch (err) {
@@ -744,6 +807,7 @@ export default function AdminGenerate() {
 
   const resetForm = () => {
     setSuccess(false);
+    setVerifyCodes({});
     setGeneratedLabels([]);
     setBreakdownInfo(null);
   };
@@ -1328,13 +1392,77 @@ export default function AdminGenerate() {
               )}
             </div>
 
+            {/* Pengaturan Cetak: geser posisi printer, kode verifikasi, lembar uji */}
+            <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+              <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-1.5">
+                <Ruler className="w-4 h-4 text-slate-500" /> Pengaturan Cetak (tersimpan di komputer ini)
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <label className="space-y-1">
+                  <span className="font-semibold text-slate-600">Geser Kanan/Kiri (mm)</span>
+                  <input
+                    type="number"
+                    step={0.5}
+                    min={-10}
+                    max={10}
+                    value={printSettings.offsetX}
+                    onChange={e => updatePrintSettings({ offsetX: parseFloat(e.target.value) })}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400">+ ke kanan, − ke kiri</span>
+                </label>
+                <label className="space-y-1">
+                  <span className="font-semibold text-slate-600">Geser Bawah/Atas (mm)</span>
+                  <input
+                    type="number"
+                    step={0.5}
+                    min={-10}
+                    max={10}
+                    value={printSettings.offsetY}
+                    onChange={e => updatePrintSettings({ offsetY: parseFloat(e.target.value) })}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400">+ ke bawah, − ke atas</span>
+                </label>
+                <label className="flex items-start gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={printSettings.printCode}
+                    onChange={e => updatePrintSettings({ printCode: e.target.checked })}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-semibold text-slate-700 block">Cetak kode verifikasi kecil</span>
+                    <span className="text-[10px] text-slate-500">Di belakang nomor label, untuk cari manual bila QR rusak</span>
+                  </span>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => downloadPDF({ testSheet: true })}
+                  disabled={loading}
+                  className="px-3.5 py-2 text-xs font-bold rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Cetak 1 Lembar Uji (A3+, tanpa simpan ke database)
+                </button>
+                <span className="text-[11px] text-slate-500">
+                  Cetak di kertas HVS A3+, tumpuk di atas lembar stiker & terawang ke cahaya. Bila meleset, atur geser lalu cetak uji lagi.
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 flex items-start gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                QR stiker baru berisi kode verifikasi rahasia, sehingga sertifikat tidak bisa dibuka hanya dengan menebak nomor label. QR juga dibuat lebih tahan goresan & usapan alkohol.
+              </p>
+            </div>
+
             <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 text-amber-800 text-sm">
                <strong>Catatan Warna (CMYK):</strong> File PDF yang dihasilkan aplikasi ini secara bawaan berformat RGB (standar web). Namun jangan khawatir, ketika file ini dikirim ke mesin cetak digital offset/laser, <strong>RIP software pada mesin cetak akan otomatis mengkonversinya ke warna CMYK</strong> dengan sangat baik. 
             </div>
 
             <div className="flex flex-wrap gap-3 pt-4">
               <button
-                onClick={downloadPDF}
+                onClick={() => downloadPDF()}
                 disabled={loading}
                 className="flex items-center px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 shadow-sm"
               >

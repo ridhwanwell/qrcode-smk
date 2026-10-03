@@ -31,7 +31,9 @@ import {
   CheckCircle2,
   Calendar,
   Building2,
-  Sparkles
+  Sparkles,
+  Ban,
+  KeyRound
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import CameraQrScanner from '../components/CameraQrScanner';
@@ -68,14 +70,23 @@ export default function PublicScanPage() {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [manualSearch, setManualSearch] = useState('');
+  const [manualCode, setManualCode] = useState('');
+
+  // Kode verifikasi dari QR stiker (?k=XXXXXX)
+  const verifyCode = useMemo(
+    () => (searchParams.get('k') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12),
+    [searchParams]
+  );
+  const withCode = (no: string) => `/api/labels/${encodeURIComponent(no)}${verifyCode ? `?k=${encodeURIComponent(verifyCode)}` : ''}`;
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const handleManualSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualSearch.trim()) return;
     const cleaned = cleanLabelString(manualSearch.trim());
+    const code = manualCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (cleaned) {
-      navigate(`/sertifikat/${cleaned}`);
+      navigate(`/sertifikat/${cleaned}${code ? `?k=${code}` : ''}`);
     }
   };
 
@@ -93,7 +104,7 @@ export default function PublicScanPage() {
 
     try {
       // Use standard fetch for public QR scan endpoint (no auth required)
-      const res = await fetch(`/api/labels/${encodeURIComponent(cleanNoLabel)}`);
+      const res = await fetch(withCode(cleanNoLabel));
       
       if (res.ok) {
         const found = await res.json();
@@ -110,6 +121,9 @@ export default function PublicScanPage() {
             pdfDriveUrl: found.pdfDriveUrl,
             calibratedAt: found.calibratedAt,
             validUntil: found.validUntil,
+            isVoid: found.isVoid === true,
+            voidReason: found.voidReason || null,
+            verifyCode: found.verifyCode || null,
             createdAt: found.createdAt,
             updatedAt: found.updatedAt
           });
@@ -124,7 +138,7 @@ export default function PublicScanPage() {
       for (const cand of candidates) {
         if (cand && cand.trim().toLowerCase() !== cleanNoLabel.trim().toLowerCase()) {
           try {
-            const candRes = await fetch(`/api/labels/${encodeURIComponent(cand.trim())}`);
+            const candRes = await fetch(withCode(cand.trim()));
             if (candRes.ok) {
               const found = await candRes.json();
               if (found && (found.noLabel || found.id)) {
@@ -140,6 +154,9 @@ export default function PublicScanPage() {
                   pdfDriveUrl: found.pdfDriveUrl,
                   calibratedAt: found.calibratedAt,
                   validUntil: found.validUntil,
+                  isVoid: found.isVoid === true,
+                  voidReason: found.voidReason || null,
+                  verifyCode: found.verifyCode || null,
                   createdAt: found.createdAt,
                   updatedAt: found.updatedAt
                 });
@@ -182,7 +199,7 @@ export default function PublicScanPage() {
     } finally {
       setLoading(false);
     }
-  }, [cleanNoLabel]);
+  }, [cleanNoLabel, verifyCode]);
 
   useEffect(() => {
     fetchLabelData();
@@ -211,7 +228,9 @@ export default function PublicScanPage() {
   }, [fetchLabelData]);
 
   const handleCopyLink = () => {
-    const targetUrl = window.location.href;
+    // Tautan yang disalin tetap membawa kode verifikasi agar bisa dibuka penerima
+    const code = labelData?.verifyCode || verifyCode;
+    const targetUrl = `${window.location.origin}/sertifikat/${resolvedLabelId || cleanNoLabel}${code ? `?k=${code}` : ''}`;
     navigator.clipboard.writeText(targetUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -234,6 +253,38 @@ export default function PublicScanPage() {
     !!pdfBlobUrl
   );
   const displayLabel = resolvedLabelId || cleanNoLabel;
+
+  // Status masa berlaku kalibrasi (dari tanggal "Berlaku Hingga")
+  const expiryInfo = useMemo(() => {
+    const raw = labelData?.validUntil;
+    if (!raw) return null;
+    const until = new Date(`${String(raw).slice(0, 10)}T23:59:59`);
+    if (isNaN(until.getTime())) return null;
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysLeft = Math.ceil((until.getTime() - Date.now()) / msPerDay);
+    const dateText = until.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    if (daysLeft < 0) {
+      return { tone: 'expired' as const, title: 'Kedaluwarsa', detail: `Masa berlaku habis sejak ${dateText} (${Math.abs(daysLeft)} hari lalu). Alat perlu dikalibrasi ulang.` };
+    }
+    if (daysLeft <= 30) {
+      return { tone: 'soon' as const, title: 'Segera Kedaluwarsa', detail: `Berlaku sampai ${dateText} (sisa ${daysLeft} hari). Jadwalkan kalibrasi ulang.` };
+    }
+    return { tone: 'ok' as const, title: 'Masih Berlaku', detail: `Berlaku sampai ${dateText} (sisa ${daysLeft} hari).` };
+  }, [labelData?.validUntil]);
+
+  const expiryBanner = expiryInfo ? (
+    <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-left ${
+      expiryInfo.tone === 'expired' ? 'bg-rose-50 border-rose-300 text-rose-900'
+        : expiryInfo.tone === 'soon' ? 'bg-amber-50 border-amber-300 text-amber-900'
+        : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+    }`}>
+      <span className="text-2xl leading-none" aria-hidden>{expiryInfo.tone === 'expired' ? '🔴' : expiryInfo.tone === 'soon' ? '🟡' : '🟢'}</span>
+      <div>
+        <p className="font-black text-base leading-tight">{expiryInfo.title}</p>
+        <p className="text-xs mt-0.5">{expiryInfo.detail}</p>
+      </div>
+    </div>
+  ) : null;
   const folderPrefix = displayLabel.split('.')[0] || '002';
 
   return (
@@ -242,9 +293,9 @@ export default function PublicScanPage() {
       <CameraQrScanner
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
-        onScanSuccess={(scannedLabel) => {
+        onScanSuccess={(scannedLabel, scannedCode) => {
           setIsCameraOpen(false);
-          navigate(`/sertifikat/${scannedLabel}`);
+          navigate(`/sertifikat/${scannedLabel}${scannedCode ? `?k=${scannedCode}` : ''}`);
         }}
       />
 
@@ -316,7 +367,7 @@ export default function PublicScanPage() {
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">Verifikasi Sertifikat Kalibrasi</h2>
             <p className="text-slate-600 text-sm mb-6 leading-relaxed">
-              Silakan pindai QR Code pada stiker fisik menggunakan kamera, atau masukkan nomor label di bawah ini:
+              Silakan pindai QR Code pada stiker fisik menggunakan kamera, atau masukkan nomor label beserta kode kecil yang tercetak di belakangnya:
             </p>
 
             <div className="flex flex-col gap-3 mb-6">
@@ -342,7 +393,16 @@ export default function PublicScanPage() {
                     value={manualSearch}
                     onChange={(e) => setManualSearch(e.target.value)}
                     placeholder="Contoh: 002.0020"
-                    className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                    className="flex-1 min-w-0 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                  />
+                  <input
+                    type="text"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                    placeholder="Kode"
+                    maxLength={12}
+                    title="Kode verifikasi kecil yang tercetak di belakang nomor label (untuk stiker baru)"
+                    className="w-24 px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
                   />
                   <button
                     type="submit"
@@ -416,6 +476,27 @@ export default function PublicScanPage() {
                 Scan Ulang
               </button>
             </div>
+          </motion.div>
+        ) : labelData?.isVoid ? (
+          /* Label dibatalkan / rusak */
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-rose-200 max-w-xl mx-auto my-auto w-full text-center"
+          >
+            <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-rose-200">
+              <Ban className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-rose-900 mb-2">Label Tidak Berlaku (Void)</h2>
+            <p className="text-slate-600 text-sm leading-relaxed mb-3">
+              Nomor label <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md">{displayLabel}</span> telah dibatalkan oleh PT Sarana Multi Kalibrasi dan tidak dapat dipakai sebagai bukti kalibrasi.
+            </p>
+            {labelData.voidReason && (
+              <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mb-3">
+                Keterangan: {labelData.voidReason}
+              </p>
+            )}
+            <p className="text-xs text-slate-400">Jika stiker ini terpasang pada alat, mohon hubungi PT Sarana Multi Kalibrasi.</p>
           </motion.div>
         ) : isReady ? (
           /* =========================================================================
@@ -551,6 +632,8 @@ export default function PublicScanPage() {
               </div>
             </div>
             
+            {expiryBanner && <div className="px-4 md:px-6 pt-4">{expiryBanner}</div>}
+
             {/* Viewer Section */}
             <div className="flex-1 bg-slate-200/50 p-3 md:p-6 flex flex-col min-h-[650px]">
               {loadingPdf ? (
@@ -595,6 +678,8 @@ export default function PublicScanPage() {
               Sertifikat digital untuk nomor label <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md">{displayLabel}</span> belum ditautkan oleh tim laboratorium.
             </p>
 
+            {expiryBanner && <div className="mb-4">{expiryBanner}</div>}
+
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-left">
               {labelData?.namaRs && (
                 <div className="col-span-2 sm:col-span-1">
@@ -617,6 +702,35 @@ export default function PublicScanPage() {
                 </span>
               </div>
             </div>
+
+            {labelData?.isPrePrinted && !verifyCode && (
+              <div className="mb-4 text-left text-xs bg-blue-50 border border-blue-200 text-blue-900 rounded-xl p-3 space-y-2">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5" /> Stiker baru memakai kode verifikasi
+                </p>
+                <p>Jika di belakang nomor label tercetak kode kecil (misalnya <span className="font-mono font-bold">K7QX2M</span>), masukkan kode tersebut:</p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const code = manualCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    if (code) navigate(`/sertifikat/${displayLabel}?k=${code}`);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <input
+                    type="text"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                    placeholder="Kode verifikasi"
+                    maxLength={12}
+                    className="flex-1 px-3 py-2 bg-white border border-blue-300 rounded-lg font-mono uppercase text-sm"
+                  />
+                  <button type="submit" className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                    Buka
+                  </button>
+                </form>
+              </div>
+            )}
 
             <p className="text-xs text-slate-400">
               Silakan hubungi PT Sarana Multi Kalibrasi untuk informasi lebih lanjut.
