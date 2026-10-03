@@ -28,15 +28,14 @@ import {
 } from '../utils/dealPdfExport';
 import { SphDealModal } from './SphDealModal';
 import { BapPdfImportModal } from './BapPdfImportModal';
-import { readBapPdf, ParsedBapPdf } from '../utils/bapPdfImport';
+import { readBapPdf, ParsedBapPdf, BapPdfKind } from '../utils/bapPdfImport';
 
 interface HospitalBillingManagerProps {
   sphList: SphQuotation[];
   bapDocuments?: BapDocument[];
   onSaveDealData: (sphId: string, dealData: SphDealData) => void;
   onNavigateToSchedules?: () => void;
-  onOpenBapModal?: (sph: SphQuotation) => void;
-  /** Simpan hasil upload PDF BAP (realisasi) ke Form BAP. isNew = BAP belum pernah dibuat. */
+  /** Simpan hasil upload PDF BAP PO / Non PO ke data BAP. isNew = BAP belum pernah dibuat. */
   onApplyBapPdf?: (updatedBap: BapDocument, isNew: boolean) => void;
 }
 
@@ -45,7 +44,6 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
   bapDocuments = [],
   onSaveDealData,
   onNavigateToSchedules,
-  onOpenBapModal,
   onApplyBapPdf
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -53,10 +51,10 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
   const [statusFilter, setStatusFilter] = useState<'deal' | 'all'>('deal');
 
   // Upload PDF BAP -> sesuaikan harga BO dengan realisasi pengerjaan
-  const [readingPdfSphId, setReadingPdfSphId] = useState<string | null>(null);
-  const [pdfImport, setPdfImport] = useState<{ sph: SphQuotation; parsed: ParsedBapPdf; fileName: string } | null>(null);
+  const [readingPdf, setReadingPdf] = useState<{ sphId: string; kind: BapPdfKind } | null>(null);
+  const [pdfImport, setPdfImport] = useState<{ sph: SphQuotation; kind: BapPdfKind; parsed: ParsedBapPdf; fileName: string } | null>(null);
 
-  const handleBapPdfSelected = async (sph: SphQuotation, file?: File | null) => {
+  const handleBapPdfSelected = async (sph: SphQuotation, kind: BapPdfKind, file?: File | null) => {
     if (!file) return;
     if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
       alert('File harus berformat PDF.');
@@ -66,19 +64,19 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
       alert('Ukuran PDF terlalu besar (maksimal 15 MB).');
       return;
     }
-    setReadingPdfSphId(sph.id);
+    setReadingPdf({ sphId: sph.id, kind });
     try {
       const parsed = await readBapPdf(file);
       if (parsed.rows.length === 0) {
         alert(`PDF tidak bisa dibaca sebagai BAP.\n\n${parsed.warnings.join('\n')}`);
         return;
       }
-      setPdfImport({ sph, parsed, fileName: file.name });
+      setPdfImport({ sph, kind, parsed, fileName: file.name });
     } catch (err) {
       console.error('Gagal membaca PDF BAP:', err);
       alert('Gagal membaca PDF BAP. Pastikan file adalah PDF BAP hasil export (bukan hasil scan).');
     } finally {
-      setReadingPdfSphId(null);
+      setReadingPdf(null);
     }
   };
 
@@ -333,6 +331,29 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                   )}
                 </div>
 
+                {/* Status upload BAP */}
+                {onApplyBapPdf && (() => {
+                  const nonPoBilled = (matchingBap?.nonPoItems || []).filter(it => (Number(it.total) || 0) > 0);
+                  const poUnits = (matchingBap?.items || []).reduce((sum, it) => sum + (Number(it.total) || 0), 0);
+                  const fmtTime = (iso?: string) => iso ? new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div className={`px-3 py-2 rounded-lg border ${matchingBap?.realizationSource === 'pdf_upload' ? 'bg-purple-50 border-purple-200 text-purple-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                        <strong>BAP PO:</strong>{' '}
+                        {matchingBap?.realizationSource === 'pdf_upload'
+                          ? <>sudah diupload ({poUnits}/{billing.totalPoUnits} unit) • {fmtTime(matchingBap.realizationUploadedAt)}</>
+                          : 'belum diupload — tagihan masih sesuai SPH'}
+                      </div>
+                      <div className={`px-3 py-2 rounded-lg border ${matchingBap?.nonPoRealizationSource === 'pdf_upload' || nonPoBilled.length > 0 ? 'bg-orange-50 border-orange-200 text-orange-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                        <strong>BAP Non PO:</strong>{' '}
+                        {nonPoBilled.length > 0
+                          ? <>{nonPoBilled.length} alat ({nonPoBilled.reduce((s2, it) => s2 + (Number(it.total) || 0), 0)} unit) ikut ditagihkan{matchingBap?.nonPoRealizationUploadedAt ? ` • ${fmtTime(matchingBap.nonPoRealizationUploadedAt)}` : ''}</>
+                          : 'tidak ada'}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Download Actions */}
                 <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -341,7 +362,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                       type="button"
                       onClick={() => downloadBoPdf(sph, dealData, matchingBap)}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                      title="Unduh PDF Bukti Order (BO) - Menyesuaikan Item & Realisasi Form BAP"
+                      title="Unduh PDF Bukti Order (BO) - Menyesuaikan Realisasi BAP"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Unduh BO</span>
@@ -352,7 +373,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                       type="button"
                       onClick={() => downloadFpPdf(sph, dealData, matchingBap)}
                       className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                      title="Unduh PDF Faktur Penjualan (FP) - Menyesuaikan Item & Realisasi Form BAP"
+                      title="Unduh PDF Faktur Penjualan (FP) - Menyesuaikan Realisasi BAP"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Unduh FP</span>
@@ -363,7 +384,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                       type="button"
                       onClick={() => downloadKwpPdf(sph, dealData, matchingBap)}
                       className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                      title="Unduh PDF Kwitansi Penjualan (KWP) - Menyesuaikan Item & Realisasi Form BAP"
+                      title="Unduh PDF Kwitansi Penjualan (KWP) - Menyesuaikan Realisasi BAP"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Unduh KWP</span>
@@ -382,43 +403,35 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {onApplyBapPdf && (
-                      <label
-                        className={`px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-900 border border-purple-300 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs ${readingPdfSphId ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
-                        title="Upload PDF BAP yang sudah ditandatangani. Harga BO/FP/KWP otomatis mengikuti Volume Realisasi."
-                      >
-                        {readingPdfSphId === sph.id
-                          ? <Loader2 className="w-3.5 h-3.5 text-purple-700 animate-spin" />
-                          : <FileUp className="w-3.5 h-3.5 text-purple-700" />}
-                        <span>{readingPdfSphId === sph.id ? 'Membaca PDF...' : 'Upload PDF BAP'}</span>
-                        <input
-                          type="file"
-                          accept="application/pdf,.pdf"
-                          className="hidden"
-                          disabled={readingPdfSphId !== null}
-                          onChange={e => {
-                            const f = e.target.files?.[0];
-                            e.target.value = '';
-                            handleBapPdfSelected(sph, f);
-                          }}
-                        />
-                      </label>
-                    )}
-
-                    {onOpenBapModal && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenBapModal(sph)}
-                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-                        title="Buka Form BAP untuk mengisi realisasi pengerjaan teknisi di lapangan"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-purple-700" />
-                        <span>Form BAP</span>
-                        {billing.isAdjustedFromBap && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block ml-0.5"></span>
-                        )}
-                      </button>
-                    )}
+                    {onApplyBapPdf && (['po', 'non_po'] as BapPdfKind[]).map(kind => {
+                      const isReading = readingPdf?.sphId === sph.id && readingPdf.kind === kind;
+                      const isPo = kind === 'po';
+                      return (
+                        <label
+                          key={kind}
+                          className={`px-3 py-1.5 bg-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs border ${isPo ? 'hover:bg-purple-50 text-purple-900 border-purple-300' : 'hover:bg-orange-50 text-orange-900 border-orange-300'} ${readingPdf ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
+                          title={isPo
+                            ? 'Upload PDF BAP PO yang sudah ditandatangani. Harga BO/FP/KWP mengikuti Volume Realisasi.'
+                            : 'Upload PDF BAP Non PO (alat tambahan di luar SPH). Harga diambil dari katalog dan bisa diedit.'}
+                        >
+                          {isReading
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <FileUp className="w-3.5 h-3.5" />}
+                          <span>{isReading ? 'Membaca PDF...' : isPo ? 'Upload BAP PO' : 'Upload BAP Non PO'}</span>
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            className="hidden"
+                            disabled={readingPdf !== null}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              e.target.value = '';
+                              handleBapPdfSelected(sph, kind, f);
+                            }}
+                          />
+                        </label>
+                      );
+                    })}
 
                     {onNavigateToSchedules && (
                       <button
@@ -441,6 +454,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
       {/* Modal Pratinjau Upload PDF BAP */}
       {pdfImport && onApplyBapPdf && (
         <BapPdfImportModal
+          kind={pdfImport.kind}
           sph={pdfImport.sph}
           bap={bapDocuments.find(b => b.sphId === pdfImport.sph.id || b.sphNumber === pdfImport.sph.sphNumber) || null}
           parsed={pdfImport.parsed}

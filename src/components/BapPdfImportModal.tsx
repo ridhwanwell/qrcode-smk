@@ -1,12 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import { X, FileUp, AlertTriangle, CheckCircle2, ArrowRight } from 'lucide-react';
 import { SphQuotation, BapDocument } from '../types';
-import { ParsedBapPdf, matchBapRows, applyBapPdfRealization, isSameSphNumber } from '../utils/bapPdfImport';
+import {
+  ParsedBapPdf,
+  BapPdfKind,
+  matchBapRows,
+  applyBapPdfRealization,
+  applyBapPdfNonPo,
+  suggestNonPoPrice,
+  isSameSphNumber
+} from '../utils/bapPdfImport';
 import { calculateBillingFromBap } from '../utils/billingHelpers';
 import { createBapFromSph } from '../utils/bapHelpers';
 import { formatRupiah } from '../utils/helpers';
 
 interface BapPdfImportModalProps {
+  kind: BapPdfKind;
   sph: SphQuotation;
   bap: BapDocument | null;
   parsed: ParsedBapPdf;
@@ -15,26 +24,52 @@ interface BapPdfImportModalProps {
   onApply: (updatedBap: BapDocument, isNew: boolean) => void;
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  ecatalogue: 'Katalog E-Cat',
+  brosur: 'Katalog Brosur',
+  manual: 'Isi manual'
+};
+
 /**
- * Pratinjau hasil baca PDF BAP sebelum diterapkan:
- * menampilkan realisasi per alat, harga satuan, dan perubahan total tagihan BO/FP/KWP.
+ * Pratinjau hasil baca PDF BAP (PO atau Non PO) sebelum diterapkan:
+ * realisasi per alat, harga satuan, dan perubahan total tagihan BO/FP/KWP.
  */
-export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, parsed, fileName, onClose, onApply }) => {
+export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ kind, sph, bap, parsed, fileName, onClose, onApply }) => {
+  const isNonPo = kind === 'non_po';
   const [confirmMismatch, setConfirmMismatch] = useState(false);
 
   const isNew = !bap;
   const baseBap = useMemo(() => bap || createBapFromSph(sph), [bap, sph]);
-  const matches = useMemo(() => matchBapRows(baseBap, parsed), [baseBap, parsed]);
-  const updatedBap = useMemo(() => applyBapPdfRealization(baseBap, parsed, fileName), [baseBap, parsed, fileName]);
+
+  // Baris yang dipakai: PO = baris di tabel PO; Non PO = baris bertanda Non PO (atau semua baris)
+  const nonPoRows = useMemo(
+    () => (parsed.rows.some(r => r.isNonPo) ? parsed.rows.filter(r => r.isNonPo) : parsed.rows),
+    [parsed]
+  );
+  const nonPoParsed = useMemo<ParsedBapPdf>(() => ({ ...parsed, rows: nonPoRows }), [parsed, nonPoRows]);
+
+  // Harga Non PO: saran dari katalog, bisa diedit admin
+  const suggestions = useMemo(
+    () => nonPoRows.map(r => suggestNonPoPrice(sph, r.namaAlat, baseBap.nonPoItems?.find(it => it.namaAlat === r.namaAlat))),
+    [nonPoRows, sph, baseBap]
+  );
+  const [prices, setPrices] = useState<number[]>(() => suggestions.map(s => s.price));
+
+  const matches = useMemo(() => (isNonPo ? [] : matchBapRows(baseBap, parsed)), [isNonPo, baseBap, parsed]);
+  const updatedBap = useMemo(
+    () => (isNonPo ? applyBapPdfNonPo(baseBap, nonPoParsed, fileName, prices) : applyBapPdfRealization(baseBap, parsed, fileName)),
+    [isNonPo, baseBap, nonPoParsed, parsed, fileName, prices]
+  );
   const before = useMemo(() => calculateBillingFromBap(sph, bap), [sph, bap]);
   const after = useMemo(() => calculateBillingFromBap(sph, updatedBap), [sph, updatedBap]);
 
   const sameSph = isSameSphNumber(sph, parsed);
-  const matchedCount = matches.filter(m => m.item).length;
-  const nonPoCount = parsed.rows.filter(r => r.isNonPo).length;
-  const canApply = matchedCount > 0 && (sameSph || confirmMismatch);
+  const poRowsCount = parsed.rows.filter(r => !r.isNonPo).length;
+  const missingPrice = isNonPo && nonPoRows.some((r, i) => (r.realisasi ?? 0) > 0 && !(prices[i] > 0));
+  const hasRows = isNonPo ? nonPoRows.length > 0 : matches.some(m => m.item);
+  const canApply = hasRows && !missingPrice && (sameSph || confirmMismatch);
 
-  const priceOf = (itemNo: number, fallbackName: string): number => {
+  const priceOfPo = (itemNo: number, fallbackName: string): number => {
     const bapItem = baseBap.items.find(it => it.no === itemNo);
     const sphItem =
       sph.items?.[itemNo - 1] ||
@@ -43,19 +78,31 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, 
   };
 
   const diff = after.grandTotal - before.grandTotal;
+  const extraWarnings: string[] = [];
+  if (!isNonPo && poRowsCount === 0 && parsed.rows.length > 0) {
+    extraWarnings.push('PDF ini sepertinya BAP Non PO. Tutup lalu gunakan tombol "Upload BAP Non PO".');
+  }
+  if (!isNonPo && parsed.rows.length > poRowsCount && poRowsCount > 0) {
+    extraWarnings.push(`${parsed.rows.length - poRowsCount} baris Non PO di PDF ini tidak diproses. Upload lewat tombol "Upload BAP Non PO".`);
+  }
+  if (isNonPo && (baseBap.nonPoItems || []).length > 0) {
+    extraWarnings.push(`Daftar alat Non PO sebelumnya (${baseBap.nonPoItems.length} alat) akan diganti dengan isi PDF ini.`);
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-4xl my-auto flex flex-col max-h-[92vh] shadow-2xl overflow-hidden">
+      <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-5xl my-auto flex flex-col max-h-[92vh] shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-purple-800 to-indigo-900 text-white flex items-center justify-between shrink-0">
+        <div className={`px-6 py-4 text-white flex items-center justify-between shrink-0 bg-gradient-to-r ${isNonPo ? 'from-orange-700 to-rose-800' : 'from-purple-800 to-indigo-900'}`}>
           <div className="flex items-center gap-3">
             <div className="p-2 bg-white/10 rounded-xl border border-white/20">
-              <FileUp className="w-5 h-5 text-purple-200" />
+              <FileUp className="w-5 h-5 text-white/90" />
             </div>
             <div>
-              <h3 className="font-bold text-base sm:text-lg">Upload PDF BAP → Sesuaikan Harga BO</h3>
-              <p className="text-xs text-purple-200 truncate max-w-[60vw]">
+              <h3 className="font-bold text-base sm:text-lg">
+                Upload {isNonPo ? 'BAP Non PO' : 'BAP PO'} → Sesuaikan Harga BO
+              </h3>
+              <p className="text-xs text-white/70 truncate max-w-[60vw]">
                 {sph.hospitalName} • {fileName}
               </p>
             </div>
@@ -96,19 +143,17 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, 
               </label>
             </div>
           )}
-          {(parsed.warnings.length > 0 || matches.some(m => m.issue) || nonPoCount > 0) && (
+          {(parsed.warnings.length > 0 || matches.some(m => m.issue) || extraWarnings.length > 0) && (
             <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs space-y-1">
               <p className="font-bold flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" /> Perlu dicek:
               </p>
               <ul className="list-disc pl-5 space-y-0.5">
+                {extraWarnings.map((w, i) => <li key={`e${i}`}>{w}</li>)}
                 {parsed.warnings.map((w, i) => <li key={`w${i}`}>{w}</li>)}
                 {matches.filter(m => m.issue).map((m, i) => (
                   <li key={`m${i}`}>Baris {m.row.no}: {m.issue}</li>
                 ))}
-                {nonPoCount > 0 && (
-                  <li>{nonPoCount} baris Non PO di PDF tidak diproses otomatis. Isi lewat Form BAP bila perlu ditagihkan.</li>
-                )}
               </ul>
             </div>
           )}
@@ -129,23 +174,62 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, 
                 </tr>
               </thead>
               <tbody>
-                {matches.map((m, i) => {
-                  const realized = m.row.realisasi ?? 0;
-                  const price = m.item ? priceOf(m.item.no, m.item.namaAlat) : 0;
-                  const po = m.item ? Number(m.item.poQty) : m.row.poQty ?? 0;
-                  return (
-                    <tr key={i} className={`border-t border-slate-100 ${!m.item ? 'bg-rose-50/60 text-slate-400' : realized < po ? 'bg-amber-50/50' : ''}`}>
-                      <td className="px-2 py-1.5 text-center font-mono">{m.row.no}</td>
-                      <td className="px-2 py-1.5">{m.row.namaAlat}</td>
-                      <td className="px-2 py-1.5 text-center font-mono">{po}</td>
-                      <td className="px-2 py-1.5 text-center font-mono font-bold text-emerald-800">{realized}</td>
-                      <td className={`px-2 py-1.5 text-center font-mono ${po - realized > 0 ? 'text-rose-700 font-bold' : ''}`}>{po - realized}</td>
-                      <td className="px-2 py-1.5">{m.row.keterangan || '-'}</td>
-                      <td className="px-2 py-1.5 text-right font-mono">{m.item ? formatRupiah(price) : '-'}</td>
-                      <td className="px-2 py-1.5 text-right font-mono font-bold">{m.item ? formatRupiah(realized * price) : 'tidak diproses'}</td>
-                    </tr>
-                  );
-                })}
+                {isNonPo
+                  ? nonPoRows.map((row, i) => {
+                      const realized = row.realisasi ?? 0;
+                      const po = row.poQty ?? realized;
+                      const price = prices[i] || 0;
+                      const needPrice = realized > 0 && !(price > 0);
+                      return (
+                        <tr key={i} className={`border-t border-slate-100 ${needPrice ? 'bg-rose-50/70' : ''}`}>
+                          <td className="px-2 py-1.5 text-center font-mono">{row.no}</td>
+                          <td className="px-2 py-1.5">{row.namaAlat}</td>
+                          <td className="px-2 py-1.5 text-center font-mono">{po}</td>
+                          <td className="px-2 py-1.5 text-center font-mono font-bold text-emerald-800">{realized}</td>
+                          <td className="px-2 py-1.5 text-center font-mono">{po - realized}</td>
+                          <td className="px-2 py-1.5">{row.keterangan || '-'}</td>
+                          <td className="px-2 py-1.5 text-right">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <input
+                                type="number"
+                                min={0}
+                                step={1000}
+                                value={price || ''}
+                                placeholder="Isi harga"
+                                onChange={e => {
+                                  const v = Number(e.target.value);
+                                  setPrices(prev => prev.map((p, idx) => (idx === i ? (isNaN(v) ? 0 : v) : p)));
+                                }}
+                                className={`w-28 px-2 py-1 text-right font-mono border rounded-md ${needPrice ? 'border-rose-400 bg-white' : 'border-slate-300'}`}
+                              />
+                              <span className="text-[9px] text-slate-500">
+                                {price === suggestions[i]?.price && suggestions[i]?.price > 0
+                                  ? `dari ${SOURCE_LABEL[suggestions[i].source] || 'data sebelumnya'}`
+                                  : needPrice ? 'Tidak ada di katalog — wajib diisi' : 'diubah admin'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-2 py-1.5 text-right font-mono font-bold">{formatRupiah(realized * price)}</td>
+                        </tr>
+                      );
+                    })
+                  : matches.map((m, i) => {
+                      const realized = m.row.realisasi ?? 0;
+                      const price = m.item ? priceOfPo(m.item.no, m.item.namaAlat) : 0;
+                      const po = m.item ? Number(m.item.poQty) : m.row.poQty ?? 0;
+                      return (
+                        <tr key={i} className={`border-t border-slate-100 ${!m.item ? 'bg-rose-50/60 text-slate-400' : realized < po ? 'bg-amber-50/50' : ''}`}>
+                          <td className="px-2 py-1.5 text-center font-mono">{m.row.no}</td>
+                          <td className="px-2 py-1.5">{m.row.namaAlat}</td>
+                          <td className="px-2 py-1.5 text-center font-mono">{po}</td>
+                          <td className="px-2 py-1.5 text-center font-mono font-bold text-emerald-800">{realized}</td>
+                          <td className={`px-2 py-1.5 text-center font-mono ${po - realized > 0 ? 'text-rose-700 font-bold' : ''}`}>{po - realized}</td>
+                          <td className="px-2 py-1.5">{m.row.keterangan || '-'}</td>
+                          <td className="px-2 py-1.5 text-right font-mono">{m.item ? formatRupiah(price) : '-'}</td>
+                          <td className="px-2 py-1.5 text-right font-mono font-bold">{m.item ? formatRupiah(realized * price) : 'tidak diproses'}</td>
+                        </tr>
+                      );
+                    })}
               </tbody>
             </table>
           </div>
@@ -162,7 +246,7 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, 
               <p className="text-[10px] font-bold text-emerald-700 uppercase">Tagihan BO Setelah Upload</p>
               <p className="font-mono font-black text-emerald-900 text-lg">{formatRupiah(after.grandTotal)}</p>
               <p className="text-[10px] text-emerald-800">
-                {after.totalRealizedUnits} / {after.totalPoUnits} unit • Sub Total {formatRupiah(after.subtotal1)}
+                {after.totalRealizedUnits} unit • Sub Total {formatRupiah(after.subtotal1)}
                 {after.accommodationFee > 0 ? ` + Akomodasi ${formatRupiah(after.accommodationFee)}` : ''} + PPN {formatRupiah(after.ppnAmount)}
               </p>
               {diff !== 0 && (
@@ -174,7 +258,12 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, 
           </div>
           {after.grandTotal === 0 && (
             <p className="text-xs text-rose-700 font-bold">
-              Semua alat tercatat 0 / batal di PDF, sehingga tidak ada yang ditagihkan (Rp 0).
+              Semua alat tercatat 0 / batal, sehingga tidak ada yang ditagihkan (Rp 0).
+            </p>
+          )}
+          {missingPrice && (
+            <p className="text-xs text-rose-700 font-bold">
+              Isi harga satuan untuk semua alat Non PO yang dikerjakan sebelum menerapkan.
             </p>
           )}
         </div>
@@ -182,7 +271,10 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, 
         {/* Footer */}
         <div className="px-6 py-4 bg-white border-t border-[#D8D2CB] flex flex-wrap items-center justify-between gap-3 shrink-0">
           <p className="text-[11px] text-slate-500 max-w-md">
-            Realisasi di Form BAP akan diganti sesuai PDF (kolom "Realisasi PDF"). BO, FP, Kwitansi, dan Excel otomatis ikut harga baru.
+            {isNonPo
+              ? 'Daftar alat Non PO di BAP akan diganti sesuai PDF beserta harganya. Alat PO tidak berubah.'
+              : 'Realisasi alat PO di BAP akan diganti sesuai PDF. Alat Non PO tidak berubah.'}{' '}
+            BO, FP, Kwitansi, dan Excel otomatis ikut harga baru.
           </p>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-4 py-2 text-xs font-bold rounded-lg border border-slate-300 hover:bg-slate-100 cursor-pointer">
@@ -194,7 +286,7 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ sph, bap, 
               className="px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Terapkan ke Form BAP & BO
+              Terapkan ke BAP & BO
             </button>
           </div>
         </div>
