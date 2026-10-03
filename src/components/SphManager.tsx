@@ -36,7 +36,7 @@ import { formatRupiah, formatNumber } from '../utils/sphHelpers';
 import { exportSphToWord } from '../utils/sphWordExport';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { downloadSphPdf } from '../utils/sphPdfExport';
-import { downloadSphECatExcel, isECatalogueSph } from '../utils/sphECatExcelExport';
+import { downloadSphECatExcel, isECatalogueSph, getSphExcelSheetLabel } from '../utils/sphECatExcelExport';
 import { SphDealModal } from './SphDealModal';
 import { useAuth } from '../lib/AuthContext';
 
@@ -457,21 +457,19 @@ export const SphManager: React.FC<SphManagerProps> = ({
                       <span>PDF SPH</span>
                     </button>
 
-                    {/* Excel paket SPH, Link Ecat, BO, FP, KW — khusus SPH E-Catalogue */}
-                    {isECatalogueSph(sph) && (
-                      <button
-                        onClick={() => downloadSphECatExcel(
-                          sph,
-                          undefined,
-                          bapDocuments.find(b => b.sphId === sph.id) || null
-                        )}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-                        title="Unduh Excel E-Catalogue (sheet SPH, Link Ecat, BO, FP, KW)"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                        <span>Excel E-Cat</span>
-                      </button>
-                    )}
+                    {/* Excel paket SPH, BO, FP, KW (+ Link Ecat untuk SPH E-Catalogue) */}
+                    <button
+                      onClick={() => downloadSphECatExcel(
+                        sph,
+                        undefined,
+                        bapDocuments.find(b => b.sphId === sph.id) || null
+                      )}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      title={`Unduh Excel (sheet ${getSphExcelSheetLabel(sph)})`}
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>{isECatalogueSph(sph) ? 'Excel E-Cat' : 'Excel'}</span>
+                    </button>
 
                     <button
                       onClick={() => onEditSph(sph)}
