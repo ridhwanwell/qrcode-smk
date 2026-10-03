@@ -38,6 +38,7 @@ import {
   downloadAllDealDocumentsZip 
 } from '../utils/dealPdfExport';
 import { downloadSphPdf } from '../utils/sphPdfExport';
+import { downloadSphECatExcel, isECatalogueSph } from '../utils/sphECatExcelExport';
 import { useAuth } from '../lib/AuthContext';
 
 interface SphDealModalProps {
@@ -639,6 +640,22 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
               </button>
 
             </div>
+
+            {/* Excel paket SPH E-Catalogue: 1 file berisi sheet SPH, Link Ecat, BO, FP, KW */}
+            {isECatalogueSph(sph) && (
+              <button
+                type="button"
+                onClick={() => handleDownload('EXCEL', () => downloadSphECatExcel(sph, currentDealData, bapDocument))}
+                disabled={isDownloading !== null}
+                className="w-full p-3 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <FileSpreadsheet className="w-5 h-5 text-emerald-300" />
+                <span className="text-xs font-bold text-white">
+                  {isDownloading === 'EXCEL' ? 'Membuat Excel...' : 'Unduh Excel E-Catalogue'}
+                </span>
+                <span className="text-[10px] text-slate-300">(SPH • Link Ecat • BO • FP • KW)</span>
+              </button>
+            )}
           </div>
 
         </div>
