@@ -801,6 +801,64 @@ export function createApp() {
     }
   });
 
+  // --- API: AMBIL PDF SERTIFIKAT DARI GOOGLE DRIVE (untuk isi otomatis Nama Alat, Ruangan, Tanggal) ---
+  // Browser tidak bisa mengunduh langsung dari Google Drive (diblokir CORS), jadi server
+  // mengambilkan file-nya. Hanya ke drive.google.com dengan ID file yang tervalidasi.
+  app.get("/api/drive-certificate/:fileId", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+    const MAX_BYTES = 4 * 1024 * 1024; // batas respons serverless ±4,5 MB
+    try {
+      const fileId = String(req.params.fileId || '');
+      if (!/^[A-Za-z0-9_-]{20,100}$/.test(fileId)) {
+        return res.status(400).json({ error: "ID file Google Drive tidak valid" });
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      let driveRes: Response;
+      try {
+        driveRes = await fetch(`https://drive.google.com/uc?export=download&id=${fileId}`, {
+          redirect: 'follow',
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      // Pastikan redirect hanya berakhir di domain Google
+      const finalHost = (() => { try { return new URL(driveRes.url).hostname; } catch { return ''; } })();
+      if (!/(^|\.)google(usercontent)?\.com$/.test(finalHost)) {
+        return res.status(502).json({ error: "Respons Google Drive tidak dikenali" });
+      }
+      if (!driveRes.ok) {
+        return res.status(422).json({ error: "File tidak bisa diambil. Pastikan akses file diatur 'Siapa saja yang memiliki link'." });
+      }
+
+      const declared = Number(driveRes.headers.get('content-length') || 0);
+      if (declared > MAX_BYTES) {
+        return res.status(413).json({ error: "PDF sertifikat terlalu besar untuk dibaca otomatis (maks 4 MB). Isi data secara manual." });
+      }
+
+      const buf = Buffer.from(await driveRes.arrayBuffer());
+      if (buf.length > MAX_BYTES) {
+        return res.status(413).json({ error: "PDF sertifikat terlalu besar untuk dibaca otomatis (maks 4 MB). Isi data secara manual." });
+      }
+      if (buf.subarray(0, 5).toString('latin1') !== '%PDF-') {
+        // Biasanya halaman login Google = file belum dibagikan publik
+        return res.status(422).json({ error: "File bukan PDF atau belum dibagikan. Atur akses Google Drive ke 'Siapa saja yang memiliki link' lalu coba lagi." });
+      }
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.send(buf);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        return res.status(504).json({ error: "Google Drive terlalu lama merespons. Coba lagi, atau isi data secara manual." });
+      }
+      console.error("API error in GET /api/drive-certificate/:fileId:", err);
+      res.status(500).json({ error: "Gagal mengambil PDF sertifikat dari Google Drive" });
+    }
+  });
+
   // --- API: TANDAI STIKER VOID / RUSAK (nomor tetap tercatat untuk audit) ---
   app.post("/api/labels/:noLabel/void", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
