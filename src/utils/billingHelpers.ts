@@ -122,11 +122,18 @@ export function calculateBillingFromBap(
   const originalGrandTotal = sph.grandTotal || 0;
   const originalPoUnits = (sph.items || []).reduce((sum, it) => sum + (Number(it.quantity) || 1), 0);
 
-  // Check if BAP has any realization data recorded
+  const realizedQtyOf = (it: BapItem): number => {
+    let q = typeof it.total === 'number' ? it.total : 0;
+    if (q === 0 && it.realisasi) {
+      q = Object.values(it.realisasi).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    }
+    return q;
+  };
+
+  // --- Apakah realisasi BAP PO sudah ada? ---
   // Realisasi dari upload PDF BAP selalu dianggap sah, termasuk bila semuanya 0 (batal)
   const isPdfRealization = Boolean(bap && bap.realizationSource === 'pdf_upload');
-
-  const hasRealization = isPdfRealization || Boolean(
+  const poRealized = isPdfRealization || Boolean(
     bap &&
     bap.items &&
     bap.items.length > 0 &&
@@ -139,8 +146,11 @@ export function calculateBillingFromBap(
     })
   );
 
-  // Fallback if no BAP realization exists yet: use standard SPH values
-  if (!bap || !hasRealization) {
+  // --- Apakah ada alat Non PO yang dikerjakan? ---
+  const nonPoWorked = Boolean(bap && (bap.nonPoItems || []).some(it => realizedQtyOf(it) > 0));
+
+  // Belum ada realisasi sama sekali: pakai nilai SPH apa adanya
+  if (!bap || (!poRealized && !nonPoWorked)) {
     const defaultItems: EffectiveBillingItem[] = (sph.items || []).map((it, idx) => {
       const q = Number(it.quantity) || 1;
       const uPrice = Number(it.unitPrice) || 0;
@@ -190,100 +200,107 @@ export function calculateBillingFromBap(
     };
   }
 
-  // BAP HAS REALIZATION DATA:
-  // Build items list based on Form BAP realization!
   const billedItems: EffectiveBillingItem[] = [];
   let totalRealizedUnits = 0;
 
-  bap.items.forEach((bapIt, idx) => {
-    // Correlate with SPH item by no or description
-    const sphMatch = sph.items?.[bapIt.no - 1] || sph.items?.find(s => 
-      s.description.trim().toLowerCase() === bapIt.namaAlat.trim().toLowerCase()
-    );
+  // --- 1. Alat PO ---
+  if (poRealized) {
+    // Hanya alat yang benar-benar dikerjakan (realisasi > 0) yang ditagihkan
+    bap.items.forEach((bapIt) => {
+      const sphMatch = sph.items?.[bapIt.no - 1] || sph.items?.find(s =>
+        s.description.trim().toLowerCase() === bapIt.namaAlat.trim().toLowerCase()
+      );
+      const poQty = Number(bapIt.poQty) || Number(sphMatch?.quantity) || 1;
+      const realizedQty = realizedQtyOf(bapIt);
+      const unitPrice = bapIt.unitPrice || sphMatch?.unitPrice || 0;
+      if (realizedQty > 0) {
+        totalRealizedUnits += realizedQty;
+        billedItems.push({
+          no: billedItems.length + 1,
+          description: bapIt.namaAlat || sphMatch?.description || 'Alat Kesehatan',
+          quantity: realizedQty,
+          poQuantity: poQty,
+          unitPrice,
+          totalPrice: realizedQty * unitPrice,
+          unit: sphMatch?.unit || 'Unit',
+          notes: bapIt.keterangan || sphMatch?.notes,
+          eCatalogueUrl: sphMatch?.eCatalogueUrl,
+          keterangan: bapIt.keterangan
+        });
+      }
+    });
+  } else {
+    // Realisasi PO belum diisi (baru ada Non PO): alat PO ditagihkan sesuai SPH
+    (sph.items || []).forEach((it) => {
+      const q = Number(it.quantity) || 1;
+      const uPrice = Number(it.unitPrice) || 0;
+      totalRealizedUnits += q;
+      billedItems.push({
+        id: it.id,
+        no: billedItems.length + 1,
+        description: it.description,
+        quantity: q,
+        poQuantity: q,
+        unitPrice: uPrice,
+        totalPrice: q * uPrice,
+        unit: it.unit || 'Unit',
+        notes: it.notes,
+        eCatalogueUrl: it.eCatalogueUrl
+      });
+    });
+  }
 
-    const poQty = Number(bapIt.poQty) || Number(sphMatch?.quantity) || 1;
-    
-    // Realized quantity from BAP (total sum of dates or it.total)
-    let realizedQty = typeof bapIt.total === 'number' ? bapIt.total : 0;
-    if (realizedQty === 0 && bapIt.realisasi) {
-      realizedQty = Object.values(bapIt.realisasi).reduce((sum, v) => sum + (Number(v) || 0), 0);
-    }
-
-    const unitPrice = bapIt.unitPrice || sphMatch?.unitPrice || 0;
-
-    // Only include items that were actually worked on (realizedQty > 0)
-    // If an item was cancelled/batal or 0 realized, it will not be billed to the customer
-    if (realizedQty > 0) {
-      totalRealizedUnits += realizedQty;
+  // --- 2. Alat Non PO yang dikerjakan ---
+  (bap.nonPoItems || []).forEach((nonPoIt) => {
+    const nonPoRealized = realizedQtyOf(nonPoIt);
+    if (nonPoRealized > 0) {
+      const uPrice = nonPoIt.unitPrice || 0;
+      totalRealizedUnits += nonPoRealized;
       billedItems.push({
         no: billedItems.length + 1,
-        description: bapIt.namaAlat || sphMatch?.description || 'Alat Kesehatan',
-        quantity: realizedQty,
-        poQuantity: poQty,
-        unitPrice: unitPrice,
-        totalPrice: realizedQty * unitPrice,
-        unit: sphMatch?.unit || 'Unit',
-        notes: bapIt.keterangan || sphMatch?.notes,
-        eCatalogueUrl: sphMatch?.eCatalogueUrl,
-        keterangan: bapIt.keterangan
+        description: nonPoIt.namaAlat || 'Alat Non PO',
+        quantity: nonPoRealized,
+        poQuantity: nonPoIt.poQty || nonPoRealized,
+        unitPrice: uPrice,
+        totalPrice: nonPoRealized * uPrice,
+        unit: 'Unit',
+        notes: nonPoIt.keterangan || 'Non PO',
+        keterangan: nonPoIt.keterangan
       });
     }
   });
 
-  // Also include any Non-PO items that were worked on in BAP
-  if (bap.nonPoItems && bap.nonPoItems.length > 0) {
-    bap.nonPoItems.forEach((nonPoIt) => {
-      let nonPoRealized = typeof nonPoIt.total === 'number' ? nonPoIt.total : 0;
-      if (nonPoRealized === 0 && nonPoIt.realisasi) {
-        nonPoRealized = Object.values(nonPoIt.realisasi).reduce((sum, v) => sum + (Number(v) || 0), 0);
-      }
-      if (nonPoRealized > 0) {
-        const uPrice = nonPoIt.unitPrice || 0;
-        totalRealizedUnits += nonPoRealized;
-        billedItems.push({
-          no: billedItems.length + 1,
-          description: nonPoIt.namaAlat || 'Alat Non PO',
-          quantity: nonPoRealized,
-          poQuantity: nonPoIt.poQty || nonPoRealized,
-          unitPrice: uPrice,
-          totalPrice: nonPoRealized * uPrice,
-          unit: 'Unit',
-          notes: nonPoIt.keterangan || 'Non PO',
-          keterangan: nonPoIt.keterangan
-        });
-      }
-    });
-  }
+  const isPpnIncluded = sph.isPpnIncluded !== false;
+  const ppnPercent = sph.ppnPercent || 11;
 
-  // Semua alat batal menurut PDF BAP resmi -> tidak ada yang ditagihkan (Rp 0)
-  if (billedItems.length === 0 && isPdfRealization) {
-    return {
-      isAdjustedFromBap: true,
-      totalPoUnits: originalPoUnits,
-      totalRealizedUnits: 0,
-      items: [],
-      subtotal1: 0,
-      discountPercent: 0,
-      discountAmount: 0,
-      subtotalAfterDiscount: 0,
-      isPpnIncluded: sph.isPpnIncluded !== false,
-      ppnPercent: sph.ppnPercent || 11,
-      ppnAmount: 0,
-      subtotal2: 0,
-      accommodationFee: 0,
-      grandTotal: 0,
-      terbilang: angkaTerbilang(0),
-      originalGrandTotal,
-      priceDifference: -originalGrandTotal
-    };
-  }
-
-  // If for some reason all realized items are 0, retain original items
+  // Tidak ada satu pun alat yang dikerjakan
   if (billedItems.length === 0) {
+    // Menurut PDF BAP resmi semua batal -> tidak ada yang ditagihkan (Rp 0)
+    if (isPdfRealization) {
+      return {
+        isAdjustedFromBap: true,
+        totalPoUnits: originalPoUnits,
+        totalRealizedUnits: 0,
+        items: [],
+        subtotal1: 0,
+        discountPercent: 0,
+        discountAmount: 0,
+        subtotalAfterDiscount: 0,
+        isPpnIncluded,
+        ppnPercent,
+        ppnAmount: 0,
+        subtotal2: 0,
+        accommodationFee: 0,
+        grandTotal: 0,
+        terbilang: angkaTerbilang(0),
+        originalGrandTotal,
+        priceDifference: -originalGrandTotal
+      };
+    }
+    // Data Form BAP belum lengkap: pertahankan nilai SPH
     return calculateBillingFromBap(sph, null);
   }
 
-  // Calculate new Subtotal 1 based on realized quantities
   const subtotal1 = billedItems.reduce((sum, it) => sum + it.totalPrice, 0);
 
   // PENTING: Diskon/nego SPH TIDAK dipotong lagi di sini.
@@ -300,14 +317,11 @@ export function calculateBillingFromBap(
   const subtotal2 = subtotalAfterDiscount + accommodationFee;
 
   // PPN calculation (taken from Total 2 / subtotal2)
-  const isPpnIncluded = sph.isPpnIncluded !== false;
-  const ppnPercent = sph.ppnPercent || 11;
   const ppnAmount = (isPpnIncluded || (sph.ppnAmount && sph.ppnAmount > 0))
     ? Math.round(subtotal2 * (ppnPercent / 100))
     : 0;
 
   const grandTotal = subtotal2 + ppnAmount;
-  const terbilang = angkaTerbilang(grandTotal);
 
   return {
     isAdjustedFromBap: true,
@@ -324,7 +338,7 @@ export function calculateBillingFromBap(
     subtotal2,
     accommodationFee,
     grandTotal,
-    terbilang,
+    terbilang: angkaTerbilang(grandTotal),
     originalGrandTotal,
     priceDifference: grandTotal - originalGrandTotal
   };

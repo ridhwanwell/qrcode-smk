@@ -12,6 +12,8 @@
  * Pembacaan PDF dilakukan di browser (tidak ada file yang dikirim ke server).
  */
 import { BapDocument, BapItem, SphQuotation } from '../types';
+import { getStandardTariff } from '../data/sphTariffCatalog';
+import { getECatalogueTariff } from '../data/sphECatalogueData';
 
 /** Nama kolom realisasi yang dipakai di Form BAP untuk hasil upload PDF. */
 export const PDF_REALIZATION_COLUMN = 'Realisasi PDF';
@@ -346,4 +348,74 @@ export function applyBapPdfRealization(
 export function isSameSphNumber(sph: SphQuotation, parsed: ParsedBapPdf): boolean {
   if (!parsed.sphNumber) return true; // tidak tertulis di PDF, tidak bisa dicek
   return normalizeName(parsed.sphNumber) === normalizeName(sph.sphNumber);
+}
+
+// ============================================================================
+// 4. BAP NON PO (alat tambahan di luar SPH)
+// ============================================================================
+export type BapPdfKind = 'po' | 'non_po';
+
+export interface NonPoPriceSuggestion {
+  price: number;
+  source: 'sph' | 'ecatalogue' | 'brosur' | 'manual';
+}
+
+/**
+ * Harga awal alat Non PO: dari katalog E-Catalogue (bila SPH E-Cat) atau katalog brosur,
+ * berdasarkan nama alat. Admin tetap bisa mengubahnya di layar pratinjau.
+ */
+export function suggestNonPoPrice(sph: SphQuotation, namaAlat: string, existing?: BapItem): NonPoPriceSuggestion {
+  if (existing && Number(existing.unitPrice) > 0) return { price: Number(existing.unitPrice), source: 'manual' };
+  const isECat = sph.sphType === 'ecatalogue';
+  if (isECat) {
+    const e = getECatalogueTariff(namaAlat);
+    if (e) return { price: e.price, source: 'ecatalogue' };
+  }
+  const b = getStandardTariff(namaAlat);
+  if (b) return { price: b.price, source: 'brosur' };
+  if (!isECat) {
+    const e = getECatalogueTariff(namaAlat);
+    if (e) return { price: e.price, source: 'ecatalogue' };
+  }
+  return { price: 0, source: 'manual' };
+}
+
+/**
+ * Terapkan PDF BAP Non PO: daftar alat Non PO di Form BAP diganti sesuai PDF
+ * (beserta harga satuan yang sudah dicek admin). Alat PO tidak disentuh.
+ */
+export function applyBapPdfNonPo(
+  bap: BapDocument,
+  parsed: ParsedBapPdf,
+  fileName: string,
+  prices: number[] // harga satuan per baris PDF (urutan sama dengan parsed.rows)
+): BapDocument {
+  const nonPoItems: BapItem[] = parsed.rows.map((row, idx) => {
+    const realized = Math.max(0, row.realisasi ?? 0);
+    const poQty = row.poQty ?? realized;
+    return {
+      id: `nonpo-pdf-${idx + 1}-${Date.now()}`,
+      no: idx + 1,
+      namaAlat: row.namaAlat,
+      poQty,
+      realisasi: { [PDF_REALIZATION_COLUMN]: realized },
+      total: realized,
+      sisa: poQty - realized,
+      keterangan: row.keterangan || '',
+      unitPrice: Math.max(0, Math.round(Number(prices[idx]) || 0))
+    };
+  });
+
+  const baseCols = bap.nonPoDateColumns && bap.nonPoDateColumns.length > 0 ? bap.nonPoDateColumns : [];
+  const nonPoDateColumns = baseCols.includes(PDF_REALIZATION_COLUMN) ? baseCols : [...baseCols, PDF_REALIZATION_COLUMN];
+
+  return {
+    ...bap,
+    nonPoItems,
+    nonPoDateColumns,
+    nonPoRealizationSource: 'pdf_upload',
+    nonPoRealizationFileName: fileName,
+    nonPoRealizationUploadedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
 }
