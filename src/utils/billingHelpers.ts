@@ -138,36 +138,51 @@ export function calculateBillingFromBap(
 
   // Fallback if no BAP realization exists yet: use standard SPH values
   if (!bap || !hasRealization) {
-    const defaultItems: EffectiveBillingItem[] = (sph.items || []).map((it, idx) => ({
-      id: it.id || `sph-it-${idx + 1}`,
-      no: idx + 1,
-      description: it.description,
-      quantity: Number(it.quantity) || 1,
-      poQuantity: Number(it.quantity) || 1,
-      unitPrice: it.unitPrice || 0,
-      totalPrice: it.totalPrice || (Number(it.quantity) || 1) * (it.unitPrice || 0),
-      unit: it.unit || 'Unit',
-      notes: it.notes,
-      eCatalogueUrl: it.eCatalogueUrl
-    }));
+    const defaultItems: EffectiveBillingItem[] = (sph.items || []).map((it, idx) => {
+      const q = Number(it.quantity) || 1;
+      const uPrice = Number(it.unitPrice) || 0;
+      const tPrice = it.totalPrice !== undefined && it.totalPrice !== null ? Number(it.totalPrice) : q * uPrice;
+      return {
+        id: it.id || `sph-it-${idx + 1}`,
+        no: idx + 1,
+        description: it.description,
+        quantity: q,
+        poQuantity: q,
+        unitPrice: uPrice,
+        totalPrice: tPrice,
+        unit: it.unit || 'Unit',
+        notes: it.notes,
+        eCatalogueUrl: it.eCatalogueUrl
+      };
+    });
+
+    const calculatedSubtotal1 = defaultItems.reduce((sum, it) => sum + it.totalPrice, 0);
+    const accommodationFee = sph.accommodationFee || 0;
+    const subtotal2 = calculatedSubtotal1 + accommodationFee;
+    const isPpnIncluded = sph.isPpnIncluded !== false;
+    const ppnPercent = sph.ppnPercent || 11;
+    const ppnAmount = (isPpnIncluded || (sph.ppnAmount && sph.ppnAmount > 0))
+      ? Math.round(subtotal2 * (ppnPercent / 100))
+      : 0;
+    const grandTotal = subtotal2 + ppnAmount;
 
     return {
       isAdjustedFromBap: false,
       totalPoUnits: originalPoUnits,
       totalRealizedUnits: originalPoUnits,
       items: defaultItems,
-      subtotal1: sph.subtotal1,
+      subtotal1: calculatedSubtotal1,
       discountPercent: (sph as any).discountPercent || 0,
       discountAmount: (sph as any).discountAmount || 0,
-      subtotalAfterDiscount: (sph as any).subtotalAfterDiscount || sph.subtotal1,
-      isPpnIncluded: sph.isPpnIncluded !== false,
-      ppnPercent: sph.ppnPercent || 11,
-      ppnAmount: sph.ppnAmount || 0,
-      subtotal2: sph.subtotal2 || (sph.subtotal1 + (sph.accommodationFee || 0)),
-      accommodationFee: sph.accommodationFee || 0,
-      grandTotal: originalGrandTotal,
-      terbilang: sph.terbilang || angkaTerbilang(originalGrandTotal),
-      originalGrandTotal,
+      subtotalAfterDiscount: calculatedSubtotal1,
+      isPpnIncluded,
+      ppnPercent,
+      ppnAmount,
+      subtotal2,
+      accommodationFee,
+      grandTotal,
+      terbilang: angkaTerbilang(grandTotal),
+      originalGrandTotal: grandTotal,
       priceDifference: 0
     };
   }
