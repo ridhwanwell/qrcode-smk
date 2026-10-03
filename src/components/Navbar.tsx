@@ -14,7 +14,8 @@ import {
   RotateCcw,
   CloudUpload,
   CloudDownload,
-  Receipt
+  Receipt,
+  FileSpreadsheet
 } from 'lucide-react';
 import { CalibrationSchedule, CalibratorAsset } from '../types';
 import { getUrgencyInfo } from '../utils/helpers';
@@ -23,7 +24,7 @@ import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { useAuth } from '../lib/AuthContext';
 import { subscribePendingCount } from '../lib/offlineQueue';
 
-export type AppTab = 'dashboard' | 'sph' | 'labels' | 'schedules' | 'billing' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates';
+export type AppTab = 'dashboard' | 'sph' | 'labels' | 'schedules' | 'billing' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates' | 'aspak';
 
 interface NavbarProps {
   activeTab: AppTab;
@@ -157,6 +158,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       label: 'Master Data RS & Tim',
       sublabel: 'Tim Teknisi, Marketing & RS',
       icon: Award
+    },
+    {
+      id: 'aspak',
+      label: 'Format ASPAK',
+      sublabel: 'Download Isian Kalibrasi ASPAK',
+      icon: FileSpreadsheet
     }
   ];
 
@@ -165,8 +172,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     : role === 'admin_keuangan'
     ? ['dashboard', 'labels', 'sph', 'schedules', 'billing', 'financial', 'masters']
     : role === 'admin_teknik'
-    ? ['dashboard', 'labels', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'masters']
-    : ['dashboard', 'labels', 'sph', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates'];
+    ? ['dashboard', 'labels', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'masters', 'aspak']
+    : ['dashboard', 'labels', 'sph', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'financial', 'masters', 'templates', 'aspak'];
 
   const visibleNavTabs = allNavTabs.filter(tab => allowedTabs.includes(tab.id));
 
