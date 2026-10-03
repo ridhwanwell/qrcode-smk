@@ -172,7 +172,8 @@ export function parseRekapWorkbook(buffer: ArrayBuffer): ParsedRekap {
     let headerIdx = -1;
     for (let r = 0; r < Math.min(grid.length, 30); r++) {
       const cells = grid[r].map(normHeader);
-      if (cells.some(c => c.includes('kode alat')) && cells.some(c => c.includes('seri'))) {
+      // Rekap ASPAK (ada "Kode Alat") atau Form Rekap Pekerjaan (hanya "Nama Alat") — keduanya wajib ada kolom No Seri
+      if (cells.some(c => c.includes('kode alat') || c.includes('nama alat')) && cells.some(c => c.includes('seri'))) {
         headerIdx = r;
         break;
       }
@@ -219,13 +220,22 @@ export function parseRekapWorkbook(buffer: ArrayBuffer): ParsedRekap {
         tglKalibrasi: normalizeDate(get(row, 'tglKalibrasi')),
         laik: normalizeLaik(get(row, 'laik')),
         nikPetugas: normalizeCode(get(row, 'nikPetugas')).replace(/\D/g, ''),
-        namaPetugas: sanitizeAspakText(get(row, 'namaPetugas')),
+        namaPetugas: sanitizeAspakText(get(row, 'namaPetugas')).replace(/\s*,\s*/g, ', '),
         tglSertifikat: normalizeDate(get(row, 'tglSertifikat')),
         metode: metodeRaw.toUpperCase(),
         sertifikatInternal: sanitizeAspakText(get(row, 'sertifikatInternal')),
         catatan: sanitizeAspakText(get(row, 'catatan')),
         sourceRow: r + 1,
       };
+
+      // Form rekap tanpa kolom Laik: status laik biasanya ditulis di Keterangan ("Laik Pakai" / "Tidak Laik Pakai")
+      if (colMap.laik === undefined && item.catatan) {
+        const fromKet = normalizeLaik(item.catatan);
+        if (fromKet) {
+          item.laik = fromKet;
+          if (/^(tidak\s*)?laik(\s*pakai)?$/i.test(item.catatan)) item.catatan = '';
+        }
+      }
 
       if (!item.metode && item.namaAlat) {
         const guess = guessMetodeFromName(item.namaAlat);
@@ -238,11 +248,12 @@ export function parseRekapWorkbook(buffer: ArrayBuffer): ParsedRekap {
     }
 
     const important: ColKey[] = ['kodeAlat', 'noSeri', 'tglKalibrasi', 'laik', 'tglSertifikat', 'namaPetugas', 'nikPetugas', 'metode'];
-    const missingColumns = important.filter(k => colMap[k] === undefined);
+    const laikFromKet = colMap.laik === undefined && rows.some(r => r.laik);
+    const missingColumns = important.filter(k => colMap[k] === undefined && !(k === 'laik' && laikFromKet));
     return { sheetName, rows, mappedColumns, missingColumns };
   }
 
-  throw new Error('Header tabel tidak ditemukan. Pastikan file rekap memiliki kolom "Kode Alat Kesehatan" dan "No seri".');
+  throw new Error('Header tabel tidak ditemukan. Pastikan file memiliki kolom "Nama Alat" (atau "Kode Alat Kesehatan") dan "No Seri".');
 }
 
 /* ------------------------------------------------------------------ */
@@ -258,6 +269,48 @@ export function applyRuangMap(rows: AspakRow[], map: Record<string, string>): As
     if (r.kodeRuang && r.kodeRuang !== '0') return r;
     const kode = map[lokasiKey(r.lokasi)];
     return kode ? { ...r, kodeRuang: kode, kodeRuangDariPemetaan: true } : r;
+  });
+}
+
+/** Kunci nama alat: huruf kecil tanpa spasi/tanda baca */
+export const namaAlatKey = (nama: string) => String(nama ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+/** Kunci petugas: nama tanpa gelar (bagian sebelum koma pertama) */
+export const petugasKey = (nama: string) => String(nama ?? '').split(',')[0].toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+export type TglSertifikatMode = 'sama' | 'plus1' | 'tanggal';
+
+/** Tambah n hari pada tanggal YYYY-MM-DD */
+export function addDays(iso: string, n: number): string {
+  if (!isValidDate(iso)) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/**
+ * Lengkapi kolom yang kosong (untuk Form Rekap yang tidak punya Kode Alat / NIK / Tgl Sertifikat).
+ * Hanya mengisi yang KOSONG (atau kode alat "0"); data yang sudah ada di file tidak ditimpa.
+ */
+export function applyLookups(
+  rows: AspakRow[],
+  opts: { alat: Record<string, string>; nik: Record<string, string>; tglMode: TglSertifikatMode; tglManual: string },
+): AspakRow[] {
+  return rows.map(r => {
+    let out = r;
+    if (!r.kodeAlat || r.kodeAlat === '0') {
+      const kode = opts.alat[namaAlatKey(r.namaAlat)];
+      if (kode) out = { ...out, kodeAlat: kode };
+    }
+    if (!r.nikPetugas && r.namaPetugas) {
+      const nik = opts.nik[petugasKey(r.namaPetugas)];
+      if (nik) out = { ...out, nikPetugas: nik };
+    }
+    if (!r.tglSertifikat) {
+      const tgl = opts.tglMode === 'tanggal' ? opts.tglManual
+        : opts.tglMode === 'plus1' ? addDays(r.tglKalibrasi, 1)
+        : r.tglKalibrasi;
+      if (tgl) out = { ...out, tglSertifikat: tgl };
+    }
+    return out;
   });
 }
 
@@ -436,7 +489,8 @@ function buildPetugasSheet(rows: AspakRow[]) {
   setCell(ws, 'C3', sCell('NIK', STYLE_OPTIONAL));
   const seen = new Map<string, string>();
   rows.forEach(r => {
-    if (r.namaPetugas && !seen.has(r.nikPetugas || r.namaPetugas)) seen.set(r.nikPetugas || r.namaPetugas, r.namaPetugas);
+    const key = r.nikPetugas || petugasKey(r.namaPetugas); // nama sama beda spasi/gelar dihitung 1 orang
+    if (r.namaPetugas && !seen.has(key)) seen.set(key, r.namaPetugas);
   });
   let i = 0;
   seen.forEach((nama, key) => {
