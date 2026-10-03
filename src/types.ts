@@ -221,6 +221,7 @@ export interface Hospital {
   contractStatus: 'Aktif' | 'Perlu Perpanjangan' | 'Selesai';
   activeDevicesCount: number;
   lastCalibrationDate?: string;
+  aspakId?: string; // ID RS di aplikasi ASPAK (sel B2 file isian ASPAK)
 }
 
 export interface Technician {
