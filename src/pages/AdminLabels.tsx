@@ -49,6 +49,7 @@ import { id } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 import CameraQrScanner from '../components/CameraQrScanner';
 import { readCertificateFromDrive, CertificateInfo } from '../utils/certificatePdfReader';
+import { BulkCertificateLinkModal } from '../components/BulkCertificateLinkModal';
 
 export interface FolderGroup {
   prefix: string;
@@ -125,6 +126,7 @@ export default function AdminLabels() {
   const [savingDrive, setSavingDrive] = useState(false);
   const [modalError, setModalError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [showBulkLink, setShowBulkLink] = useState(false);
 
   // Baca otomatis isi sertifikat dari link Google Drive (Nama Alat, Ruangan, Tanggal)
   const [certRead, setCertRead] = useState<{
@@ -1177,6 +1179,16 @@ export default function AdminLabels() {
             </div>
 
             <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowBulkLink(true)}
+                disabled={!!labelsLoadError}
+                className="px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                title="Tempel 1 link folder Google Drive berisi sertifikat; semua otomatis dicocokkan ke nomor label"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>Tautkan Sertifikat Massal</span>
+              </button>
               <Link
                 to={`/admin/generate?folder=${activeFolder.prefix}`}
                 className={cn(
@@ -1466,6 +1478,16 @@ export default function AdminLabels() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal: Tautkan Sertifikat Massal (folder Google Drive) */}
+      {showBulkLink && (
+        <BulkCertificateLinkModal
+          labels={labels}
+          defaultPrefix={activeFolder?.prefix}
+          onClose={() => setShowBulkLink(false)}
+          onDone={() => { fetchLabels(); }}
+        />
       )}
 
       {/* Modal: Tautkan Sertifikat (Link Google Drive) */}
