@@ -6,7 +6,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileSpreadsheet, Upload, Download, AlertTriangle, CheckCircle2, XCircle,
-  Building2, Save, ExternalLink, Info, Trash2, Wand2,
+  Building2, Save, ExternalLink, Info, Trash2, Wand2, MapPin,
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
@@ -14,8 +14,9 @@ import type { Hospital } from '../types';
 import {
   ASPAK_MAX_ROWS, AspakRow, AspakIssue, AspakFileFormat,
   parseRekapWorkbook, validateAspakRows, writeAspakFile, chunkAspakRows,
-  safeFileName, sanitizeAspakText,
+  safeFileName, sanitizeAspakText, applyRuangMap,
 } from '../utils/aspakExport';
+import { ASPAK_RUANG_LIST, ASPAK_RUANG_BY_KODE, guessKodeRuang, lokasiKey } from '../data/aspakRuangList';
 import { KMK_DEVICE_METODES, KMK_DRIVE_FOLDER_URL, toMetodeCode } from '../data/kmkMetodeList';
 
 interface Props {
@@ -36,6 +37,10 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
   const [format, setFormat] = useState<AspakFileFormat>('xls');
   const [busy, setBusy] = useState(false);
   const [onlyProblems, setOnlyProblems] = useState(false);
+  const [page, setPage] = useState(0); // 1 halaman = 90 baris = 1 file ASPAK
+  // Pemetaan Lokasi -> Kode Ruang yang dipilih/diubah pengguna (kunci = lokasiKey)
+  const [ruangMap, setRuangMap] = useState<Record<string, string>>({});
+  const [onlyUnmapped, setOnlyUnmapped] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const toast = (m: string) => (showToast ? showToast(m) : alert(m));
@@ -46,7 +51,52 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
     [hospitals],
   );
 
-  const issues = useMemo(() => validateAspakRows(rows), [rows]);
+  /* ---------------- Pemetaan Lokasi -> Kode Ruang ---------------- */
+  const lokasiList = useMemo(() => {
+    const m = new Map<string, { key: string; label: string; count: number; needsMap: number }>();
+    rows.forEach(r => {
+      const key = lokasiKey(r.lokasi);
+      if (!key) return;
+      const e = m.get(key) || { key, label: r.lokasi, count: 0, needsMap: 0 };
+      e.count++;
+      if (!r.kodeRuang || r.kodeRuang === '0') e.needsMap++;
+      m.set(key, e);
+    });
+    return [...m.values()].sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  // Urutan prioritas: pilihan pengguna / tersimpan di data RS  >  saran otomatis
+  const effectiveMap = useMemo(() => {
+    const out: Record<string, string> = {};
+    lokasiList.forEach(l => {
+      out[l.key] = l.key in ruangMap ? ruangMap[l.key] : guessKodeRuang(l.label);
+    });
+    return out;
+  }, [lokasiList, ruangMap]);
+
+  const effectiveRows = useMemo(() => applyRuangMap(rows, effectiveMap), [rows, effectiveMap]);
+  const mappedLokasiCount = lokasiList.filter(l => effectiveMap[l.key]).length;
+  const savedMap = hospital?.aspakRuangMap || {};
+  const mapDirty = lokasiList.some(l => effectiveMap[l.key] && savedMap[l.key] !== effectiveMap[l.key]);
+
+  const saveRuangMap = async () => {
+    if (!hospital) { toast('Pilih rumah sakit dulu agar pemetaan bisa disimpan.'); return; }
+    const merged: Record<string, string> = { ...savedMap };
+    lokasiList.forEach(l => {
+      const kode = effectiveMap[l.key];
+      if (kode) merged[l.key] = kode; else delete merged[l.key];
+    });
+    await onUpdateHospital({ ...hospital, aspakRuangMap: merged });
+    setRuangMap(merged);
+    toast(`Pemetaan ${Object.keys(merged).length} lokasi untuk ${hospital.name} tersimpan.`);
+  };
+
+  const ruangOptions = useMemo(
+    () => ASPAK_RUANG_LIST.filter(r => !r.nonaktif),
+    [],
+  );
+
+  const issues = useMemo(() => validateAspakRows(effectiveRows), [effectiveRows]);
   const issuesByRow = useMemo(() => {
     const m = new Map<number, AspakIssue[]>();
     issues.forEach(i => m.set(i.rowIndex, [...(m.get(i.rowIndex) || []), i]));
@@ -63,6 +113,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
     const h = hospitals.find(x => x.id === id);
     setAspakId(h?.aspakId || '');
     setNamaRs(h?.name || '');
+    setRuangMap(h?.aspakRuangMap || {});
   };
 
   const saveAspakId = async () => {
@@ -78,11 +129,16 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
     if (file.size > MAX_UPLOAD_BYTES) { toast('Ukuran file maksimal 10 MB.'); return; }
     setBusy(true);
     try {
-      const parsed = parseRekapWorkbook(await file.arrayBuffer());
+      const buffer = await file.arrayBuffer();
+      // beri jeda agar tulisan "Memproses…" sempat tampil sebelum file dibaca
+      await new Promise(r => setTimeout(r, 30));
+      const parsed = parseRekapWorkbook(buffer);
       if (!parsed.rows.length) {
         toast('Tidak ada data alat yang terbaca. Pastikan ada kolom "Kode Alat" dan "No Seri".');
       }
       setRows(parsed.rows);
+      setPage(0);
+      setOnlyProblems(false);
       setFileName(file.name);
       setSheetInfo({ sheet: parsed.sheetName, missing: parsed.missingColumns });
     } catch (e: any) {
@@ -98,7 +154,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
 
   const removeRow = (idx: number) => setRows(prev => prev.filter((_, i) => i !== idx));
 
-  const reset = () => { setRows([]); setFileName(''); setSheetInfo(null); };
+  const reset = () => { setRows([]); setFileName(''); setSheetInfo(null); setPage(0); };
 
   /* ---------------- Download ---------------- */
   const download = async () => {
@@ -112,7 +168,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
     try {
       const rs = sanitizeAspakText(namaRs);
       const base = `ASPAK_${safeFileName(rs)}`;
-      const chunks = chunkAspakRows(rows);
+      const chunks = chunkAspakRows(effectiveRows);
       if (chunks.length === 1) {
         saveAs(writeAspakFile(chunks[0], aspakId.trim(), rs, format), `${base}.${format}`);
       } else {
@@ -130,9 +186,18 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
     }
   };
 
-  const visibleRows = rows
-    .map((r, i) => ({ r, i }))
-    .filter(({ i }) => !onlyProblems || issuesByRow.has(i));
+  // Hanya 90 baris yang digambar sekaligus supaya browser tidak hang untuk file ratusan alat
+  const filteredRows = useMemo(
+    () => effectiveRows.map((r, i) => ({ r, i })).filter(({ i }) => !onlyProblems || issuesByRow.has(i)),
+    [effectiveRows, onlyProblems, issuesByRow],
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / ASPAK_MAX_ROWS));
+  const safePage = Math.min(page, pageCount - 1);
+  const visibleRows = filteredRows.slice(safePage * ASPAK_MAX_ROWS, (safePage + 1) * ASPAK_MAX_ROWS);
+  const metodeTitle = useMemo(
+    () => new Map(KMK_DEVICE_METODES.map(m => [toMetodeCode(m.no), m.title])),
+    [],
+  );
 
   const cellCls = (i: number, field: keyof AspakRow) => {
     const list = issuesByRow.get(i)?.filter(x => x.field === field) || [];
@@ -216,14 +281,97 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
         )}
       </section>
 
-      {/* Langkah 3: Cek & Download */}
+      {/* Langkah 3: Pemetaan Lokasi -> Kode Ruang ASPAK */}
+      {rows.length > 0 && lokasiList.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="flex items-center gap-2 font-semibold text-slate-800">
+              <MapPin className="h-5 w-5 text-[#1C658C]" /> 3. Pemetaan Lokasi → Kode Ruang ASPAK
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className={`rounded-full px-3 py-1 ${mappedLokasiCount === lokasiList.length ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                {mappedLokasiCount} dari {lokasiList.length} lokasi sudah punya kode
+              </span>
+              <button onClick={saveRuangMap} disabled={!hospital || !mapDirty}
+                className="flex items-center gap-1 rounded-xl bg-[#1C658C] px-3 py-1.5 text-white disabled:opacity-40"
+                title={hospital ? 'Simpan supaya upload berikutnya untuk RS ini terisi otomatis' : 'Pilih RS dulu'}>
+                <Save className="h-3.5 w-3.5" /> Simpan pemetaan ke data RS
+              </button>
+            </div>
+          </div>
+          <p className="mb-3 text-xs text-slate-600">
+            Kode ruang diisi berdasarkan kolom <b>Lokasi</b> untuk alat yang kode ruangnya masih kosong/0.
+            Ketik kode atau nama ruang (mis. "Bangsal", "Operasi") lalu pilih dari daftar.
+            Tanda <Wand2 className="inline h-3 w-3 text-amber-600" /> = saran otomatis, mohon dicek.
+          </p>
+
+          <datalist id="aspak-ruang-options">
+            {ruangOptions.map(r => <option key={r.kode} value={r.kode}>{r.nama} — {r.kategori}</option>)}
+          </datalist>
+
+          <label className="mb-2 flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={onlyUnmapped} onChange={e => setOnlyUnmapped(e.target.checked)} />
+            Tampilkan hanya lokasi yang belum punya kode
+          </label>
+
+          <div className="max-h-[360px] overflow-auto rounded-xl border border-slate-200">
+            <table className="min-w-full text-xs">
+              <thead className="sticky top-0 z-10 bg-[#398AB9] text-white">
+                <tr>
+                  {['Lokasi di file', 'Jumlah alat', 'Kode Ruang ASPAK', 'Nama ruang ASPAK', 'Status'].map(h =>
+                    <th key={h} className="whitespace-nowrap px-2 py-2 text-left font-medium">{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {lokasiList
+                  .filter(l => !onlyUnmapped || !effectiveMap[l.key])
+                  .map(l => {
+                    const kode = effectiveMap[l.key] || '';
+                    const ruang = kode ? ASPAK_RUANG_BY_KODE.get(kode) : undefined;
+                    const isSaved = !!kode && savedMap[l.key] === kode;
+                    const isGuess = !!kode && !(l.key in ruangMap);
+                    return (
+                      <tr key={l.key} className="border-t border-slate-100">
+                        <td className="px-2 py-1.5 font-medium text-slate-800">{l.label}</td>
+                        <td className="px-2 py-1.5 text-slate-600">
+                          {l.count}{l.needsMap < l.count && <span className="text-slate-400"> ({l.count - l.needsMap} sudah ada kode di file)</span>}
+                        </td>
+                        <td className="px-1 py-1">
+                          <div className="flex items-center gap-1">
+                            {isGuess && <Wand2 className="h-3 w-3 shrink-0 text-amber-600" aria-label="saran otomatis" />}
+                            <input list="aspak-ruang-options" value={kode} placeholder="cari kode/nama…"
+                              onChange={e => setRuangMap(prev => ({ ...prev, [l.key]: e.target.value.replace(/\D/g, '') }))}
+                              className={`w-28 rounded border px-1 py-0.5 font-mono ${!kode ? 'border-amber-400 bg-amber-50' : kode && !ruang ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
+                          </div>
+                        </td>
+                        <td className="max-w-[320px] px-2 py-1.5">
+                          {ruang ? <>{ruang.nama} <span className="text-slate-400">· {ruang.kategori}</span></>
+                            : kode ? <span className="text-red-600">Kode tidak ada di daftar ruang ASPAK</span>
+                            : <span className="text-amber-700">Belum diisi</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-1.5">
+                          {isSaved ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">Tersimpan</span>
+                            : isGuess ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Saran</span>
+                            : kode ? <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">Diubah</span>
+                            : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Langkah 4: Cek & Download */}
       <AnimatePresence>
         {rows.length > 0 && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
-                <CheckCircle2 className="h-5 w-5 text-[#1C658C]" /> 3. Cek Data & Download
+                <CheckCircle2 className="h-5 w-5 text-[#1C658C]" /> 4. Cek Data & Download
               </h3>
               <div className="flex flex-wrap gap-2 text-xs">
                 <span className="rounded-full bg-slate-100 px-3 py-1">{rows.length} alat → {fileCount} file</span>
@@ -245,7 +393,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
 
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
               <label className="flex items-center gap-2">
-                <input type="checkbox" checked={onlyProblems} onChange={e => setOnlyProblems(e.target.checked)} />
+                <input type="checkbox" checked={onlyProblems} onChange={e => { setOnlyProblems(e.target.checked); setPage(0); }} />
                 Tampilkan hanya baris bermasalah
               </label>
               <a href={KMK_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer"
@@ -253,6 +401,29 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
                 Lihat dokumen KMK (Google Drive) <ExternalLink className="h-3 w-3" />
               </a>
             </div>
+
+            {/* Satu daftar metode dipakai bersama oleh semua baris (ringan untuk browser) */}
+            <datalist id="kmk-metode-options">
+              {KMK_DEVICE_METODES.map(m => {
+                const code = toMetodeCode(m.no);
+                return <option key={code} value={code}>{m.title}</option>;
+              })}
+            </datalist>
+
+            {pageCount > 1 && (
+              <div className="mb-2 flex flex-wrap items-center gap-1 text-xs">
+                <span className="mr-1 text-slate-600">{onlyProblems ? 'Halaman:' : 'File:'}</span>
+                {Array.from({ length: pageCount }, (_, p) => (
+                  <button key={p} onClick={() => setPage(p)}
+                    className={`rounded-lg border px-2.5 py-1 ${p === safePage ? 'border-[#1C658C] bg-[#1C658C] text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
+                    {p + 1}
+                  </button>
+                ))}
+                <span className="ml-2 text-slate-500">
+                  baris {safePage * ASPAK_MAX_ROWS + 1}–{Math.min((safePage + 1) * ASPAK_MAX_ROWS, filteredRows.length)} dari {filteredRows.length}
+                </span>
+              </div>
+            )}
 
             <div className="max-h-[480px] overflow-auto rounded-xl border border-slate-200">
               <table className="min-w-full text-xs">
@@ -273,7 +444,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
                         <td className={`px-2 py-1.5 ${cellCls(i, 'noSeri')}`}>{r.noSeri}</td>
                         <td className="max-w-[120px] truncate px-2 py-1.5">{[r.merk, r.tipe].filter(Boolean).join(' / ')}</td>
                         <td className={`px-1 py-1 ${cellCls(i, 'kodeRuang')}`}>
-                          <input value={r.kodeRuang} onChange={e => updateRow(i, { kodeRuang: e.target.value.replace(/[^\d]/g, '') })}
+                          <input value={r.kodeRuang} title={ASPAK_RUANG_BY_KODE.get(r.kodeRuang)?.nama || ''} onChange={e => updateRow(i, { kodeRuang: e.target.value.replace(/[^\d]/g, '') })}
                             className="w-20 rounded border border-slate-200 bg-transparent px-1 py-0.5" />
                         </td>
                         <td className={`whitespace-nowrap px-2 py-1.5 ${cellCls(i, 'tglKalibrasi')}`}>{r.tglKalibrasi}</td>
@@ -288,16 +459,10 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
                         <td className={`px-1 py-1 ${cellCls(i, 'metode')}`}>
                           <div className="flex items-center gap-1">
                             {r.metodeOtomatis && <Wand2 className="h-3 w-3 shrink-0 text-amber-600" aria-label="diisi otomatis" />}
-                            <select value={r.metode} onChange={e => updateRow(i, { metode: e.target.value, metodeOtomatis: false })}
-                              className="max-w-[200px] rounded border border-slate-200 bg-transparent px-1 py-0.5">
-                              <option value="">— pilih metode KMK —</option>
-                              {r.metode && !KMK_DEVICE_METODES.some(m => toMetodeCode(m.no) === r.metode) &&
-                                <option value={r.metode}>{r.metode} (dari file)</option>}
-                              {KMK_DEVICE_METODES.map(m => {
-                                const code = toMetodeCode(m.no);
-                                return <option key={code} value={code}>{code} — {m.title}</option>;
-                              })}
-                            </select>
+                            <input list="kmk-metode-options" value={r.metode} placeholder="KMK-MK-000-0"
+                              title={metodeTitle.get(r.metode) || 'Ketik nomor MK atau pilih dari daftar'}
+                              onChange={e => updateRow(i, { metode: e.target.value.toUpperCase().replace(/[^A-Z0-9\/-]/g, ''), metodeOtomatis: false })}
+                              className="w-32 rounded border border-slate-200 bg-transparent px-1 py-0.5 font-mono" />
                           </div>
                         </td>
                         <td className="max-w-[220px] px-2 py-1.5">
