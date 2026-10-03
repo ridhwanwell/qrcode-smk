@@ -165,10 +165,21 @@ export function createApp() {
     max: 200,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: "Terlalu banyak permintaan dari IP ini, coba lagi dalam beberapa menit." }
+    message: { error: "Terlalu banyak permintaan dari IP ini, coba lagi dalam beberapa menit." },
+    // Pembacaan sertifikat massal punya batas sendiri (lihat certificateReadLimiter)
+    skip: (req) => req.path.startsWith('/drive-certificate/') || req.path.startsWith('/drive-folder/')
   });
 
   app.use("/api/", apiLimiter);
+
+  // Batas khusus baca sertifikat dari Google Drive (tautkan massal 100+ sertifikat sekaligus)
+  const certificateReadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 1500,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Terlalu banyak sertifikat dibaca dalam waktu singkat. Tunggu beberapa menit lalu lanjutkan." }
+  });
 
   // Dedicated Rate Limiting for Public QR Code Scan: 60 requests per minute per IP
   const publicScanLimiter = rateLimit({
@@ -804,7 +815,7 @@ export function createApp() {
   // --- API: AMBIL PDF SERTIFIKAT DARI GOOGLE DRIVE (untuk isi otomatis Nama Alat, Ruangan, Tanggal) ---
   // Browser tidak bisa mengunduh langsung dari Google Drive (diblokir CORS), jadi server
   // mengambilkan file-nya. Hanya ke drive.google.com dengan ID file yang tervalidasi.
-  app.get("/api/drive-certificate/:fileId", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+  app.get("/api/drive-certificate/:fileId", certificateReadLimiter, requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     const MAX_BYTES = 4 * 1024 * 1024; // batas respons serverless ±4,5 MB
     try {
       const fileId = String(req.params.fileId || '');
@@ -856,6 +867,66 @@ export function createApp() {
       }
       console.error("API error in GET /api/drive-certificate/:fileId:", err);
       res.status(500).json({ error: "Gagal mengambil PDF sertifikat dari Google Drive" });
+    }
+  });
+
+  // --- API: DAFTAR FILE PDF DI FOLDER GOOGLE DRIVE (untuk tautkan sertifikat massal) ---
+  // Butuh env GOOGLE_DRIVE_API_KEY (Google Cloud > Drive API > API key). Folder harus
+  // dibagikan "Siapa saja yang memiliki link".
+  app.get("/api/drive-folder/:folderId", certificateReadLimiter, requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+    try {
+      const folderId = String(req.params.folderId || '');
+      if (!/^[A-Za-z0-9_-]{10,100}$/.test(folderId)) {
+        return res.status(400).json({ error: "ID folder Google Drive tidak valid" });
+      }
+      const apiKey = process.env.GOOGLE_DRIVE_API_KEY;
+      if (!apiKey) {
+        return res.status(501).json({
+          code: 'NO_API_KEY',
+          error: "API key Google Drive belum diatur di server (GOOGLE_DRIVE_API_KEY). Sementara ini, tempel daftar link file sertifikat."
+        });
+      }
+
+      const files: { id: string; name: string; size: number; modifiedTime: string }[] = [];
+      let pageToken = '';
+      for (let page = 0; page < 10; page++) { // maks 10 x 1000 file
+        const params = new URLSearchParams({
+          q: `'${folderId}' in parents and trashed = false and mimeType = 'application/pdf'`,
+          fields: 'nextPageToken, files(id, name, size, modifiedTime)',
+          pageSize: '1000',
+          orderBy: 'name',
+          supportsAllDrives: 'true',
+          includeItemsFromAllDrives: 'true',
+          key: apiKey
+        });
+        if (pageToken) params.set('pageToken', pageToken);
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`);
+        const body: any = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          const reason = body?.error?.errors?.[0]?.reason || body?.error?.status || '';
+          console.error("[Drive Folder] Google API error:", r.status, reason, body?.error?.message);
+          if (r.status === 404) {
+            return res.status(404).json({ error: "Folder tidak ditemukan atau belum dibagikan 'Siapa saja yang memiliki link'." });
+          }
+          if (r.status === 403) {
+            return res.status(403).json({ error: "Akses folder ditolak Google. Pastikan folder dibagikan publik dan Drive API sudah diaktifkan untuk API key ini." });
+          }
+          return res.status(502).json({ error: "Gagal membaca isi folder Google Drive" });
+        }
+        (body.files || []).forEach((f: any) => files.push({
+          id: f.id,
+          name: f.name,
+          size: Number(f.size) || 0,
+          modifiedTime: f.modifiedTime || ''
+        }));
+        pageToken = body.nextPageToken || '';
+        if (!pageToken) break;
+      }
+
+      res.json({ files });
+    } catch (err: any) {
+      console.error("API error in GET /api/drive-folder/:folderId:", err);
+      res.status(500).json({ error: "Gagal membaca isi folder Google Drive" });
     }
   });
 
