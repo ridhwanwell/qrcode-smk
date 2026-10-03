@@ -48,6 +48,7 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 import CameraQrScanner from '../components/CameraQrScanner';
+import { readCertificateFromDrive, CertificateInfo } from '../utils/certificatePdfReader';
 
 export interface FolderGroup {
   prefix: string;
@@ -124,6 +125,14 @@ export default function AdminLabels() {
   const [savingDrive, setSavingDrive] = useState(false);
   const [modalError, setModalError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+
+  // Baca otomatis isi sertifikat dari link Google Drive (Nama Alat, Ruangan, Tanggal)
+  const [certRead, setCertRead] = useState<{
+    status: 'idle' | 'reading' | 'done' | 'error';
+    fileId: string;
+    info?: CertificateInfo;
+    error?: string;
+  }>({ status: 'idle', fileId: '' });
 
   // State for Editing Folder Hospital Name
   const [editingFolderRs, setEditingFolderRs] = useState<{ prefix: string; currentNamaRs: string } | null>(null);
@@ -458,9 +467,12 @@ export default function AdminLabels() {
     setCalibratedAtInput(label.calibratedAt || '');
     setValidUntilInput(label.validUntil || '');
 
-    setDriveUrlInput(label.pdfOriginalUrl || label.pdfDriveUrl || (typeof label.pdfUrl === 'string' && label.pdfUrl.includes('drive.google.com') ? label.pdfUrl : ''));
+    const existingUrl = label.pdfOriginalUrl || label.pdfDriveUrl || (typeof label.pdfUrl === 'string' && label.pdfUrl.includes('drive.google.com') ? label.pdfUrl : '');
+    setDriveUrlInput(existingUrl);
     setDocNameInput(label.namaAlat || label.pdfName || '');
     setRuanganInput(label.ruangan || '');
+    // Link lama tidak dibaca ulang otomatis agar isian yang sudah ada tidak tertimpa
+    setCertRead({ status: 'idle', fileId: extractGoogleDriveFileId(existingUrl) || '' });
   };
 
   const closeLinkModal = () => {
@@ -472,7 +484,25 @@ export default function AdminLabels() {
     setRuanganInput('');
     setCalibratedAtInput('');
     setValidUntilInput('');
+    setCertRead({ status: 'idle', fileId: '' });
   };
+
+  /** Ambil PDF sertifikat dari Drive lalu isi otomatis Nama Alat, Ruangan, dan tanggal. */
+  const readCertificate = useCallback(async (fileId: string) => {
+    setCertRead({ status: 'reading', fileId });
+    try {
+      const info = await readCertificateFromDrive(fileId);
+      setCertRead(prev => (prev.fileId === fileId ? { status: 'done', fileId, info } : prev));
+      if (info.namaAlat) setDocNameInput(info.namaAlat);
+      if (info.ruangan) setRuanganInput(info.ruangan);
+      if (info.tanggalKalibrasi) setCalibratedAtInput(info.tanggalKalibrasi);
+      if (info.kalibrasiUlang) setValidUntilInput(info.kalibrasiUlang);
+    } catch (err: any) {
+      setCertRead(prev => (prev.fileId === fileId
+        ? { status: 'error', fileId, error: err?.message || 'Gagal membaca sertifikat' }
+        : prev));
+    }
+  }, []);
 
   const handleSaveGoogleDrive = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -787,6 +817,15 @@ export default function AdminLabels() {
   };
 
   const driveIdDetected = extractGoogleDriveFileId(driveUrlInput);
+
+  // Link baru ditempel -> baca sertifikat otomatis (jeda singkat supaya tidak membaca saat masih mengetik)
+  useEffect(() => {
+    if (!activeModalLabel || !driveIdDetected || driveIdDetected === certRead.fileId) return;
+    const t = setTimeout(() => readCertificate(driveIdDetected), 600);
+    return () => clearTimeout(t);
+  }, [activeModalLabel, driveIdDetected, certRead.fileId, readCertificate]);
+
+  const normalizeText = (v?: string | null) => (v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   // Total summary statistics
   const totalCertificatesAttached = useMemo(() => {
@@ -1483,6 +1522,69 @@ export default function AdminLabels() {
                       <CheckCircle2 className="w-3.5 h-3.5 mr-1 shrink-0" />
                       ID File Terdeteksi: <span className="font-mono font-bold ml-1">{driveIdDetected}</span>
                     </p>
+                  )}
+
+                  {/* Hasil baca otomatis sertifikat */}
+                  {driveIdDetected && certRead.status === 'reading' && (
+                    <p className="text-[11px] text-blue-700 flex items-center mt-2">
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Membaca isi sertifikat (Nama Alat, Ruangan, Tanggal)...
+                    </p>
+                  )}
+                  {driveIdDetected && certRead.status === 'error' && (
+                    <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-1">
+                      <p className="font-semibold">Isi sertifikat tidak bisa dibaca otomatis. Silakan isi manual.</p>
+                      <p>{certRead.error}</p>
+                      <button type="button" onClick={() => readCertificate(driveIdDetected)} className="font-bold text-amber-800 underline">
+                        Coba baca lagi
+                      </button>
+                    </div>
+                  )}
+                  {driveIdDetected && certRead.status === 'done' && certRead.info && (() => {
+                    const info = certRead.info;
+                    const noMismatch = !!info.nomorSertifikat && normalizeText(info.nomorSertifikat) !== normalizeText(activeModalLabel.noLabel);
+                    const rsMismatch = !!info.namaPelanggan && !!activeModalLabel.namaRs &&
+                      !normalizeText(info.namaPelanggan).includes(normalizeText(activeModalLabel.namaRs)) &&
+                      !normalizeText(activeModalLabel.namaRs).includes(normalizeText(info.namaPelanggan));
+                    return (
+                      <div className="mt-2 space-y-1.5">
+                        {noMismatch && (
+                          <div className="p-2.5 bg-rose-50 border border-rose-300 rounded-lg text-[11px] text-rose-800 font-semibold flex items-start gap-1.5">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              Nomor sertifikat di PDF (<span className="font-mono">{info.nomorSertifikat}</span>) BERBEDA dengan nomor label ini
+                              (<span className="font-mono">{activeModalLabel.noLabel}</span>). Pastikan link sertifikat tidak tertukar.
+                            </span>
+                          </div>
+                        )}
+                        {rsMismatch && (
+                          <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-[11px] text-amber-900 flex items-start gap-1.5">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>Nama pelanggan di PDF "{info.namaPelanggan}" berbeda dengan RS folder ini "{activeModalLabel.namaRs}".</span>
+                          </div>
+                        )}
+                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-900">
+                          <p className="font-bold flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5" /> Terisi otomatis dari sertifikat — periksa sebelum menyimpan
+                          </p>
+                          <p className="mt-0.5 text-emerald-800">
+                            No. Sertifikat <span className="font-mono font-semibold">{info.nomorSertifikat || '-'}</span>
+                            {info.namaPelanggan ? ` • ${info.namaPelanggan}` : ''}
+                            {info.merek ? ` • ${info.merek}` : ''}{info.tipe ? ` ${info.tipe}` : ''}
+                            {info.nomorSeri ? ` • SN ${info.nomorSeri}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {driveIdDetected && certRead.status === 'idle' && certRead.fileId === driveIdDetected && (
+                    <button
+                      type="button"
+                      onClick={() => readCertificate(driveIdDetected)}
+                      className="mt-2 text-[11px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> Baca ulang Nama Alat, Ruangan & Tanggal dari sertifikat
+                    </button>
                   )}
                 </div>
 
