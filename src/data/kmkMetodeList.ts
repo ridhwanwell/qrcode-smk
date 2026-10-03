@@ -101,7 +101,7 @@ export const KMK_METODE_LIST: KmkMetode[] = [
   { no: '080', title: 'PATIENT COOLING UNIT', keywords: ['patient cooling', 'cooling unit'] },
   { no: '081', title: 'PERITONEAL DIALYSIS', keywords: ['peritoneal dialysis', 'capd', 'apd'] },
   { no: '082', title: 'PHACO EMULSIFICATION', keywords: ['phaco', 'pacho', 'fakoemulsifikasi'] },
-  { no: '083', title: 'PHOTO TERAPHY', keywords: ['fototerapi', 'phototherapy', 'photo therapy', 'blue light'] },
+  { no: '083', title: 'PHOTO TERAPHY', keywords: ['fototerapi', 'phototherapy', 'photo therapy', 'phototerapy', 'photo terapi', 'fototherapy', 'blue light'] },
   { no: '084', title: 'PLATELET AGITATOR INCUBATOR', keywords: ['platelet agitator', 'platelet inkubator', 'platelet incubator'] },
   { no: '085', title: 'PULSE OXYMETER', keywords: ['pulse oxymeter', 'pulse oximeter', 'oximeter', 'oxymeter', 'spo2'] },
   { no: '086', title: 'RADIO FREQUENCY ABLATOR', keywords: ['radiofrequency ablation', 'rfa', 'ablator'] },
