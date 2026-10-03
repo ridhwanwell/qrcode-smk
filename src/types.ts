@@ -393,6 +393,9 @@ export interface BapDocument {
   realizationSource?: 'pdf_upload';  // Realisasi diisi dari upload PDF BAP yang sudah ditandatangani
   realizationFileName?: string;      // Nama file PDF BAP yang diupload
   realizationUploadedAt?: string;    // Waktu upload PDF BAP
+  nonPoRealizationSource?: 'pdf_upload'; // Alat Non PO diisi dari upload PDF BAP Non PO
+  nonPoRealizationFileName?: string;
+  nonPoRealizationUploadedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
