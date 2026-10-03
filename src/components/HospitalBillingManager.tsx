@@ -13,7 +13,9 @@ import {
   Hash, 
   UserCheck, 
   ExternalLink,
-  DollarSign
+  DollarSign,
+  FileUp,
+  Loader2
 } from 'lucide-react';
 import { SphQuotation, SphDealData, BapDocument } from '../types';
 import { formatRupiah, formatIndonesianDate } from '../utils/helpers';
@@ -25,6 +27,8 @@ import {
   downloadAllDealDocumentsZip 
 } from '../utils/dealPdfExport';
 import { SphDealModal } from './SphDealModal';
+import { BapPdfImportModal } from './BapPdfImportModal';
+import { readBapPdf, ParsedBapPdf } from '../utils/bapPdfImport';
 
 interface HospitalBillingManagerProps {
   sphList: SphQuotation[];
@@ -32,6 +36,8 @@ interface HospitalBillingManagerProps {
   onSaveDealData: (sphId: string, dealData: SphDealData) => void;
   onNavigateToSchedules?: () => void;
   onOpenBapModal?: (sph: SphQuotation) => void;
+  /** Simpan hasil upload PDF BAP (realisasi) ke Form BAP. isNew = BAP belum pernah dibuat. */
+  onApplyBapPdf?: (updatedBap: BapDocument, isNew: boolean) => void;
 }
 
 export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
@@ -39,11 +45,42 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
   bapDocuments = [],
   onSaveDealData,
   onNavigateToSchedules,
-  onOpenBapModal
+  onOpenBapModal,
+  onApplyBapPdf
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dealModalSph, setDealModalSph] = useState<SphQuotation | null>(null);
   const [statusFilter, setStatusFilter] = useState<'deal' | 'all'>('deal');
+
+  // Upload PDF BAP -> sesuaikan harga BO dengan realisasi pengerjaan
+  const [readingPdfSphId, setReadingPdfSphId] = useState<string | null>(null);
+  const [pdfImport, setPdfImport] = useState<{ sph: SphQuotation; parsed: ParsedBapPdf; fileName: string } | null>(null);
+
+  const handleBapPdfSelected = async (sph: SphQuotation, file?: File | null) => {
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+      alert('File harus berformat PDF.');
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      alert('Ukuran PDF terlalu besar (maksimal 15 MB).');
+      return;
+    }
+    setReadingPdfSphId(sph.id);
+    try {
+      const parsed = await readBapPdf(file);
+      if (parsed.rows.length === 0) {
+        alert(`PDF tidak bisa dibaca sebagai BAP.\n\n${parsed.warnings.join('\n')}`);
+        return;
+      }
+      setPdfImport({ sph, parsed, fileName: file.name });
+    } catch (err) {
+      console.error('Gagal membaca PDF BAP:', err);
+      alert('Gagal membaca PDF BAP. Pastikan file adalah PDF BAP hasil export (bukan hasil scan).');
+    } finally {
+      setReadingPdfSphId(null);
+    }
+  };
 
   // Filter SPH list
   const filteredSph = sphList.filter(sph => {
@@ -345,6 +382,29 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {onApplyBapPdf && (
+                      <label
+                        className={`px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-900 border border-purple-300 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs ${readingPdfSphId ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
+                        title="Upload PDF BAP yang sudah ditandatangani. Harga BO/FP/KWP otomatis mengikuti Volume Realisasi."
+                      >
+                        {readingPdfSphId === sph.id
+                          ? <Loader2 className="w-3.5 h-3.5 text-purple-700 animate-spin" />
+                          : <FileUp className="w-3.5 h-3.5 text-purple-700" />}
+                        <span>{readingPdfSphId === sph.id ? 'Membaca PDF...' : 'Upload PDF BAP'}</span>
+                        <input
+                          type="file"
+                          accept="application/pdf,.pdf"
+                          className="hidden"
+                          disabled={readingPdfSphId !== null}
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            e.target.value = '';
+                            handleBapPdfSelected(sph, f);
+                          }}
+                        />
+                      </label>
+                    )}
+
                     {onOpenBapModal && (
                       <button
                         type="button"
@@ -377,6 +437,21 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
           })
         )}
       </div>
+
+      {/* Modal Pratinjau Upload PDF BAP */}
+      {pdfImport && onApplyBapPdf && (
+        <BapPdfImportModal
+          sph={pdfImport.sph}
+          bap={bapDocuments.find(b => b.sphId === pdfImport.sph.id || b.sphNumber === pdfImport.sph.sphNumber) || null}
+          parsed={pdfImport.parsed}
+          fileName={pdfImport.fileName}
+          onClose={() => setPdfImport(null)}
+          onApply={(updatedBap, isNew) => {
+            onApplyBapPdf(updatedBap, isNew);
+            setPdfImport(null);
+          }}
+        />
+      )}
 
       {/* Modal Parameter Deal */}
       {dealModalSph && (
