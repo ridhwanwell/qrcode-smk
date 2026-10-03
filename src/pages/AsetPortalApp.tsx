@@ -20,6 +20,7 @@ import { SeliaDashboard } from '../components/SeliaDashboard';
 import { LabelModuleView } from '../components/LabelModuleView';
 import { HospitalBillingManager } from '../components/HospitalBillingManager';
 import { CheckSyncModal } from '../components/CheckSyncModal';
+import { AspakExportManager } from '../components/AspakExportManager';
 
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -84,7 +85,7 @@ function AsetPortalMain() {
   const { user, isAdmin, role, logout } = useAuth();
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'sph' | 'labels' | 'schedules' | 'billing' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'sph' | 'labels' | 'schedules' | 'billing' | 'selia' | 'calibrators' | 'tablets' | 'financial' | 'masters' | 'templates' | 'aspak'>('dashboard');
   const [slideDirection, setSlideDirection] = useState<number>(1);
 
   // Auto-redirect to default permitted tab if current activeTab is restricted for the logged-in role
@@ -93,7 +94,7 @@ function AsetPortalMain() {
       setActiveTab('sph');
     } else if (role === 'admin_keuangan' && !['dashboard', 'labels', 'schedules', 'sph', 'billing', 'financial', 'masters'].includes(activeTab)) {
       setActiveTab('dashboard');
-    } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'masters'].includes(activeTab)) {
+    } else if (role === 'admin_teknik' && !['dashboard', 'labels', 'schedules', 'billing', 'selia', 'calibrators', 'tablets', 'masters', 'aspak'].includes(activeTab)) {
       setActiveTab('dashboard');
     }
   }, [role, activeTab]);
@@ -1271,6 +1272,22 @@ function AsetPortalMain() {
               transition={{ duration: 0.2 }}
             >
               <TemplateSettings />
+            </motion.div>
+          )}
+
+          {activeTab === 'aspak' && (
+            <motion.div
+              key="tab-aspak"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <AspakExportManager
+                hospitals={effectiveHospitals}
+                onUpdateHospital={(h) => updateHospital(h)}
+                showToast={showToast}
+              />
             </motion.div>
           )}
 
