@@ -1,5 +1,6 @@
 import XLSX from 'xlsx-js-style';
 import { guessMetodeFromName, toMetodeCode, VALID_METODE_CODES } from '../data/kmkMetodeList';
+import { ASPAK_RUANG_BY_KODE, lokasiKey } from '../data/aspakRuangList';
 
 /**
  * Generator file "Isian Data Hasil Kalibrasi" untuk import ke aplikasi ASPAK.
@@ -53,6 +54,7 @@ export interface AspakRow {
   sertifikatInternal: string;
   catatan: string;
   metodeOtomatis?: boolean; // true bila metode diisi otomatis dari nama alat
+  kodeRuangDariPemetaan?: boolean; // true bila kode ruang diisi dari pemetaan Lokasi -> Kode Ruang
   sourceRow?: number;       // nomor baris di file rekap (untuk pesan error)
 }
 
@@ -247,6 +249,18 @@ export function parseRekapWorkbook(buffer: ArrayBuffer): ParsedRekap {
 /* Validasi                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Isi kode ruang dari pemetaan Lokasi -> Kode Ruang, HANYA untuk baris yang kode ruangnya kosong/0.
+ * Kode ruang yang sudah terisi di file rekap (atau diedit manual per baris) tidak ditimpa.
+ */
+export function applyRuangMap(rows: AspakRow[], map: Record<string, string>): AspakRow[] {
+  return rows.map(r => {
+    if (r.kodeRuang && r.kodeRuang !== '0') return r;
+    const kode = map[lokasiKey(r.lokasi)];
+    return kode ? { ...r, kodeRuang: kode, kodeRuangDariPemetaan: true } : r;
+  });
+}
+
 export function validateAspakRows(rows: AspakRow[]): AspakIssue[] {
   const issues: AspakIssue[] = [];
   const add = (rowIndex: number, level: AspakIssue['level'], field: AspakIssue['field'], message: string) =>
@@ -267,7 +281,12 @@ export function validateAspakRows(rows: AspakRow[]): AspakIssue[] {
     else if (!isValidDate(r.tglSertifikat)) add(i, 'error', 'tglSertifikat', `Tanggal sertifikat "${r.tglSertifikat}" bukan format YYYY-mm-dd`);
 
     if (r.kodeRuang && !/^\d+$/.test(r.kodeRuang)) add(i, 'warning', 'kodeRuang', 'Kode ruang harus angka sesuai nomenklatur ASPAK');
-    if (!r.kodeRuang || r.kodeRuang === '0') add(i, 'warning', 'kodeRuang', 'Kode ruang pelayanan masih kosong/0');
+    if (!r.kodeRuang || r.kodeRuang === '0') add(i, 'warning', 'kodeRuang', `Kode ruang masih kosong/0 — isi di tabel pemetaan lokasi "${r.lokasi || '-'}"`);
+    else if (/^\d+$/.test(r.kodeRuang)) {
+      const ruang = ASPAK_RUANG_BY_KODE.get(r.kodeRuang);
+      if (!ruang) add(i, 'warning', 'kodeRuang', `Kode ruang ${r.kodeRuang} tidak ada di daftar ruang ASPAK yang tersimpan, cek manual`);
+      else if (ruang.nonaktif) add(i, 'warning', 'kodeRuang', `Kode ruang ${r.kodeRuang} (${ruang.nama}) bertanda nonaktif di ASPAK`);
+    }
 
     if (r.nikPetugas && r.nikPetugas.length !== 16) add(i, 'warning', 'nikPetugas', `NIK petugas ${r.nikPetugas.length} digit (seharusnya 16)`);
     if (!r.nikPetugas) add(i, 'warning', 'nikPetugas', 'NIK petugas kosong');
