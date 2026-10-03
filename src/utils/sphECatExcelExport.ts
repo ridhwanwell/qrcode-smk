@@ -9,7 +9,8 @@
  *   5. KW         -> Kwitansi Pembayaran
  *
  * Catatan:
- * - Hanya untuk SPH bertipe E-Catalogue (lihat isECatalogueSph).
+ * - Berlaku untuk semua SPH. Sheet "Link Ecat" hanya ikut bila SPH bertipe
+ *   E-Catalogue (lihat isECatalogueSph); SPH Non E-Catalogue berisi 4 sheet.
  * - Baris kosong di atas (baris 1-8) sengaja dikosongkan untuk kertas berkop,
  *   sama seperti template aslinya.
  * - Angka total memakai perhitungan yang sama dengan PDF di website
@@ -744,28 +745,34 @@ export function buildSphECatSheets(
     dealDateShort: shortDate(deal.dealDate || sph.date)
   };
 
-  return [
-    { name: 'SPH', ws: buildSphSheet(sph) },
-    { name: 'Link Ecat', ws: buildLinkEcatSheet(sph) },
+  const sheets: SphECatSheet[] = [{ name: 'SPH', ws: buildSphSheet(sph) }];
+  // Sheet "Link Ecat" hanya untuk SPH E-Catalogue
+  if (isECatalogueSph(sph)) {
+    sheets.push({ name: 'Link Ecat', ws: buildLinkEcatSheet(sph) });
+  }
+  sheets.push(
     { name: 'BO', ws: buildBoSheet(ctx) },
     { name: 'FP', ws: buildFpSheet(ctx) },
     { name: 'KW', ws: buildKwSheet(ctx) }
-  ];
+  );
+  return sheets;
+}
+
+/** Daftar sheet yang akan ada di file Excel, untuk ditampilkan di tombol. */
+export function getSphExcelSheetLabel(sph: SphQuotation): string {
+  return isECatalogueSph(sph) ? 'SPH • Link Ecat • BO • FP • KW' : 'SPH • BO • FP • KW';
 }
 
 /**
- * Unduh 1 file Excel berisi sheet SPH, Link Ecat, BO, FP, dan KW.
- * Hanya berjalan untuk SPH E-Catalogue.
+ * Unduh 1 file Excel untuk semua tipe SPH:
+ * - SPH E-Catalogue     : sheet SPH, Link Ecat, BO, FP, KW
+ * - SPH Non E-Catalogue : sheet SPH, BO, FP, KW (tanpa Link Ecat)
  */
 export async function downloadSphECatExcel(
   sph: SphQuotation,
   customDealData?: SphDealData,
   bap?: BapDocument | null
 ): Promise<void> {
-  if (!isECatalogueSph(sph)) {
-    alert('Download Excel ini hanya tersedia untuk SPH E-Catalogue.');
-    return;
-  }
   try {
     const wb = XLSX.utils.book_new();
     buildSphECatSheets(sph, customDealData, bap).forEach(sheet => {
@@ -774,9 +781,10 @@ export async function downloadSphECatExcel(
     const data = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
     const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const seq = (sph.sphNumber || '').split('/')[0] || '000';
-    saveAs(blob, `${seq} SPH E-Catalogue - ${safeFilePart(sph.hospitalName)}.xlsx`);
+    const typeLabel = isECatalogueSph(sph) ? 'SPH E-Catalogue' : 'SPH';
+    saveAs(blob, `${seq} ${typeLabel} - ${safeFilePart(sph.hospitalName)}.xlsx`);
   } catch (err) {
-    console.error('Gagal membuat file Excel SPH E-Catalogue:', err);
+    console.error('Gagal membuat file Excel SPH:', err);
     alert('Gagal membuat file Excel. Silakan coba lagi.');
   }
 }
