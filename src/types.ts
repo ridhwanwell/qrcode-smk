@@ -223,6 +223,8 @@ export interface Hospital {
   lastCalibrationDate?: string;
   aspakId?: string; // ID RS di aplikasi ASPAK (sel B2 file isian ASPAK)
   aspakRuangMap?: Record<string, string>; // pemetaan Lokasi (rekap RS) -> Kode Ruang ASPAK, kunci = lokasi huruf kecil tanpa spasi
+  aspakAlatMap?: Record<string, string>; // pemetaan Nama Alat (rekap) -> Kode Alat ASPAK
+  aspakPetugasMap?: Record<string, string>; // pemetaan Nama Petugas (tanpa gelar) -> NIK 16 digit, untuk isian ASPAK
 }
 
 export interface Technician {
