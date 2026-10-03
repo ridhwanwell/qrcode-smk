@@ -260,17 +260,16 @@ export function calculateBillingFromBap(
   // Calculate new Subtotal 1 based on realized quantities
   const subtotal1 = billedItems.reduce((sum, it) => sum + it.totalPrice, 0);
 
-  // Discount calculation
-  const discountPercent = (sph as any).discountPercent || 0;
-  let discountAmount = 0;
-  if (discountPercent > 0) {
-    discountAmount = Math.round((subtotal1 * discountPercent) / 100);
-  } else if ((sph as any).discountAmount && sph.subtotal1 > 0) {
-    // Proportional discount if absolute discount was used
-    discountAmount = Math.round(((sph as any).discountAmount / sph.subtotal1) * subtotal1);
-  }
+  // PENTING: Diskon/nego SPH TIDAK dipotong lagi di sini.
+  // Harga satuan (unitPrice) di SPH & BAP sudah merupakan harga SETELAH nego
+  // (lihat calculateNegotiation di sphHelpers: diskon dilebur ke harga satuan).
+  // discountAmount/discountPercent di SPH hanya informasi selisih dari harga brosur,
+  // sehingga memotongnya lagi akan membuat diskon dobel (contoh kasus: deal
+  // Rp 26.850.900 menjadi Rp 18.814.219 padahal semua alat selesai dikerjakan).
+  const discountPercent = 0;
+  const discountAmount = 0;
 
-  const subtotalAfterDiscount = Math.max(0, subtotal1 - discountAmount);
+  const subtotalAfterDiscount = subtotal1;
   const accommodationFee = sph.accommodationFee || 0;
   const subtotal2 = subtotalAfterDiscount + accommodationFee;
 
