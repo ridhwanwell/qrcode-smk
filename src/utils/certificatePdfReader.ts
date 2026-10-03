@@ -26,7 +26,8 @@ export interface CertificateInfo {
 }
 
 const ROW_TOLERANCE = 4;   // pt: label & isian dianggap 1 baris
-const VALUE_BELOW = 8;     // pt: isian boleh sedikit lebih rendah dari label
+const VALUE_BELOW = 14;    // pt: batas bawah isian bila label berikutnya tidak ditemukan
+const SUBLABEL_GAP = 12;   // pt: terjemahan Inggris di bawah label (mis. "Unit Name") bukan label baru
 
 const center = (it: PdfTextItem) => it.x + it.w / 2;
 
@@ -73,14 +74,29 @@ function readField(items: PdfTextItem[], page: number, label: RegExp, stopAt?: R
     if (stop) rightLimit = stop.x;
   }
 
+  // Batas bawah = label berikutnya di kolom label yang sama (isian bisa 2 baris,
+  // mis. "Automated External" + "Defibrillator (AED)")
+  const nextLabelBelow = pageItems
+    .filter(i => Math.abs(i.x - labelItem.x) <= 2 && i.y < labelItem.y - SUBLABEL_GAP)
+    .sort((a, b) => b.y - a.y)[0];
+  const bottomY = nextLabelBelow ? nextLabelBelow.y + ROW_TOLERANCE : labelItem.y - VALUE_BELOW;
+
   const valueItems = pageItems.filter(i =>
     i.x >= colonEnd - 0.5 &&
     i.x < rightLimit &&
     i.y <= labelItem.y + ROW_TOLERANCE &&
-    i.y >= labelItem.y - VALUE_BELOW &&
+    i.y > bottomY &&
     i.str.trim() !== ':'
   );
-  return joinItems(valueItems).replace(/^:\s*/, '').trim();
+
+  // Susun per baris dari atas ke bawah, lalu gabungkan
+  const lines: PdfTextItem[][] = [];
+  [...valueItems].sort((a, b) => b.y - a.y).forEach(it => {
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(last[0].y - it.y) <= 3) last.push(it);
+    else lines.push([it]);
+  });
+  return lines.map(joinItems).join(' ').replace(/^:\s*/, '').replace(/\s+/g, ' ').trim();
 }
 
 const MONTHS: Record<string, number> = {
