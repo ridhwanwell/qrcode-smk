@@ -29,14 +29,18 @@ export interface PdfTextItem {
   page: number;
 }
 
-export async function extractPdfTextItems(file: File): Promise<PdfTextItem[]> {
+export async function extractPdfTextItems(file: File | ArrayBuffer | Uint8Array): Promise<PdfTextItem[]> {
   // Build "legacy" dipakai agar tetap jalan di browser PC rumah sakit yang lebih lama.
   const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
   // @ts-ignore - akhiran ?url adalah fitur Vite untuk mendapatkan URL file worker
   const workerModule: any = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
   pdfjs.GlobalWorkerOptions.workerSrc = workerModule.default;
 
-  const data = new Uint8Array(await file.arrayBuffer());
+  const data = file instanceof Uint8Array
+    ? file
+    : file instanceof ArrayBuffer
+      ? new Uint8Array(file)
+      : new Uint8Array(await (file as File).arrayBuffer());
   const doc = await pdfjs.getDocument({ data }).promise;
   const items: PdfTextItem[] = [];
   for (let p = 1; p <= doc.numPages; p++) {
