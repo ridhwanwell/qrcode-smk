@@ -233,9 +233,13 @@ export function createApp() {
   });
 
   // --- API: PUBLIC SCAN LOOKUP (For hospital staff scanning QR code on equipment stickers) ---
-  app.get("/api/labels/:noLabel", publicScanLimiter, async (req, res) => {
+  app.get("/api/labels/:noLabel", publicScanLimiter, async (req, res, next) => {
     try {
       const { noLabel } = req.params;
+      // "/api/labels/summary" adalah endpoint admin (didaftarkan di bawah), bukan nomor label
+      if (noLabel === 'summary') return next();
+      // Kode verifikasi dari QR stiker (?k=XXXXXX). Wajib untuk label baru (qr_secured).
+      const providedCode = String(req.query.k || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 
       // Tolak noLabel yang diawali "__" (baris metadata/koleksi) -> 404
       if (!noLabel || noLabel.startsWith('__')) {
@@ -263,6 +267,15 @@ export function createApp() {
         return res.status(404).json({ error: "Label tidak ditemukan" });
       }
 
+      // Anti tebak nomor (IDOR): label baru hanya bisa dibuka dengan kode yang benar.
+      // Jawaban sengaja sama persis dengan "tidak ditemukan" agar tidak membocorkan
+      // bahwa nomor tersebut ada.
+      const storedCode = String(data.verify_code || '').toUpperCase();
+      const codeMatches = Boolean(storedCode) && providedCode === storedCode;
+      if (data.qr_secured === true && !codeMatches) {
+        return res.status(404).json({ error: "Label tidak ditemukan" });
+      }
+
       // Helper: URL sertifikat publik (pdfUrl/pdfDriveUrl) HANYA jika bukan path internal-documents
       const isInternalDoc = (url: string | null | undefined): boolean => {
         if (!url || typeof url !== 'string') return false;
@@ -278,8 +291,10 @@ export function createApp() {
         );
       };
 
-      const safePdfUrl = !isInternalDoc(data.pdf_url) ? data.pdf_url : null;
-      const safePdfDriveUrl = !isInternalDoc(data.pdf_drive_url) ? data.pdf_drive_url : null;
+      const isVoid = data.status === 'Void / Rusak';
+      // Label void: sertifikat tidak ditampilkan
+      const safePdfUrl = !isVoid && !isInternalDoc(data.pdf_url) ? data.pdf_url : null;
+      const safePdfDriveUrl = !isVoid && !isInternalDoc(data.pdf_drive_url) ? data.pdf_drive_url : null;
 
       // Kembalikan HANYA field aman (jangan kirim pdfOriginalUrl atau metadata sensitif)
       res.json({
@@ -291,7 +306,11 @@ export function createApp() {
         calibratedAt: data.calibrated_at || null,
         validUntil: data.valid_until || null,
         pdfUrl: safePdfUrl,
-        pdfDriveUrl: safePdfDriveUrl
+        pdfDriveUrl: safePdfDriveUrl,
+        isVoid,
+        voidReason: isVoid ? (data.void_reason || null) : null,
+        // Kode hanya dikembalikan bila pemindai sudah membawa kode yang benar (untuk tautan "salin")
+        verifyCode: codeMatches ? storedCode : null
       });
     } catch (err: any) {
       console.error("API error in GET /api/labels/:noLabel:", err);
@@ -352,6 +371,10 @@ export function createApp() {
         pdfName: it.pdf_name,
         calibratedAt: it.calibrated_at,
         validUntil: it.valid_until,
+        verifyCode: it.verify_code || null,
+        qrSecured: it.qr_secured === true,
+        voidReason: it.void_reason || null,
+        voidedAt: it.voided_at || null,
         createdAt: it.created_at,
         updatedAt: it.updated_at
       }));
@@ -563,6 +586,8 @@ export function createApp() {
         pdf_name: pdfName || (oldData?.pdf_name ?? null),
         calibrated_at: calibratedAt !== undefined ? (calibratedAt || null) : (oldData?.calibrated_at ?? null),
         valid_until: validUntil !== undefined ? (validUntil || null) : (oldData?.valid_until ?? null),
+        // Label baru wajib kode QR; label lama mempertahankan pengaturannya
+        qr_secured: oldData ? (oldData.qr_secured === true) : true,
         updated_at: new Date().toISOString()
       };
 
@@ -589,6 +614,10 @@ export function createApp() {
         if (oldData.valid_until && !validUntil) payload.valid_until = oldData.valid_until;
         if (oldData.status === 'Sertifikat Tertaut' && (!status || status === 'Menunggu Sertifikat')) {
           payload.status = 'Sertifikat Tertaut';
+        }
+        // Label void tetap void kecuali admin membatalkannya lewat tombol "Batalkan Void"
+        if (oldData.status === 'Void / Rusak' && (!status || status === 'Menunggu Sertifikat')) {
+          payload.status = 'Void / Rusak';
         }
       }
 
@@ -684,22 +713,26 @@ export function createApp() {
               nama_rs: rec.nama_rs || oldItem.nama_rs || null,
               nama_alat: rec.nama_alat || oldItem.nama_alat || oldItem.pdf_name || null,
               ruangan: rec.ruangan || oldItem.ruangan || null,
-              status: (oldItem.status === 'Sertifikat Tertaut' && (!rec.status || rec.status === 'Menunggu Sertifikat')) ? oldItem.status : (rec.status || oldItem.status),
+              // Status lama "Sertifikat Tertaut" / "Void / Rusak" tidak tertimpa status bawaan "Menunggu Sertifikat"
+              status: ((oldItem.status === 'Sertifikat Tertaut' || oldItem.status === 'Void / Rusak') && (!rec.status || rec.status === 'Menunggu Sertifikat')) ? oldItem.status : (rec.status || oldItem.status),
               pdf_source: rec.pdf_source || oldItem.pdf_source || null,
               pdf_url: rec.pdf_url || oldItem.pdf_url || null,
               pdf_drive_url: rec.pdf_drive_url || oldItem.pdf_drive_url || null,
               pdforiginal_url: rec.pdforiginal_url || oldItem.pdforiginal_url || oldItem.pdf_original_url || null,
               pdf_name: rec.pdf_name || oldItem.pdf_name || null,
               calibrated_at: rec.calibrated_at || oldItem.calibrated_at || null,
-              valid_until: rec.valid_until || oldItem.valid_until || null
+              valid_until: rec.valid_until || oldItem.valid_until || null,
+              qr_secured: oldItem.qr_secured === true
             };
           }
-          return rec;
+          return { ...rec, qr_secured: true };
         });
         created = recordsToSave.map(r => r.no_label);
       } else {
         // Mode default: HANYA TAMBAH BARU (nomor yang sudah ada dilewati)
-        recordsToSave = incomingRecords.filter(r => !existingMap.has(r.no_label));
+        recordsToSave = incomingRecords
+          .filter(r => !existingMap.has(r.no_label))
+          .map(r => ({ ...r, qr_secured: true }));
         created = recordsToSave.map(r => r.no_label);
         skippedExisting = incomingRecords.filter(r => existingMap.has(r.no_label)).map(r => r.no_label);
       }
@@ -738,16 +771,94 @@ export function createApp() {
         }
       }
 
+      // Ambil kode verifikasi QR untuk semua nomor (baru maupun yang sudah ada)
+      // agar PDF stiker berisi QR dengan kode yang sama persis dengan database.
+      const codes: Record<string, string> = {};
+      for (let i = 0; i < allNos.length; i += CHUNK_SIZE) {
+        const chunk = allNos.slice(i, i + CHUNK_SIZE);
+        const { data: codeRows, error: codeErr } = await supabaseAdmin
+          .from('labels')
+          .select('no_label, verify_code')
+          .in('no_label', chunk);
+        if (codeErr) {
+          console.error("[Bulk] Gagal mengambil kode verifikasi label:", codeErr);
+          return res.status(500).json({ error: "Label tersimpan, tetapi kode QR gagal diambil. Muat ulang lalu coba lagi." });
+        }
+        (codeRows || []).forEach((r: any) => { if (r.verify_code) codes[r.no_label] = r.verify_code; });
+      }
+
       await broadcastLabelsChanged();
       res.json({
         success: true,
         count: recordsToSave.length,
         created,
-        skippedExisting
+        skippedExisting,
+        codes
       });
     } catch (err: any) {
       console.error("API error in POST /api/labels/bulk:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat menyimpan label secara massal" });
+    }
+  });
+
+  // --- API: TANDAI STIKER VOID / RUSAK (nomor tetap tercatat untuk audit) ---
+  app.post("/api/labels/:noLabel/void", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+    try {
+      const { noLabel } = req.params;
+      const reason = String(req.body?.reason || '').trim().slice(0, 200);
+      if (!noLabel || noLabel.startsWith('__')) {
+        return res.status(404).json({ error: "Label tidak ditemukan" });
+      }
+      if (!reason) {
+        return res.status(400).json({ error: "Alasan void wajib diisi (misal: stiker rusak saat cetak, hilang, salah tempel)" });
+      }
+
+      const { data: oldData, error: findErr } = await supabaseAdmin
+        .from('labels').select('no_label, status').eq('no_label', noLabel).maybeSingle();
+      if (findErr) return res.status(500).json({ error: "Gagal memeriksa label" });
+      if (!oldData) return res.status(404).json({ error: "Label tidak ditemukan" });
+
+      const { error } = await supabaseAdmin
+        .from('labels')
+        .update({ status: 'Void / Rusak', void_reason: reason, voided_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('no_label', noLabel);
+      if (error) return res.status(500).json({ error: "Gagal menandai label void" });
+
+      await logActivity(req, 'VOID_LABEL', `Label ${noLabel} ditandai Void / Rusak: ${reason}`, { noLabel, reason, oldStatus: oldData.status });
+      await broadcastLabelsChanged();
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("API error in POST /api/labels/:noLabel/void:", err);
+      res.status(500).json({ error: "Terjadi kesalahan sistem saat menandai label void" });
+    }
+  });
+
+  app.post("/api/labels/:noLabel/unvoid", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+    try {
+      const { noLabel } = req.params;
+      const { data: oldData, error: findErr } = await supabaseAdmin
+        .from('labels').select('*').eq('no_label', noLabel).maybeSingle();
+      if (findErr) return res.status(500).json({ error: "Gagal memeriksa label" });
+      if (!oldData || noLabel.startsWith('__')) return res.status(404).json({ error: "Label tidak ditemukan" });
+
+      const hasCert = Boolean(oldData.pdf_url || oldData.pdf_drive_url);
+      const { error } = await supabaseAdmin
+        .from('labels')
+        .update({
+          status: hasCert ? 'Sertifikat Tertaut' : 'Menunggu Sertifikat',
+          void_reason: null,
+          voided_at: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('no_label', noLabel);
+      if (error) return res.status(500).json({ error: "Gagal membatalkan status void" });
+
+      await logActivity(req, 'UNVOID_LABEL', `Status void label ${noLabel} dibatalkan`, { noLabel, oldReason: oldData.void_reason });
+      await broadcastLabelsChanged();
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("API error in POST /api/labels/:noLabel/unvoid:", err);
+      res.status(500).json({ error: "Terjadi kesalahan sistem saat membatalkan status void" });
     }
   });
 
