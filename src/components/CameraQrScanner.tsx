@@ -6,7 +6,14 @@ import { cleanLabelString } from '../lib/labelParser';
 interface CameraQrScannerProps {
   isOpen: boolean;
   onClose: () => void;
-  onScanSuccess: (decodedLabel: string) => void;
+  /** verifyCode = kode ?k= dari QR stiker baru (bila ada) */
+  onScanSuccess: (decodedLabel: string, verifyCode?: string) => void;
+}
+
+/** Ambil kode verifikasi (?k=XXXXXX) dari isi QR, bila ada. */
+function extractVerifyCode(text: string): string | undefined {
+  const m = String(text || '').match(/[?&]k=([A-Za-z0-9]{4,12})/);
+  return m ? m[1].toUpperCase() : undefined;
 }
 
 export default function CameraQrScanner({ isOpen, onClose, onScanSuccess }: CameraQrScannerProps) {
@@ -51,7 +58,7 @@ export default function CameraQrScanner({ isOpen, onClose, onScanSuccess }: Came
             const parsed = cleanLabelString(decodedText);
             if (parsed) {
               stopScanner();
-              onScanSuccess(parsed);
+              onScanSuccess(parsed, extractVerifyCode(decodedText));
             }
           },
           () => {
@@ -106,7 +113,7 @@ export default function CameraQrScanner({ isOpen, onClose, onScanSuccess }: Came
       const parsed = cleanLabelString(decodedText);
 
       if (parsed) {
-        onScanSuccess(parsed);
+        onScanSuccess(parsed, extractVerifyCode(decodedText));
       } else {
         setScannerError('QR Code tidak mengandung nomor label kalibrasi yang valid.');
       }
