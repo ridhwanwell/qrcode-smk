@@ -131,7 +131,9 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
         const res = await apiFetch(`/api/drive-folder/${encodeURIComponent(parsed.folderId)}`);
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-          setError(body.error || 'Gagal membaca isi folder Google Drive.');
+          setError(body.error || (res.status === 404
+            ? 'Server belum punya fitur baca folder (HTTP 404). Pastikan deploy terbaru sudah Ready, lalu muat ulang halaman (Ctrl + Shift + R).'
+            : `Gagal membaca isi folder Google Drive (HTTP ${res.status}).`));
           return;
         }
         files = (body.files || []).map((f: any) => ({ id: f.id, name: f.name, modifiedTime: f.modifiedTime }));
