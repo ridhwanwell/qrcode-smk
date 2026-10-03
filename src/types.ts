@@ -390,6 +390,9 @@ export interface BapDocument {
   technicianName?: string;
   adminName?: string;
   status?: 'Draft' | 'Dalam Pekerjaan' | 'Selesai';
+  realizationSource?: 'pdf_upload';  // Realisasi diisi dari upload PDF BAP yang sudah ditandatangani
+  realizationFileName?: string;      // Nama file PDF BAP yang diupload
+  realizationUploadedAt?: string;    // Waktu upload PDF BAP
   createdAt: string;
   updatedAt: string;
 }
