@@ -398,7 +398,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
 
             <button
               onClick={() => exportSphToWord(sph, 'ALL', resolvedKopSuratSrc)}
-              className="px-3.5 py-2 bg-[#398AB9] hover:bg-[#1C658C] text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 shadow-xs active:scale-95"
+              className="px-3.5 py-2 bg-[#398AB9] hover:bg-[#1C658C] text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
               title="Download format Word (.doc) dengan Kop Surat Resmi"
             >
               <Download className="w-4 h-4" />
