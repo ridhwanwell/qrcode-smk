@@ -123,7 +123,10 @@ export function calculateBillingFromBap(
   const originalPoUnits = (sph.items || []).reduce((sum, it) => sum + (Number(it.quantity) || 1), 0);
 
   // Check if BAP has any realization data recorded
-  const hasRealization = Boolean(
+  // Realisasi dari upload PDF BAP selalu dianggap sah, termasuk bila semuanya 0 (batal)
+  const isPdfRealization = Boolean(bap && bap.realizationSource === 'pdf_upload');
+
+  const hasRealization = isPdfRealization || Boolean(
     bap &&
     bap.items &&
     bap.items.length > 0 &&
@@ -250,6 +253,29 @@ export function calculateBillingFromBap(
         });
       }
     });
+  }
+
+  // Semua alat batal menurut PDF BAP resmi -> tidak ada yang ditagihkan (Rp 0)
+  if (billedItems.length === 0 && isPdfRealization) {
+    return {
+      isAdjustedFromBap: true,
+      totalPoUnits: originalPoUnits,
+      totalRealizedUnits: 0,
+      items: [],
+      subtotal1: 0,
+      discountPercent: 0,
+      discountAmount: 0,
+      subtotalAfterDiscount: 0,
+      isPpnIncluded: sph.isPpnIncluded !== false,
+      ppnPercent: sph.ppnPercent || 11,
+      ppnAmount: 0,
+      subtotal2: 0,
+      accommodationFee: 0,
+      grandTotal: 0,
+      terbilang: angkaTerbilang(0),
+      originalGrandTotal,
+      priceDifference: -originalGrandTotal
+    };
   }
 
   // If for some reason all realized items are 0, retain original items
