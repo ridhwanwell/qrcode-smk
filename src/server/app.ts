@@ -903,15 +903,26 @@ export function createApp() {
         const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`);
         const body: any = await r.json().catch(() => ({}));
         if (!r.ok) {
-          const reason = body?.error?.errors?.[0]?.reason || body?.error?.status || '';
-          console.error("[Drive Folder] Google API error:", r.status, reason, body?.error?.message);
+          const reason = String(body?.error?.errors?.[0]?.reason || body?.error?.status || '');
+          const googleMsg = String(body?.error?.message || '').slice(0, 300);
+          console.error("[Drive Folder] Google API error:", r.status, reason, googleMsg);
+          let hint = '';
           if (r.status === 404) {
-            return res.status(404).json({ error: "Folder tidak ditemukan atau belum dibagikan 'Siapa saja yang memiliki link'." });
+            hint = "Folder tidak ditemukan atau belum dibagikan 'Siapa saja yang memiliki link'.";
+          } else if (/keyInvalid|API_KEY_INVALID|API key not valid/i.test(reason + googleMsg)) {
+            hint = "API key tidak valid. Periksa nilai GOOGLE_DRIVE_API_KEY di Vercel (tanpa spasi), lalu Redeploy.";
+          } else if (/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(reason + googleMsg)) {
+            hint = "Google Drive API belum aktif di project Google Cloud pemilik API key ini. Aktifkan (Enable), tunggu 2-5 menit, lalu coba lagi.";
+          } else if (/API_KEY_SERVICE_BLOCKED|referer|blocked/i.test(reason + googleMsg)) {
+            hint = "API key dibatasi. Pastikan 'Application restrictions' = None dan 'API restrictions' mencantumkan Google Drive API.";
+          } else if (r.status === 403) {
+            hint = "Akses folder ditolak Google. Pastikan folder dibagikan publik dan Drive API sudah aktif untuk API key ini.";
+          } else {
+            hint = "Gagal membaca isi folder Google Drive.";
           }
-          if (r.status === 403) {
-            return res.status(403).json({ error: "Akses folder ditolak Google. Pastikan folder dibagikan publik dan Drive API sudah diaktifkan untuk API key ini." });
-          }
-          return res.status(502).json({ error: "Gagal membaca isi folder Google Drive" });
+          return res.status(r.status === 404 ? 404 : 502).json({
+            error: `${hint} [Google ${r.status}${reason ? ` ${reason}` : ''}${googleMsg ? `: ${googleMsg}` : ''}]`
+          });
         }
         (body.files || []).forEach((f: any) => files.push({
           id: f.id,
