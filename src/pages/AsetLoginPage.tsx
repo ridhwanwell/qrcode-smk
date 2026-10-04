@@ -1,71 +1,109 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../lib/AuthContext';
-import { CompanyLogo } from '../components/CompanyLogo';
-import { 
-  KeyRound, 
-  User as UserIcon, 
-  Eye, 
-  EyeOff, 
+import { useTheme } from '../lib/theme';
+import {
+  KeyRound,
+  User as UserIcon,
+  Eye,
+  EyeOff,
   AlertTriangle,
   ArrowRight,
-  Sparkles,
-  Lock
+  Lock,
+  Sun,
+  Moon
 } from 'lucide-react';
+
+const ease = [0.2, 0.8, 0.2, 1] as const;
+const item = (i: number) => ({
+  initial: { opacity: 0, y: 14 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.55, delay: 0.25 + i * 0.07, ease }
+});
 
 export const LoginPage: React.FC = () => {
   const { login, loading, error, setError } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) {
       setError('Harap masukkan username/email dan password.');
+      setShakeKey(k => k + 1);
       return;
     }
     await login(username, password);
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-blue-50/40 flex flex-col justify-center items-center p-4 selection:bg-[#1C658C] selection:text-white">
-      {/* Background subtle decoration */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-cyan-100/40 rounded-full blur-3xl"></div>
-      </div>
+  const inputWrap =
+    'group flex items-center gap-2.5 rounded-xl border px-3.5 transition-all focus-within:ring-4 focus-within:ring-[#398AB9]/20 focus-within:border-[#398AB9]';
 
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-200/80 p-7 sm:p-8 flex flex-col items-center backdrop-blur-sm">
-        {/* Company Logo Header */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <CompanyLogo size="lg" className="mb-2 justify-center" variant="light" showSubtitle={false} />
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1">
-            PT. SARANA MULTI KALIBRASI
-          </h1>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-1.5 rounded-full bg-blue-50 border border-blue-200/60 text-[#1C658C] text-[11px] font-semibold">
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            <span>Laboratorium Kalibrasi Alat Kesehatan • LK-532-IDN</span>
-          </div>
-        </div>
+  return (
+    <div className="app-surface min-h-screen flex flex-col justify-center items-center p-4 overflow-hidden selection:bg-[#1C658C] selection:text-white">
+      <div className="smk-aurora light-visible" aria-hidden="true"><i /><i /><i /></div>
+
+      <button
+        type="button"
+        onClick={(e) => toggleTheme({ x: e.clientX, y: e.clientY })}
+        className="fixed top-4 right-4 z-10 w-10 h-10 rounded-xl grid place-items-center glass smk-icon-btn"
+        title={theme === 'dark' ? 'Ganti ke tema terang' : 'Ganti ke tema Hitam Kaca'}
+      >
+        {theme === 'dark' ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+      </button>
+
+      <motion.div
+        key={shakeKey}
+        initial={shakeKey === 0 ? { opacity: 0, y: 30, scale: 0.94 } : { x: 0 }}
+        animate={shakeKey === 0 ? { opacity: 1, y: 0, scale: 1 } : { x: [0, -8, 8, -6, 6, 0] }}
+        transition={shakeKey === 0 ? { duration: 0.8, ease: [0.2, 0.9, 0.25, 1.15] } : { duration: 0.45 }}
+        className="relative z-[1] w-full max-w-[420px] glass rounded-3xl p-7 sm:p-9"
+      >
+        {/* Logo SMK */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.6, rotate: -8, filter: 'blur(6px)' }}
+          animate={{ opacity: 1, scale: 1, rotate: 0, filter: 'blur(0px)' }}
+          transition={{ duration: 0.9, delay: 0.1, ease: [0.2, 0.9, 0.25, 1.2] }}
+          className="smk-logo smk-logo-shine w-[150px] mx-auto"
+          role="img"
+          aria-label="Logo PT. Sarana Multi Kalibrasi"
+        />
+
+        <motion.div {...item(0)} className="text-center mt-4">
+          <h1 className="text-2xl font-extrabold tracking-tight smk-head">Portal Aset</h1>
+          <p className="text-[13px] smk-muted mt-1">PT. Sarana Multi Kalibrasi · LK-532-IDN</p>
+        </motion.div>
 
         {/* Error Notification */}
-        {error && (
-          <div className="w-full mb-5 p-3.5 bg-rose-50 text-rose-800 text-xs font-medium rounded-2xl border border-rose-200 flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-semibold">{error}</p>
-            </div>
-          </div>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginTop: 20 }}
+              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="p-3.5 bg-rose-50 text-rose-800 text-xs font-medium rounded-2xl border border-rose-200 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <p className="font-semibold flex-1">{error}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Form Inputs */}
-        <form onSubmit={handleLogin} className="w-full space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5 text-left">
+        <form onSubmit={handleLogin} className="w-full space-y-4 mt-6" noValidate>
+          <motion.div {...item(1)}>
+            <label htmlFor="login-username" className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--smk-text)' }}>
               Email / Username
             </label>
-            <div className="relative">
+            <div className={inputWrap} style={{ borderColor: 'var(--smk-line)', background: 'var(--smk-surface-2)' }}>
+              <UserIcon className="w-4 h-4 smk-muted group-focus-within:text-[#398AB9] transition-colors" />
               <input
+                id="login-username"
                 type="text"
                 placeholder="Masukkan email atau username"
                 value={username}
@@ -75,18 +113,20 @@ export const LoginPage: React.FC = () => {
                 }}
                 required
                 autoComplete="username"
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 focus:border-[#1C658C] focus:ring-2 focus:ring-[#1C658C]/20 text-sm font-medium text-slate-900 bg-white transition-all outline-none"
+                className="flex-1 min-w-0 py-3 bg-transparent outline-none text-sm font-medium"
+                style={{ color: 'var(--smk-text)' }}
               />
-              <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             </div>
-          </div>
+          </motion.div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5 text-left">
+          <motion.div {...item(2)}>
+            <label htmlFor="login-password" className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--smk-text)' }}>
               Password
             </label>
-            <div className="relative">
+            <div className={inputWrap} style={{ borderColor: 'var(--smk-line)', background: 'var(--smk-surface-2)' }}>
+              <KeyRound className="w-4 h-4 smk-muted group-focus-within:text-[#398AB9] transition-colors" />
               <input
+                id="login-password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Masukkan password akun Anda"
                 value={password}
@@ -96,50 +136,60 @@ export const LoginPage: React.FC = () => {
                 }}
                 required
                 autoComplete="current-password"
-                className="w-full pl-10 pr-11 py-3 rounded-xl border border-slate-300 focus:border-[#1C658C] focus:ring-2 focus:ring-[#1C658C]/20 text-sm font-medium text-slate-900 bg-white transition-all outline-none font-mono"
+                className="flex-1 min-w-0 py-3 bg-transparent outline-none text-sm font-medium font-mono"
+                style={{ color: 'var(--smk-text)' }}
               />
-              <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1 smk-muted hover:opacity-80 transition-opacity"
                 title={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-          </div>
+          </motion.div>
 
           {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 bg-[#1C658C] hover:bg-[#144b68] active:scale-[0.99] text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-[#1C658C]/25 disabled:opacity-50"
-          >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <>
-                <span>Masuk ke Sistem</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          <motion.div {...item(3)}>
+            <button
+              type="submit"
+              disabled={loading}
+              className="smk-btn-primary w-full mt-2 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5"
+            >
+              {loading ? (
+                <>
+                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Memeriksa…</span>
+                </>
+              ) : (
+                <>
+                  <span>Masuk ke Sistem</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </motion.div>
         </form>
 
         {/* Security Info Box */}
-        <div className="mt-6 flex items-start gap-2.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/70 text-left w-full">
-          <Lock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-          <div className="text-[11px] text-slate-500 leading-relaxed">
-            <span className="font-semibold text-slate-700">Autentikasi Aman:</span> Login terhubung langsung dengan sistem Supabase Auth & Row Level Security (RLS).
+        <motion.div {...item(4)} className="mt-6 flex items-start gap-2.5 p-3.5 rounded-2xl border text-left" style={{ borderColor: 'var(--smk-line)', background: 'var(--smk-surface-2)' }}>
+          <Lock className="w-4 h-4 smk-muted shrink-0 mt-0.5" />
+          <div className="text-[11px] smk-muted leading-relaxed">
+            <span className="font-semibold" style={{ color: 'var(--smk-text)' }}>Autentikasi Aman:</span> Login terhubung langsung dengan sistem Supabase Auth & Row Level Security (RLS).
           </div>
-        </div>
-      </div>
-      
+        </motion.div>
+      </motion.div>
+
       {/* Footer */}
-      <p className="text-xs text-slate-400 mt-6 text-center">
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.9 }}
+        className="relative z-[1] text-xs smk-muted mt-6 text-center"
+      >
         © 2026 PT. Sarana Multi Kalibrasi • Sistem Manajemen Kalibrasi Terintegrasi
-      </p>
+      </motion.p>
     </div>
   );
 };

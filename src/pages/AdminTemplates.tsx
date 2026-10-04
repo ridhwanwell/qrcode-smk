@@ -225,7 +225,7 @@ export default function AdminTemplates() {
             </div>
           ) : (
             <div 
-              className="relative shadow-2xl overflow-hidden" 
+              className="paper-light relative shadow-2xl overflow-hidden" 
               style={{ 
                 width: 750, 
                 height: 312.5

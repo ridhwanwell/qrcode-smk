@@ -71,6 +71,16 @@ import { LoginPage } from './AsetLoginPage';
 import { BapModal } from '../components/BapModal';
 import { createBapFromSph, createBapFromSchedule, getBapPoOptionsFromSph } from '../utils/bapHelpers';
 
+
+/** Animasi pindah halaman (seragam untuk semua menu). Hanya tampilan. */
+const pageMotion = (dir: number) => ({
+  initial: { opacity: 0, y: 16, x: dir > 0 ? 12 : -12 },
+  animate: { opacity: 1, y: 0, x: 0 },
+  exit: { opacity: 0, y: -10, transition: { duration: 0.16, ease: 'easeIn' as const } },
+  transition: { duration: 0.42, ease: [0.2, 0.8, 0.2, 1] as const },
+  className: 'page-stagger'
+});
+
 export default function App() {
   const { user } = useAuth();
 
@@ -939,7 +949,9 @@ function AsetPortalMain() {
   };
 
   return (
-    <div className="min-h-screen bg-[#EEEEEE] text-[#1E293B] font-sans flex flex-col antialiased selection:bg-[#1C658C] selection:text-white">
+    <div className="app-surface font-sans flex flex-col antialiased selection:bg-[#1C658C] selection:text-white">
+      {/* Latar cahaya bergerak (tema Hitam Kaca) */}
+      <div className="smk-aurora" aria-hidden="true"><i /><i /><i /></div>
       {/* Navigation Header */}
       <Navbar
         activeTab={activeTab}
@@ -965,16 +977,14 @@ function AsetPortalMain() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 pb-12">
+      <div className="app-main flex-1 flex flex-col">
+      <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
         {/* Main Application Views with Smooth Slide Transitions */}
         <AnimatePresence mode="wait">
           {activeTab === 'dashboard' && (
             <motion.div
               key="slide-dashboard"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
+              {...pageMotion(slideDirection)}
             >
               <DashboardOverview
                 schedules={effectiveSchedules}
@@ -1001,10 +1011,7 @@ function AsetPortalMain() {
           {activeTab === 'sph' && (
             <motion.div
               key="slide-sph"
-              initial={{ opacity: 0, x: slideDirection > 0 ? 30 : -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: slideDirection > 0 ? -30 : 30 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
+              {...pageMotion(slideDirection)}
             >
               <SphManager
                 sphList={effectiveSphList}
@@ -1037,10 +1044,7 @@ function AsetPortalMain() {
           {activeTab === 'labels' && (
             <motion.div
               key="slide-labels"
-              initial={{ opacity: 0, x: slideDirection > 0 ? 30 : -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: slideDirection > 0 ? -30 : 30 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
+              {...pageMotion(slideDirection)}
             >
               <LabelModuleView />
             </motion.div>
@@ -1049,10 +1053,7 @@ function AsetPortalMain() {
           {activeTab === 'schedules' && (
             <motion.div
               key="slide-schedules"
-              initial={{ opacity: 0, x: slideDirection > 0 ? 30 : -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: slideDirection > 0 ? -30 : 30 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
+              {...pageMotion(slideDirection)}
             >
               <ScheduleManager
                 schedules={effectiveSchedules}
@@ -1084,10 +1085,7 @@ function AsetPortalMain() {
           {activeTab === 'billing' && (
             <motion.div
               key="slide-billing"
-              initial={{ opacity: 0, x: slideDirection > 0 ? 30 : -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: slideDirection > 0 ? -30 : 30 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
+              {...pageMotion(slideDirection)}
             >
               <HospitalBillingManager
                 sphList={effectiveSphList}
@@ -1106,10 +1104,7 @@ function AsetPortalMain() {
           {activeTab === 'selia' && (
             <motion.div
               key="tab-selia"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              {...pageMotion(slideDirection)}
             >
               <SeliaDashboard
                 schedules={effectiveSchedules}
@@ -1122,10 +1117,7 @@ function AsetPortalMain() {
           {activeTab === 'calibrators' && (
             <motion.div
               key="tab-calibrators"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              {...pageMotion(slideDirection)}
             >
               <CalibratorAssetManager
                 calibrators={effectiveCalibrators}
@@ -1150,10 +1142,7 @@ function AsetPortalMain() {
           {activeTab === 'tablets' && (
             <motion.div
               key="tab-tablets"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              {...pageMotion(slideDirection)}
             >
               <TabletLoanManager
                 tablets={effectiveTablets}
@@ -1174,10 +1163,7 @@ function AsetPortalMain() {
           {activeTab === 'financial' && (
             <motion.div
               key="tab-financial"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              {...pageMotion(slideDirection)}
             >
               <FinancialAssetManager
                 financialAssets={effectiveFinancialAssets}
@@ -1211,10 +1197,7 @@ function AsetPortalMain() {
           {activeTab === 'masters' && (
             <motion.div
               key="tab-masters"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              {...pageMotion(slideDirection)}
             >
               <MasterHospitalAndTech
                 schedules={effectiveSchedules}
@@ -1266,10 +1249,7 @@ function AsetPortalMain() {
           {activeTab === 'templates' && (
             <motion.div
               key="tab-templates"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              {...pageMotion(slideDirection)}
             >
               <TemplateSettings />
             </motion.div>
@@ -1278,10 +1258,7 @@ function AsetPortalMain() {
           {activeTab === 'aspak' && (
             <motion.div
               key="tab-aspak"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              {...pageMotion(slideDirection)}
             >
               <AspakExportManager
                 hospitals={effectiveHospitals}
@@ -1295,20 +1272,21 @@ function AsetPortalMain() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-[#144966] text-[#D8D2CB] text-xs py-6 border-t border-[#1C658C] mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <footer className="smk-no-print text-xs py-5 mt-auto border-t" style={{ borderColor: 'var(--smk-line)' }}>
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 smk-muted">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-white tracking-wide">PT. SARANA MULTI KALIBRASI</span>
-            <span className="text-[#398AB9]/60">•</span>
-            <span className="text-[#D8D2CB]">Sistem Manajemen Aset, Keuangan & Kalibrasi RS</span>
+            <span className="font-bold tracking-wide smk-head">PT. SARANA MULTI KALIBRASI</span>
+            <span className="opacity-50">•</span>
+            <span>Sistem Manajemen Aset, Keuangan & Kalibrasi RS</span>
           </div>
-          <div className="flex items-center gap-4 text-[#D8D2CB]/80 text-[11px]">
+          <div className="flex items-center gap-4 text-[11px] opacity-80">
             <span>Standar Permenkes RI No. 54 Tahun 2015</span>
-            <span className="text-[#398AB9]/60">•</span>
+            <span className="opacity-50">•</span>
             <span>Akreditasi ISO/IEC 17025</span>
           </div>
         </div>
       </footer>
+      </div>
 
       {/* Interactive Modals */}
       {selectedSchedule && (
@@ -1431,7 +1409,7 @@ function AsetPortalMain() {
 
       {/* Floating Toast Alert Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#1C658C] text-white px-4 py-3 rounded-xl shadow-2xl border border-[#398AB9] flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5">
+        <div key={toastMessage} className="smk-toast fixed bottom-6 right-6 z-[70] text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 max-w-[calc(100vw-48px)]">
           <div className="w-7 h-7 rounded-lg bg-[#398AB9]/30 text-[#EEEEEE] flex items-center justify-center shrink-0">
             <Check className="w-4 h-4" />
           </div>
