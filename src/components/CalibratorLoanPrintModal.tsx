@@ -28,7 +28,7 @@ export const CalibratorLoanPrintModal: React.FC<CalibratorLoanPrintModalProps> =
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden text-slate-800">
+      <div className="paper-light bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden text-slate-800">
         {/* Top Action Bar (Hidden in Print) */}
         <div className="px-6 py-4 bg-slate-800 text-white flex items-center justify-between shadow-xs print:hidden">
           <div className="flex items-center gap-3">

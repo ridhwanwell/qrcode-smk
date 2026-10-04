@@ -304,10 +304,10 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-xs flex justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static">
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-5xl my-4 overflow-hidden shadow-2xl flex flex-col print:bg-white print:border-none print:shadow-none print:my-0 print:max-w-none">
+      <div className="paper-light bg-white border border-[#DCDFE3] rounded-2xl w-full max-w-5xl my-4 overflow-hidden shadow-2xl flex flex-col print:bg-white print:border-none print:shadow-none print:my-0 print:max-w-none">
         
         {/* Modal Top Control Bar (Hidden on Print) */}
-        <div className="px-6 py-4 bg-[#EEEEEE] border-b border-[#D8D2CB] flex flex-wrap items-center justify-between gap-3 print:hidden sticky top-0 z-30">
+        <div className="px-6 py-4 bg-[#EEEEEE] border-b border-[#DCDFE3] flex flex-wrap items-center justify-between gap-3 print:hidden sticky top-0 z-30">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-[#1C658C]/10 border border-[#1C658C]/20 rounded-xl text-[#1C658C]">
               <FileText className="w-5 h-5" />
@@ -315,7 +315,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-[#1C658C] text-base">Surat Penawaran Harga (SPH) Resmi</h3>
-                <span className="bg-white text-[#1C658C] border border-[#D8D2CB] text-xs px-2 py-0.5 rounded font-mono font-bold">
+                <span className="bg-white text-[#1C658C] border border-[#DCDFE3] text-xs px-2 py-0.5 rounded font-mono font-bold">
                   {sph.sphNumber}
                 </span>
                 <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
@@ -346,7 +346,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
               type="button"
               onClick={() => kopFileInputRef.current?.click()}
               disabled={isUploadingKop}
-              className="px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border shadow-xs bg-white hover:bg-slate-50 text-slate-700 border-[#D8D2CB]"
+              className="px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border shadow-xs bg-white hover:bg-slate-50 text-slate-700 border-[#DCDFE3]"
               title="Upload file PDF kop surat asli untuk dijadikan background layer dokumen SPH"
             >
               <Upload className={`w-4 h-4 text-[#1C658C] ${isUploadingKop ? 'animate-bounce' : ''}`} />
@@ -359,7 +359,7 @@ export const SphPrintModal: React.FC<SphPrintModalProps> = ({
               className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border shadow-xs ${
                 digitalSignatureUrl 
                   ? 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100' 
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border-[#D8D2CB]'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-[#DCDFE3]'
               }`}
               title="Bubuhkan atau ganti tanda tangan digital resmi"
             >

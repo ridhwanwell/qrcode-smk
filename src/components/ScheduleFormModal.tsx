@@ -252,10 +252,10 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto">
       <form 
         onSubmit={handleSubmit} 
-        className="bg-white text-slate-800 rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-[#D8D2CB] my-6 max-h-[92vh] flex flex-col justify-between"
+        className="bg-white text-slate-800 rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-[#DCDFE3] my-6 max-h-[92vh] flex flex-col justify-between"
       >
         {/* Modal Header - Flux Theme */}
-        <div className="flex items-center justify-between pb-4 border-b border-[#D8D2CB] shrink-0">
+        <div className="flex items-center justify-between pb-4 border-b border-[#DCDFE3] shrink-0">
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-[#1C658C]/10 text-[#1C658C] text-[10px] font-bold font-mono border border-[#1C658C]/30">
@@ -302,7 +302,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                 <label className="font-semibold text-slate-700 block mb-1">
                   Kode Rumah Sakit (3 Digit) *
                 </label>
-                <div className="flex items-center gap-1 bg-white border border-[#D8D2CB] rounded-xl px-3 py-2 focus-within:border-[#1C658C]">
+                <div className="flex items-center gap-1 bg-white border border-[#DCDFE3] rounded-xl px-3 py-2 focus-within:border-[#1C658C]">
                   <Hash className="w-3.5 h-3.5 text-[#1C658C] shrink-0" />
                   <input
                     type="text"
@@ -321,7 +321,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                 <label className="font-semibold text-slate-700 block mb-1">
                   Nomor Urut Awal Label *
                 </label>
-                <div className="flex items-center gap-1 bg-white border border-[#D8D2CB] rounded-xl px-3 py-2 focus-within:border-[#1C658C]">
+                <div className="flex items-center gap-1 bg-white border border-[#DCDFE3] rounded-xl px-3 py-2 focus-within:border-[#1C658C]">
                   <span className="text-[10px] text-slate-400 font-mono">#</span>
                   <input
                     type="number"
@@ -350,14 +350,14 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                 </label>
                 <div className="bg-[#1C658C] text-white rounded-xl px-3 py-2 font-mono font-bold text-xs flex items-center justify-between shadow-xs">
                   <span>{labelRangeInfo.displayRange}</span>
-                  <span className="text-[10px] text-[#D8D2CB]">({totalDeviceUnits} Unit)</span>
+                  <span className="text-[10px] text-[#DCDFE3]">({totalDeviceUnits} Unit)</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Section 1: RS, Marketing, & Priority */}
-          <div className="p-3.5 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
+          <div className="p-3.5 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
             <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-1.5">
               <Building2 className="w-4 h-4" />
               <span>Informasi Klien Rumah Sakit & Pemasaran</span>
@@ -372,7 +372,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   placeholder="Contoh: RS Unim Islam YAKSSI Gemolong"
                   value={hospitalName}
                   onChange={(e) => setHospitalName(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -383,7 +383,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   placeholder="Nama staf marketing"
                   value={marketingName}
                   onChange={(e) => setMarketingName(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
             </div>
@@ -397,7 +397,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   placeholder="Contoh: Kab. Sragen / Kota Surakarta"
                   value={hospitalCity}
                   onChange={(e) => setHospitalCity(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -407,13 +407,13 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   type="text"
                   value={workOrderNumber}
                   onChange={(e) => setWorkOrderNumber(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-[#1C658C] font-mono font-bold focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-[#1C658C] font-mono font-bold focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
             </div>
 
             {/* ALAMAT LENGKAP RUMAH SAKIT */}
-            <div className="pt-2 border-t border-[#D8D2CB]/60">
+            <div className="pt-2 border-t border-[#DCDFE3]/60">
               <label className="font-semibold text-slate-700 block mb-1">
                 ALAMAT LENGKAP RUMAH SAKIT (Wajib untuk Dokumen Resmi)
               </label>
@@ -422,13 +422,13 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                 placeholder="Jl. Kolonel Sutarto No.132, Jebres, Surakarta"
                 value={hospitalAddress}
                 onChange={(e) => setHospitalAddress(e.target.value)}
-                className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 text-xs focus:outline-none focus:border-[#1C658C]"
+                className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 text-xs focus:outline-none focus:border-[#1C658C]"
               />
             </div>
           </div>
 
           {/* Section 2: Jadwal & Nilai Kontrak */}
-          <div className="p-3.5 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
+          <div className="p-3.5 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
             <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-1.5">
               <Calendar className="w-4 h-4" />
               <span>Jadwal Pelaksanaan & Nilai Kontrak</span>
@@ -441,7 +441,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   type="date"
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-mono focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-mono focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -451,7 +451,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-mono focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-mono focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -465,14 +465,14 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                     const raw = e.target.value.replace(/^0+(?=\d)/, '');
                     setContractValue(raw);
                   }}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
             </div>
           </div>
 
           {/* Section 3: Alokasi Teknisi (11 Teknisi Elektromedis PT SMK) */}
-          <div className="p-3.5 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
+          <div className="p-3.5 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
             <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-1.5">
               <UserCheck className="w-4 h-4" />
               <span>Penanggung Jawab Lapangan & Tim Teknisi (11 Personil Ber-STR)</span>
@@ -506,7 +506,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                     className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
                       selectedSupportIds.includes(tech.id)
                         ? 'bg-[#1C658C]/10 border-[#1C658C] text-[#1C658C] font-semibold'
-                        : 'bg-[#EEEEEE]/30 border-[#D8D2CB] text-slate-600 hover:text-slate-900'
+                        : 'bg-[#EEEEEE]/30 border-[#DCDFE3] text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <input
@@ -526,7 +526,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
           </div>
 
           {/* Section 4: Assigned Calibrator Master Tools */}
-          <div className="p-3.5 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
+          <div className="p-3.5 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
             <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-1.5">
               <Wrench className="w-4 h-4" />
               <span>Pilih Alat Kalibrator Standar yang Dibawa ke Lapangan:</span>
@@ -539,7 +539,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
                     selectedCalibratorIds.includes(cal.id)
                       ? 'bg-[#398AB9]/10 border-[#398AB9] text-[#1C658C] font-semibold'
-                      : 'bg-[#EEEEEE]/30 border-[#D8D2CB] text-slate-600 hover:text-slate-900'
+                      : 'bg-[#EEEEEE]/30 border-[#DCDFE3] text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <input
@@ -558,7 +558,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
           </div>
 
           {/* Section 5: Target Medical Equipment Editor (With 7-Digit Label Assignment) */}
-          <div className="p-3.5 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
+          <div className="p-3.5 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-1.5">
@@ -581,7 +581,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
 
             <div className="space-y-2">
               {devices.map((device, idx) => (
-                <div key={device.id} className="grid grid-cols-12 gap-2 p-2.5 bg-[#EEEEEE]/40 rounded-xl border border-[#D8D2CB] items-center">
+                <div key={device.id} className="grid grid-cols-12 gap-2 p-2.5 bg-[#EEEEEE]/40 rounded-xl border border-[#DCDFE3] items-center">
                   <div className="col-span-1 text-center font-bold text-[#1C658C] text-[11px]">
                     #{idx + 1}
                   </div>
@@ -593,7 +593,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                       placeholder="e.g. Ventilator ICU"
                       value={device.name}
                       onChange={(e) => handleDeviceChange(device.id, 'name', e.target.value)}
-                      className="w-full p-1.5 bg-white border border-[#D8D2CB] rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                      className="w-full p-1.5 bg-white border border-[#DCDFE3] rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#1C658C]"
                     />
                   </div>
 
@@ -634,7 +634,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
           </div>
 
           {/* Section 6: Approval / Otorisasi */}
-          <div className="p-3.5 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
+          <div className="p-3.5 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
             <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-1.5">
               <FileCheck className="w-4 h-4" />
               <span>Otorisasi Resmi Manajer Teknik (TTD MT)</span>
@@ -647,7 +647,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   type="text"
                   value={approvedByName}
                   onChange={(e) => setApprovedByName(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -657,7 +657,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                   type="text"
                   value={approvedByRole}
                   onChange={(e) => setApprovedByRole(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
             </div>
@@ -669,18 +669,18 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                 placeholder="Catatan koordinasi keselamatan, izin isolasi, atau instruksi kerja..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
               />
             </div>
           </div>
         </div>
 
         {/* Modal Footer */}
-        <div className="pt-4 border-t border-[#D8D2CB] flex items-center justify-end gap-2 shrink-0">
+        <div className="pt-4 border-t border-[#DCDFE3] flex items-center justify-end gap-2 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-[#EEEEEE] border border-[#D8D2CB] transition-colors"
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-[#EEEEEE] border border-[#DCDFE3] transition-colors"
           >
             Batal
           </button>

@@ -367,7 +367,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white text-slate-800 p-5 rounded-2xl border border-[#D8D2CB] shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white text-slate-800 p-5 rounded-2xl border border-[#DCDFE3] shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-2 bg-[#1C658C]/10 text-[#1C658C] rounded-xl border border-[#1C658C]/20">
@@ -461,19 +461,19 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4.5 rounded-2xl border border-[#D8D2CB] shadow-xs">
+        <div className="bg-white p-4.5 rounded-2xl border border-[#DCDFE3] shadow-xs">
           <p className="text-xs font-medium text-slate-500">Total Nilai Buku Alat</p>
           <h3 className="text-xl sm:text-2xl font-black text-[#1C658C] mt-1 font-mono">{formatRupiah(totalValue)}</h3>
           <p className="text-[11px] text-slate-400 mt-0.5">Nilai perolehan: {formatRupiah(totalPurchase)}</p>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-[#D8D2CB] shadow-xs">
+        <div className="bg-white p-4.5 rounded-2xl border border-[#DCDFE3] shadow-xs">
           <p className="text-xs font-medium text-slate-500">Unit Siap di Rak Lab</p>
           <h3 className="text-xl sm:text-2xl font-black text-emerald-600 mt-1 font-mono">{availableCount} Unit Tersedia</h3>
           <p className="text-[11px] text-slate-400 mt-0.5">Siap digunakan operasional on-site</p>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-[#D8D2CB] shadow-xs">
+        <div className="bg-white p-4.5 rounded-2xl border border-[#DCDFE3] shadow-xs">
           <p className="text-xs font-medium text-slate-500">Sedang Dipinjam Lapangan</p>
           <h3 className={`text-xl sm:text-2xl font-black mt-1 font-mono ${borrowedCount > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
             {borrowedCount} Unit Dipinjam
@@ -481,7 +481,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
           <p className="text-[11px] text-slate-400 mt-0.5">Operasional kalibrasi di Rumah Sakit</p>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-[#D8D2CB] shadow-xs">
+        <div className="bg-white p-4.5 rounded-2xl border border-[#DCDFE3] shadow-xs">
           <p className="text-xs font-medium text-slate-500">Status Sertifikat KAN/BPFK</p>
           <h3 className={`text-xl sm:text-2xl font-black mt-1 font-mono ${expiringCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
             {expiringCount > 0 ? `${expiringCount} Butuh Kalibrasi` : '100% Aktif'}
@@ -494,7 +494,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
       {activeSubTab === 'assets' && (
         <div className="space-y-4">
           {/* Search & Filter & View Toggle */}
-          <div className="bg-white p-4 rounded-2xl border border-[#D8D2CB] shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="bg-white p-4 rounded-2xl border border-[#DCDFE3] shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
             <div className="relative w-full md:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -502,7 +502,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                 placeholder="Cari kode, nama alat, merek, tipe, no seri..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#1C658C]"
+                className="w-full pl-9 pr-4 py-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#1C658C]"
               />
             </div>
 
@@ -510,7 +510,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
               <select
                 value={conditionFilter}
                 onChange={(e) => setConditionFilter(e.target.value)}
-                className="bg-white border border-[#D8D2CB] text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-[#1C658C]"
+                className="bg-white border border-[#DCDFE3] text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-[#1C658C]"
               >
                 <option value="ALL">Semua Kondisi ({calibrators.length})</option>
                 <option value="Sangat Baik">Sangat Baik ({calibrators.filter(c => c.condition === 'Sangat Baik').length})</option>
@@ -520,7 +520,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
               </select>
 
               {/* View Mode Toggle: Table vs Cards */}
-              <div className="flex items-center bg-[#EEEEEE] p-1 rounded-xl border border-[#D8D2CB]">
+              <div className="flex items-center bg-[#EEEEEE] p-1 rounded-xl border border-[#DCDFE3]">
                 <button
                   onClick={() => setViewMode('table')}
                   className={`p-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
@@ -547,7 +547,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
 
           {/* TABLE VIEW */}
           {viewMode === 'table' && (
-            <div className="bg-white rounded-2xl border border-[#D8D2CB] overflow-hidden shadow-xs">
+            <div className="bg-white rounded-2xl border border-[#DCDFE3] overflow-hidden shadow-xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#1C658C] text-white uppercase text-[11px] tracking-wider font-semibold">
@@ -564,7 +564,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                       <th className="px-3.5 py-3 text-center w-36">Aksi & Pinjam</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#D8D2CB]">
+                  <tbody className="divide-y divide-[#DCDFE3]">
                     {filteredCalibrators.length === 0 ? (
                       <tr>
                         <td colSpan={10} className="px-4 py-12 text-center text-slate-400 bg-slate-50/50">
@@ -709,9 +709,9 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                 return (
                   <div
                     key={cal.id}
-                    className="bg-white rounded-2xl border border-[#D8D2CB] hover:border-[#398AB9] shadow-xs transition-all flex flex-col justify-between overflow-hidden group"
+                    className="bg-white rounded-2xl border border-[#DCDFE3] hover:border-[#398AB9] shadow-xs transition-all flex flex-col justify-between overflow-hidden group"
                   >
-                    <div className="p-4 border-b border-[#D8D2CB] bg-[#EEEEEE]/40">
+                    <div className="p-4 border-b border-[#DCDFE3] bg-[#EEEEEE]/40">
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="font-mono text-[11px] font-bold bg-[#1C658C]/10 text-[#1C658C] border border-[#1C658C]/20 px-2 py-0.5 rounded">
                           {cal.code}
@@ -760,7 +760,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                         <span className="text-slate-800 font-mono">{formatIndonesianDate(cal.lastCalibratedDate)}</span>
                       </div>
 
-                      <div className="p-2.5 bg-[#EEEEEE]/60 rounded-xl border border-[#D8D2CB]">
+                      <div className="p-2.5 bg-[#EEEEEE]/60 rounded-xl border border-[#DCDFE3]">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-slate-500 font-medium">Habis Masa Kalibrasi:</span>
                           <span className={`text-xs font-mono font-bold ${isExpiringSoon ? 'text-amber-600' : 'text-emerald-700'}`}>
@@ -777,13 +777,13 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                         <span className="text-[#1C658C] font-medium truncate max-w-[160px]">{cal.currentHolderTechnician || cal.location}</span>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-[#D8D2CB]">
+                      <div className="flex items-center justify-between pt-2 border-t border-[#DCDFE3]">
                         <span className="text-slate-500">Nilai Buku:</span>
                         <span className="text-sm font-black text-[#1C658C] font-mono">{formatRupiah(cal.currentValue)}</span>
                       </div>
                     </div>
 
-                    <div className="p-3 bg-[#EEEEEE]/50 border-t border-[#D8D2CB] flex items-center justify-between gap-1.5">
+                    <div className="p-3 bg-[#EEEEEE]/50 border-t border-[#DCDFE3] flex items-center justify-between gap-1.5">
                       {isAvailable ? (
                         <button
                           onClick={() => handleOpenNewLoan(cal.id)}
@@ -804,7 +804,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
 
                       <button
                         onClick={() => openEditModal(cal)}
-                        className="bg-white hover:bg-[#EEEEEE] text-[#1C658C] border border-[#D8D2CB] text-xs font-bold py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
+                        className="bg-white hover:bg-[#EEEEEE] text-[#1C658C] border border-[#DCDFE3] text-xs font-bold py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
                         title="Edit Alat"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
@@ -1023,7 +1023,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
       {/* MODAL: ADD / EDIT CALIBRATOR ASSET */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleSaveCalibrator} className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-[#D8D2CB] max-h-[90vh] overflow-y-auto text-slate-800">
+          <form onSubmit={handleSaveCalibrator} className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-[#DCDFE3] max-h-[90vh] overflow-y-auto text-slate-800">
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-base font-bold text-[#1C658C] flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-[#1C658C]" />
@@ -1051,7 +1051,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                     placeholder="CAL-001"
                     value={newCode}
                     onChange={(e) => setNewCode(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 font-mono font-bold focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 font-mono font-bold focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
                 <div>
@@ -1062,7 +1062,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                     placeholder="SN-9823412"
                     value={newSerial}
                     onChange={(e) => setNewSerial(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 font-mono focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 font-mono focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
               </div>
@@ -1075,7 +1075,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                   placeholder="Fluke ESA620 Electrical Safety Analyzer"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -1087,7 +1087,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                     placeholder="Fluke Biomedical"
                     value={newBrand}
                     onChange={(e) => setNewBrand(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
                 <div>
@@ -1097,7 +1097,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                     placeholder="ESA 620 Pro"
                     value={newModel}
                     onChange={(e) => setNewModel(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
               </div>
@@ -1113,7 +1113,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                       const raw = e.target.value.replace(/^0+(?=\d)/, '');
                       setNewPurchasePrice(raw);
                     }}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
                 <div>
@@ -1121,7 +1121,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                   <select
                     value={newCondition}
                     onChange={(e) => setNewCondition(e.target.value as CalibratorCondition)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
                   >
                     <option value="Sangat Baik">Sangat Baik</option>
                     <option value="Siap Pakai">Siap Pakai</option>
@@ -1132,7 +1132,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
               </div>
 
               {/* Calibration Dates */}
-              <div className="p-3 bg-[#EEEEEE]/70 rounded-xl border border-[#D8D2CB] space-y-2">
+              <div className="p-3 bg-[#EEEEEE]/70 rounded-xl border border-[#DCDFE3] space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-[#1C658C] text-xs">Masa Berlaku Kalibrasi KAN (Otomatis 1 Tahun)</label>
                 </div>
@@ -1143,7 +1143,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                       type="date"
                       value={newCalDate}
                       onChange={(e) => handleCalDateChange(e.target.value)}
-                      className="w-full p-2 bg-white border border-[#D8D2CB] rounded-lg text-slate-800 font-mono focus:outline-none"
+                      className="w-full p-2 bg-white border border-[#DCDFE3] rounded-lg text-slate-800 font-mono focus:outline-none"
                     />
                   </div>
                   <div>
@@ -1166,7 +1166,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                     placeholder="BPFK Jakarta"
                     value={newLab}
                     onChange={(e) => setNewLab(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
                 <div>
@@ -1176,13 +1176,13 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                     placeholder="CERT-KAN-2026-99"
                     value={newCertNo}
                     onChange={(e) => setNewCertNo(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 font-mono focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 font-mono focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-[#D8D2CB] flex items-center justify-end gap-2">
+            <div className="mt-6 pt-4 border-t border-[#DCDFE3] flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
@@ -1204,7 +1204,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
       {/* MODAL: MAINTENANCE / LOG RE-KALIBRASI */}
       {showMaintenanceModal && selectedCalibrator && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleAddMaintenance} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#D8D2CB] text-slate-800">
+          <form onSubmit={handleAddMaintenance} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#DCDFE3] text-slate-800">
             <h3 className="text-base font-bold text-[#1C658C]">
               Log Kalibrasi Ulang & Pemeliharaan
             </h3>
@@ -1221,7 +1221,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                   placeholder="Re-kalibrasi berkala BPFK & penggantian fuse pengaman"
                   value={maintDesc}
                   onChange={(e) => setMaintDesc(e.target.value)}
-                  className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -1236,7 +1236,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                       const raw = e.target.value.replace(/^0+(?=\d)/, '');
                       setMaintCost(raw);
                     }}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-[#1C658C] font-bold font-mono focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
                 <div>
@@ -1245,7 +1245,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
                     type="text"
                     value={maintBy}
                     onChange={(e) => setMaintBy(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-[#D8D2CB] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
+                    className="w-full p-2.5 bg-white border border-[#DCDFE3] rounded-xl text-slate-800 focus:outline-none focus:border-[#1C658C]"
                   />
                 </div>
               </div>
@@ -1261,7 +1261,7 @@ export const CalibratorAssetManager: React.FC<CalibratorAssetManagerProps> = ({
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-[#D8D2CB] flex items-center justify-end gap-2">
+            <div className="mt-6 pt-4 border-t border-[#DCDFE3] flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowMaintenanceModal(false)}

@@ -91,7 +91,7 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ kind, sph,
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-5xl my-auto flex flex-col max-h-[92vh] shadow-2xl overflow-hidden">
+      <div className="bg-white border border-[#DCDFE3] rounded-2xl w-full max-w-5xl my-auto flex flex-col max-h-[92vh] shadow-2xl overflow-hidden">
         {/* Header */}
         <div className={`px-6 py-4 text-white flex items-center justify-between shrink-0 bg-gradient-to-r ${isNonPo ? 'from-orange-700 to-rose-800' : 'from-purple-800 to-indigo-900'}`}>
           <div className="flex items-center gap-3">
@@ -269,7 +269,7 @@ export const BapPdfImportModal: React.FC<BapPdfImportModalProps> = ({ kind, sph,
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-white border-t border-[#D8D2CB] flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="px-6 py-4 bg-white border-t border-[#DCDFE3] flex flex-wrap items-center justify-between gap-3 shrink-0">
           <p className="text-[11px] text-slate-500 max-w-md">
             {isNonPo
               ? 'Daftar alat Non PO di BAP akan diganti sesuai PDF beserta harganya. Alat PO tidak berubah.'

@@ -269,7 +269,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   return (
     <div className="space-y-6 pb-12">
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white text-slate-800 p-5 sm:p-6 rounded-2xl border border-[#D8D2CB] shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white text-slate-800 p-5 sm:p-6 rounded-2xl border border-[#DCDFE3] shadow-xs">
         <div>
           <div className="flex items-center gap-3">
             <span className="p-2.5 bg-[#1C658C]/10 text-[#1C658C] rounded-xl border border-[#1C658C]/20">
@@ -316,7 +316,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
 
           <button
             onClick={onOpenNewScheduleModal}
-            className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#D8D2CB] px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs"
+            className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#DCDFE3] px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs"
             id="btn-add-schedule-main"
           >
             <Plus className="w-4 h-4 text-[#1C658C]" />
@@ -332,7 +332,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           className={`p-3 rounded-xl border text-left transition-all ${
             urgencyFilter === 'OVERDUE'
               ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-500/20 shadow-xs'
-              : 'bg-white border-[#D8D2CB] hover:border-rose-200'
+              : 'bg-white border-[#DCDFE3] hover:border-rose-200'
           }`}
         >
           <span className="text-[11px] font-bold text-rose-600 block flex items-center gap-1">
@@ -346,7 +346,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           className={`p-3 rounded-xl border text-left transition-all ${
             urgencyFilter === 'CRITICAL'
               ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-500/20 shadow-xs'
-              : 'bg-white border-[#D8D2CB] hover:border-amber-200'
+              : 'bg-white border-[#DCDFE3] hover:border-amber-200'
           }`}
         >
           <span className="text-[11px] font-bold text-amber-700 block flex items-center gap-1">
@@ -360,7 +360,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           className={`p-3 rounded-xl border text-left transition-all ${
             urgencyFilter === 'WARNING'
               ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-500/20 shadow-xs'
-              : 'bg-white border-[#D8D2CB] hover:border-yellow-200'
+              : 'bg-white border-[#DCDFE3] hover:border-yellow-200'
           }`}
         >
           <span className="text-[11px] font-bold text-yellow-700 block flex items-center gap-1">
@@ -374,7 +374,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           className={`p-3 rounded-xl border text-left transition-all ${
             urgencyFilter === 'UPCOMING'
               ? 'bg-[#398AB9]/15 border-[#398AB9] ring-2 ring-[#398AB9]/20 shadow-xs'
-              : 'bg-white border-[#D8D2CB] hover:border-[#398AB9]/40'
+              : 'bg-white border-[#DCDFE3] hover:border-[#398AB9]/40'
           }`}
         >
           <span className="text-[11px] font-bold text-[#1C658C] block flex items-center gap-1">
@@ -388,20 +388,20 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           className={`p-3 rounded-xl border text-left transition-all ${
             urgencyFilter === 'ALL' && statusFilter === 'ALL'
               ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-xs'
-              : 'bg-white border-[#D8D2CB] hover:border-slate-300 text-slate-800'
+              : 'bg-white border-[#DCDFE3] hover:border-slate-300 text-slate-800'
           }`}
         >
           <span className={`text-[11px] font-bold block ${urgencyFilter === 'ALL' && statusFilter === 'ALL' ? 'text-white' : 'text-slate-800'}`}>
             Semua Jadwal ({schedules.length})
           </span>
-          <span className={`text-xs mt-0.5 block ${urgencyFilter === 'ALL' && statusFilter === 'ALL' ? 'text-[#D8D2CB]' : 'text-emerald-700 font-medium'}`}>
+          <span className={`text-xs mt-0.5 block ${urgencyFilter === 'ALL' && statusFilter === 'ALL' ? 'text-[#DCDFE3]' : 'text-emerald-700 font-medium'}`}>
             {counts.completed} SPK Selesai
           </span>
         </button>
       </div>
 
       {/* Search & Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-[#D8D2CB] shadow-xs flex flex-col lg:flex-row items-center justify-between gap-3">
+      <div className="bg-white p-4 rounded-2xl border border-[#DCDFE3] shadow-xs flex flex-col lg:flex-row items-center justify-between gap-3">
         <div className="relative w-full lg:w-96">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -409,7 +409,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             placeholder="Cari RS, SPK, teknisi, marketing, kota..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#1C658C]"
+            className="w-full pl-9 pr-4 py-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#1C658C]"
           />
         </div>
 
@@ -418,7 +418,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white border border-[#D8D2CB] text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-[#1C658C]"
+            className="bg-white border border-[#DCDFE3] text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-[#1C658C]"
           >
             <option value="ALL">Semua Status SPK</option>
             <option value="Terkonfirmasi">Terkonfirmasi</option>
@@ -432,7 +432,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           <select
             value={technicianFilter}
             onChange={(e) => setTechnicianFilter(e.target.value)}
-            className="bg-white border border-[#D8D2CB] text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-[#1C658C]"
+            className="bg-white border border-[#DCDFE3] text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-[#1C658C]"
           >
             <option value="ALL">Semua 11 Lead Teknisi</option>
             {technicians.map((t) => (
@@ -441,11 +441,11 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           </select>
 
           {/* View Toggle */}
-          <div className="flex items-center bg-[#EEEEEE] p-1 rounded-xl border border-[#D8D2CB]">
+          <div className="flex items-center bg-[#EEEEEE] p-1 rounded-xl border border-[#DCDFE3]">
             <button
               onClick={() => setViewMode('cards')}
               className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                viewMode === 'cards' ? 'bg-white text-[#1C658C] shadow-xs border border-[#D8D2CB]' : 'text-slate-600 hover:text-slate-900'
+                viewMode === 'cards' ? 'bg-white text-[#1C658C] shadow-xs border border-[#DCDFE3]' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Kartu
@@ -453,7 +453,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             <button
               onClick={() => setViewMode('table')}
               className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                viewMode === 'table' ? 'bg-white text-[#1C658C] shadow-xs border border-[#D8D2CB]' : 'text-slate-600 hover:text-slate-900'
+                viewMode === 'table' ? 'bg-white text-[#1C658C] shadow-xs border border-[#DCDFE3]' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Tabel
@@ -464,7 +464,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
 
       {/* Schedule Content: Cards or Table */}
       {filteredSchedules.length === 0 ? (
-        <div className="bg-white rounded-2xl p-12 text-center border border-[#D8D2CB] shadow-xs">
+        <div className="bg-white rounded-2xl p-12 text-center border border-[#DCDFE3] shadow-xs">
           <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <h3 className="text-base font-bold text-slate-800">Tidak ada jadwal kalibrasi yang sesuai</h3>
           <p className="text-xs text-slate-500 mt-1">Coba sesuaikan kata kunci pencarian atau reset filter.</p>
@@ -487,15 +487,15 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             return (
               <div
                 key={schedule.id}
-                className="bg-white rounded-2xl border border-[#D8D2CB] hover:border-[#398AB9] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+                className="bg-white rounded-2xl border border-[#DCDFE3] hover:border-[#398AB9] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
               >
                 {/* Card Header */}
-                <div className="p-4 border-b border-[#D8D2CB] bg-[#EEEEEE]/30">
+                <div className="p-4 border-b border-[#DCDFE3] bg-[#EEEEEE]/30">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${urgency.badgeClass}`}>
                       {urgency.label}
                     </span>
-                    <span className="font-mono text-[11px] text-[#1C658C] font-bold bg-white px-2 py-0.5 rounded border border-[#D8D2CB]">
+                    <span className="font-mono text-[11px] text-[#1C658C] font-bold bg-white px-2 py-0.5 rounded border border-[#DCDFE3]">
                       {schedule.workOrderNumber}
                     </span>
                   </div>
@@ -515,7 +515,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 {/* Card Body */}
                 <div className="p-4 space-y-3 text-xs">
                   {/* Lead Tech & Support */}
-                  <div className="bg-[#EEEEEE]/50 p-2.5 rounded-xl border border-[#D8D2CB] space-y-1">
+                  <div className="bg-[#EEEEEE]/50 p-2.5 rounded-xl border border-[#DCDFE3] space-y-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 truncate">
                         <UserCheck className="w-3.5 h-3.5 text-[#1C658C] shrink-0" />
@@ -524,7 +524,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 border-t border-[#D8D2CB]/60 text-[11px]">
+                    <div className="flex items-center justify-between pt-1 border-t border-[#DCDFE3]/60 text-[11px]">
                       <span className="text-slate-500 flex items-center gap-1">
                         <Briefcase className="w-3 h-3 text-[#398AB9]" />
                         Marketing:
@@ -547,7 +547,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       </span>
                       <span className="font-bold text-[#1C658C]">{schedule.progressPercent || 0}% Selesai</span>
                     </div>
-                    <div className="w-full bg-[#EEEEEE] rounded-full h-2 overflow-hidden border border-[#D8D2CB]">
+                    <div className="w-full bg-[#EEEEEE] rounded-full h-2 overflow-hidden border border-[#DCDFE3]">
                       <div
                         className={`h-full rounded-full transition-all ${
                           schedule.progressPercent === 100 ? 'bg-emerald-600' : 'bg-gradient-to-r from-[#398AB9] to-[#1C658C]'
@@ -556,7 +556,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       />
                     </div>
                     {/* 7-digit Label Range Badge */}
-                    <div className="mt-1.5 flex items-center justify-between bg-[#EEEEEE]/60 px-2 py-1 rounded-lg border border-[#D8D2CB] text-[10px]">
+                    <div className="mt-1.5 flex items-center justify-between bg-[#EEEEEE]/60 px-2 py-1 rounded-lg border border-[#DCDFE3] text-[10px]">
                       <span className="text-slate-500">No. Label RS (7-Digit):</span>
                       <span className="font-mono font-bold text-[#1C658C]">
                         {schedule.labelRange || (schedule.labelStart ? `${schedule.labelStart} - ${schedule.labelEnd}` : `${schedule.hospitalCode || '100'}0001 s/d ${schedule.hospitalCode || '100'}${String(totalQty).padStart(4, '0')}`)}
@@ -573,7 +573,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                     <div className="flex flex-wrap gap-1">
                       {calibratorNames.length > 0 ? (
                         calibratorNames.map((calName, i) => (
-                          <span key={i} className="bg-[#EEEEEE] text-[#1C658C] border border-[#D8D2CB] text-[10px] font-medium px-2 py-0.5 rounded-md">
+                          <span key={i} className="bg-[#EEEEEE] text-[#1C658C] border border-[#DCDFE3] text-[10px] font-medium px-2 py-0.5 rounded-md">
                             {calName}
                           </span>
                         ))
@@ -584,7 +584,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   </div>
 
                   {/* Schedule Date & Contract Value */}
-                  <div className="pt-2 border-t border-[#D8D2CB] flex items-center justify-between">
+                  <div className="pt-2 border-t border-[#DCDFE3] flex items-center justify-between">
                     <div>
                       <span className="text-[10px] text-slate-400 block">Jadwal Pelaksanaan</span>
                       <span className="font-semibold text-slate-700 flex items-center gap-1 text-[11px]">
@@ -600,7 +600,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 </div>
 
                 {/* Card Footer Actions */}
-                <div className="p-3 bg-[#EEEEEE]/30 border-t border-[#D8D2CB] flex items-center justify-between gap-1.5">
+                <div className="p-3 bg-[#EEEEEE]/30 border-t border-[#DCDFE3] flex items-center justify-between gap-1.5">
                   <button
                     onClick={() => onSelectSchedule(schedule)}
                     className="flex-1 bg-[#1C658C] hover:bg-[#398AB9] text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
@@ -620,7 +620,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
 
                   <button
                     onClick={() => onOpenEditScheduleModal(schedule)}
-                    className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#D8D2CB] p-2 rounded-lg text-xs transition-colors shadow-xs cursor-pointer"
+                    className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#DCDFE3] p-2 rounded-lg text-xs transition-colors shadow-xs cursor-pointer"
                     title="Edit Jadwal"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600" />
@@ -642,11 +642,11 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         </div>
       ) : (
         /* Table View */
-        <div className="bg-white rounded-2xl border border-[#D8D2CB] shadow-xs overflow-hidden text-slate-800">
+        <div className="bg-white rounded-2xl border border-[#DCDFE3] shadow-xs overflow-hidden text-slate-800">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="bg-[#EEEEEE] text-slate-600 border-b border-[#D8D2CB] font-semibold">
+                <tr className="bg-[#EEEEEE] text-slate-600 border-b border-[#DCDFE3] font-semibold">
                   <th className="py-3 px-4">No. BO / Urgensi</th>
                   <th className="py-3 px-4">Rumah Sakit</th>
                   <th className="py-3 px-4">Tanggal Pelaksanaan</th>
@@ -657,7 +657,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                   <th className="py-3 px-4 text-center">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#D8D2CB]">
+              <tbody className="divide-y divide-[#DCDFE3]">
                 {filteredSchedules.map((sch) => {
                   const urgency = getUrgencyInfo(sch, TODAY_STR);
                   const targetDevices = Array.isArray(sch.targetDevices) ? sch.targetDevices : [];
@@ -690,7 +690,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                             {sch.progressPercent || 0}%
                           </span>
                         </div>
-                        <div className="w-24 bg-[#EEEEEE] rounded-full h-1.5 mt-1 overflow-hidden border border-[#D8D2CB]">
+                        <div className="w-24 bg-[#EEEEEE] rounded-full h-1.5 mt-1 overflow-hidden border border-[#DCDFE3]">
                           <div className="bg-[#1C658C] h-full rounded-full" style={{ width: `${sch.progressPercent || 0}%` }} />
                         </div>
                       </td>
@@ -722,7 +722,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                           </button>
                           <button
                             onClick={() => onOpenEditScheduleModal(sch)}
-                            className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#D8D2CB] p-1.5 rounded-lg text-xs transition-colors cursor-pointer"
+                            className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#DCDFE3] p-1.5 rounded-lg text-xs transition-colors cursor-pointer"
                             title="Edit"
                           >
                             <SlidersHorizontal className="w-3.5 h-3.5" />

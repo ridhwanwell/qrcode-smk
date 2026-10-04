@@ -658,7 +658,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-5xl my-6 overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="bg-white border border-[#DCDFE3] rounded-2xl w-full max-w-5xl my-6 overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
         
         {/* Header Modal */}
         <div className="px-6 py-4 bg-[#1C658C] border-b border-[#144966] text-white flex items-center justify-between sticky top-0 z-20">
@@ -673,7 +673,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   {sphNumber}
                 </span>
               </h2>
-              <p className="text-xs text-[#D8D2CB]">
+              <p className="text-xs text-[#DCDFE3]">
                 Pilih format penawaran, kalkulasi negosiasi otomatis, dan unduh PDF resmi ber-Kop Surat
               </p>
             </div>
@@ -757,8 +757,8 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             
             {/* Box 1: Info Customer */}
-            <div className="bg-white border border-[#D8D2CB] rounded-xl p-5 space-y-3.5 shadow-xs">
-              <div className="flex items-center justify-between border-b border-[#D8D2CB]/60 pb-2.5">
+            <div className="bg-white border border-[#DCDFE3] rounded-xl p-5 space-y-3.5 shadow-xs">
+              <div className="flex items-center justify-between border-b border-[#DCDFE3]/60 pb-2.5">
                 <h3 className="text-xs font-bold text-[#1C658C] flex items-center gap-2 uppercase tracking-wide">
                   <User className="w-4 h-4 text-[#398AB9]" />
                   <span>Info Customer</span>
@@ -768,7 +768,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     <select
                       value={hospitalId}
                       onChange={(e) => handleHospitalChange(e.target.value)}
-                      className="text-[11px] bg-[#EEEEEE] border border-[#D8D2CB] rounded px-2 py-0.5 text-slate-700 outline-none"
+                      className="text-[11px] bg-[#EEEEEE] border border-[#DCDFE3] rounded px-2 py-0.5 text-slate-700 outline-none"
                     >
                       <option value="">-- Pilih dari Database RS --</option>
                       {hospitals.map(h => (
@@ -787,7 +787,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   type="text"
                   value={hospitalName}
                   onChange={(e) => setHospitalName(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-semibold"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-semibold"
                   placeholder="Contoh: RS Umum Islam YAKSSI Gemolong"
                   required
                 />
@@ -801,7 +801,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   rows={2}
                   value={hospitalAddress}
                   onChange={(e) => setHospitalAddress(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                   placeholder="Jl. Raya Solo - Purwodadi KM. 20 Gemolong, Sragen..."
                   required
                 />
@@ -815,15 +815,15 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   type="text"
                   value={customerUp}
                   onChange={(e) => setCustomerUp(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                   placeholder="Contoh: Direktur / Bagian Pengadaan"
                 />
               </div>
             </div>
 
             {/* Box 2: Info Surat */}
-            <div className="bg-white border border-[#D8D2CB] rounded-xl p-5 space-y-3.5 shadow-xs">
-              <div className="flex items-center justify-between border-b border-[#D8D2CB]/60 pb-2.5">
+            <div className="bg-white border border-[#DCDFE3] rounded-xl p-5 space-y-3.5 shadow-xs">
+              <div className="flex items-center justify-between border-b border-[#DCDFE3]/60 pb-2.5">
                 <h3 className="text-xs font-bold text-[#1C658C] flex items-center gap-2 uppercase tracking-wide">
                   <FileText className="w-4 h-4 text-[#398AB9]" />
                   <span>Info Surat</span>
@@ -842,7 +842,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     type="text"
                     value={sphNumber}
                     onChange={(e) => setSphNumber(e.target.value)}
-                    className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                    className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                     placeholder="146/SMK-SPH/IX-2026"
                     required
                   />
@@ -857,7 +857,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                       type="text"
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
-                      className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                      className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                       placeholder="Surat Penawaran Harga Kalibrasi"
                     />
                   </div>
@@ -870,7 +870,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                       type="text"
                       value={tembusan}
                       onChange={(e) => setTembusan(e.target.value)}
-                      className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                      className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                       placeholder="Direktur / Kabid Penunjang / -"
                     />
                   </div>
@@ -886,7 +886,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                    className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                     required
                   />
                 </div>
@@ -899,20 +899,20 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                    className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                     placeholder="Surakarta"
                   />
                 </div>
               </div>
 
               {/* Tanggal PDF Preview & Catatan */}
-              <div className="p-2.5 bg-[#EEEEEE]/60 border border-[#D8D2CB] rounded-lg text-xs flex items-center justify-between">
+              <div className="p-2.5 bg-[#EEEEEE]/60 border border-[#DCDFE3] rounded-lg text-xs flex items-center justify-between">
                 <span className="text-slate-500">Format Tanggal PDF:</span>
                 <span className="font-semibold text-[#1C658C]">{formattedDateStr}</span>
               </div>
 
               {/* PILIHAN PEMBAYARAN BANK (Poin 9 SPH) */}
-              <div className="pt-1 border-t border-[#D8D2CB]/60">
+              <div className="pt-1 border-t border-[#DCDFE3]/60">
                 <label className="block text-xs font-semibold text-slate-800 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-[#1C658C]">
                     <CreditCard className="w-3.5 h-3.5 text-[#398AB9]" />
@@ -928,7 +928,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-center ${
                       paymentOption === 'both'
                         ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-xs'
-                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#D8D2CB] hover:bg-[#EEEEEE]'
+                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#DCDFE3] hover:bg-[#EEEEEE]'
                     }`}
                   >
                     <span className="leading-tight">2 Bank (Keduanya)</span>
@@ -941,7 +941,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-center ${
                       paymentOption === 'jateng'
                         ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-xs'
-                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#D8D2CB] hover:bg-[#EEEEEE]'
+                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#DCDFE3] hover:bg-[#EEEEEE]'
                     }`}
                   >
                     <span className="leading-tight">Bank Jateng Saja</span>
@@ -954,7 +954,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-center ${
                       paymentOption === 'mandiri'
                         ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-xs'
-                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#D8D2CB] hover:bg-[#EEEEEE]'
+                        : 'bg-[#EEEEEE]/60 text-slate-700 border-[#DCDFE3] hover:bg-[#EEEEEE]'
                     }`}
                   >
                     <span className="leading-tight">Bank Mandiri Saja</span>
@@ -995,7 +995,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                   placeholder="Boleh kosong atau strip (-)"
                 />
               </div>
@@ -1005,8 +1005,8 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
           </div>
 
           {/* BAGIAN 2: INFO INTERNAL & STATUS */}
-          <div className="bg-white border border-[#D8D2CB] rounded-xl p-5 space-y-4 shadow-xs">
-            <div className="flex items-center justify-between border-b border-[#D8D2CB]/60 pb-2.5">
+          <div className="bg-white border border-[#DCDFE3] rounded-xl p-5 space-y-4 shadow-xs">
+            <div className="flex items-center justify-between border-b border-[#DCDFE3]/60 pb-2.5">
               <h3 className="text-xs font-bold text-[#1C658C] flex items-center gap-2 uppercase tracking-wide">
                 <Building2 className="w-4 h-4 text-[#398AB9]" />
                 <span>Info Internal & Penanda Tangan</span>
@@ -1016,7 +1016,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as any)}
-                  className="bg-[#EEEEEE] border border-[#D8D2CB] text-xs font-semibold text-slate-800 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="bg-[#EEEEEE] border border-[#DCDFE3] text-xs font-semibold text-slate-800 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-[#1C658C] outline-none"
                 >
                   <option value="Draft">Draft</option>
                   <option value="Terkirim ke RS">Terkirim ke RS</option>
@@ -1038,7 +1038,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 <select
                   value={marketingStaffName}
                   onChange={(e) => handleMarketingSelect(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 font-medium focus:ring-1 focus:ring-[#1C658C] outline-none cursor-pointer"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 font-medium focus:ring-1 focus:ring-[#1C658C] outline-none cursor-pointer"
                 >
                   {OFFICIAL_MARKETING_STAFF.map(m => (
                     <option key={m.name} value={m.name}>{m.name} ({m.phone})</option>
@@ -1056,7 +1056,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   type="text"
                   value={marketingStaffPhone}
                   onChange={(e) => setMarketingStaffPhone(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                   placeholder="0812-4484-2383"
                 />
               </div>
@@ -1070,7 +1070,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   type="text"
                   value={directorName}
                   onChange={(e) => setDirectorName(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-medium"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-medium"
                   placeholder="Ahmad Fajar Ariyanto"
                 />
               </div>
@@ -1084,7 +1084,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                   type="text"
                   value={directorTitle}
                   onChange={(e) => setDirectorTitle(e.target.value)}
-                  className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg px-3 py-2 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                   placeholder="Direktur"
                 />
               </div>
@@ -1092,8 +1092,8 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
           </div>
 
           {/* BAGIAN 3: KALKULASI & SIMULASI NEGOSIASI HARGA */}
-          <div className="bg-white border border-[#D8D2CB] rounded-xl p-5 space-y-4 shadow-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#D8D2CB]/60 pb-2.5">
+          <div className="bg-white border border-[#DCDFE3] rounded-xl p-5 space-y-4 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#DCDFE3]/60 pb-2.5">
               <div>
                 <h3 className="text-xs font-bold text-[#1C658C] flex items-center gap-2 uppercase tracking-wide">
                   <Calculator className="w-4 h-4 text-[#398AB9]" />
@@ -1106,7 +1106,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
               <button
                 type="button"
                 onClick={resetToBrochurePrices}
-                className="px-3 py-1 bg-[#EEEEEE] hover:bg-[#D8D2CB]/60 text-slate-700 text-xs font-medium rounded-lg border border-[#D8D2CB] flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3 py-1 bg-[#EEEEEE] hover:bg-[#DCDFE3]/60 text-slate-700 text-xs font-medium rounded-lg border border-[#DCDFE3] flex items-center gap-1.5 transition-all cursor-pointer"
                 title="Reset kembali ke harga katalog standar"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -1156,7 +1156,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     className={`px-2.5 py-2 rounded-lg text-xs font-medium border text-center transition-all cursor-pointer ${
                       negotiationType === 'INCLUDE_PPN'
                         ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-sm font-semibold'
-                        : 'bg-[#EEEEEE] text-slate-700 border-[#D8D2CB] hover:bg-[#D8D2CB]/50'
+                        : 'bg-[#EEEEEE] text-slate-700 border-[#DCDFE3] hover:bg-[#DCDFE3]/50'
                     }`}
                   >
                     Include PPN 11%
@@ -1170,7 +1170,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     className={`px-2.5 py-2 rounded-lg text-xs font-medium border text-center transition-all cursor-pointer ${
                       negotiationType === 'EXCLUDE_PPN'
                         ? 'bg-[#1C658C] text-white border-[#1C658C] shadow-sm font-semibold'
-                        : 'bg-[#EEEEEE] text-slate-700 border-[#D8D2CB] hover:bg-[#D8D2CB]/50'
+                        : 'bg-[#EEEEEE] text-slate-700 border-[#DCDFE3] hover:bg-[#DCDFE3]/50'
                     }`}
                   >
                     Sebelum PPN (DPP)
@@ -1194,14 +1194,14 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
 
             {/* Quick Simulation Badges */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-              <div className="bg-[#EEEEEE]/60 border border-[#D8D2CB] p-2.5 rounded-xl">
+              <div className="bg-[#EEEEEE]/60 border border-[#DCDFE3] p-2.5 rounded-xl">
                 <span className="text-slate-500 block text-[11px]">Nilai Awal (Harga Standar):</span>
                 <span className="font-mono font-bold text-slate-800 text-sm">
                   {formatRupiah(subtotalOriginal)}
                 </span>
               </div>
 
-              <div className="bg-[#EEEEEE]/60 border border-[#D8D2CB] p-2.5 rounded-xl">
+              <div className="bg-[#EEEEEE]/60 border border-[#DCDFE3] p-2.5 rounded-xl">
                 <span className="text-slate-500 block text-[11px]">Diskon Deal Negosiasi:</span>
                 <span className="font-mono font-bold text-amber-700 text-sm">
                   {discountAmount > 0 ? `- ${formatRupiah(discountAmount)} (${discountPercent.toFixed(1)}%)` : '0% (Harga Normal)'}
@@ -1209,7 +1209,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
               </div>
 
               <div className="bg-[#1C658C] text-white border border-[#144966] p-2.5 rounded-xl shadow-xs">
-                <span className="text-[#D8D2CB] block text-[11px] font-semibold">Total Deal Akhir (Grand Total):</span>
+                <span className="text-[#DCDFE3] block text-[11px] font-semibold">Total Deal Akhir (Grand Total):</span>
                 <span className="font-mono font-black text-white text-base">
                   {formatRupiah(grandTotal)}
                 </span>
@@ -1219,13 +1219,13 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
           </div>
 
           {/* BAGIAN 4: TABEL RINCIAN ITEM ALAT */}
-          <div className="bg-white border border-[#D8D2CB] rounded-xl p-5 space-y-4 shadow-xs">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D2CB]/60 pb-3">
+          <div className="bg-white border border-[#DCDFE3] rounded-xl p-5 space-y-4 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#DCDFE3]/60 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-[#1C658C] flex items-center gap-2">
                   <Receipt className="w-4 h-4" />
                   <span>Tabel Item Kalibrasi Alat Kesehatan</span>
-                  <span className="text-xs bg-[#EEEEEE] text-slate-700 px-2 py-0.5 rounded-full font-mono border border-[#D8D2CB]">
+                  <span className="text-xs bg-[#EEEEEE] text-slate-700 px-2 py-0.5 rounded-full font-mono border border-[#DCDFE3]">
                     {items.length} Item
                   </span>
                   {sphType === 'ecatalogue' && (
@@ -1270,7 +1270,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddEmptyItem}
-                  className="px-3 py-1.5 bg-[#EEEEEE] hover:bg-[#D8D2CB]/60 text-slate-700 text-xs font-medium rounded-lg border border-[#D8D2CB] flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-3 py-1.5 bg-[#EEEEEE] hover:bg-[#DCDFE3]/60 text-slate-700 text-xs font-medium rounded-lg border border-[#DCDFE3] flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+ Tambah Baris Manual</span>
@@ -1279,7 +1279,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
             </div>
 
             {/* Items Table */}
-            <div className="overflow-x-auto border border-[#D8D2CB] rounded-xl">
+            <div className="overflow-x-auto border border-[#DCDFE3] rounded-xl">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-[#00a2e8] text-white border-b border-black font-bold">
@@ -1295,28 +1295,28 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     <th className="px-2 py-2 w-10 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#D8D2CB]/60">
+                <tbody className="divide-y divide-[#DCDFE3]/60">
                   {items.map((item, index) => (
                     <tr key={item.id} className="hover:bg-[#EEEEEE]/40 transition-colors">
                       {/* No */}
-                      <td className="px-2 py-2 text-center text-slate-700 font-mono font-semibold border-r border-[#D8D2CB]/40">
+                      <td className="px-2 py-2 text-center text-slate-700 font-mono font-semibold border-r border-[#DCDFE3]/40">
                         {index + 1}
                       </td>
 
                       {/* Deskripsi */}
-                      <td className="px-2.5 py-2 border-r border-[#D8D2CB]/40">
+                      <td className="px-2.5 py-2 border-r border-[#DCDFE3]/40">
                         <textarea
                           rows={Math.max(1, Math.ceil((item.description || '').length / 28))}
                           value={item.description}
                           onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
                           placeholder="Nama alat kesehatan..."
-                          className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-2 py-1 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-medium resize-y min-h-[30px] leading-snug"
+                          className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded px-2 py-1 text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none font-medium resize-y min-h-[30px] leading-snug"
                           required
                         />
                       </td>
 
                       {/* Qty */}
-                      <td className="px-2 py-2 text-center border-r border-[#D8D2CB]/40">
+                      <td className="px-2 py-2 text-center border-r border-[#DCDFE3]/40">
                         <input
                           type="number"
                           min="1"
@@ -1332,23 +1332,23 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                             }
                           }}
                           placeholder="1"
-                          className="w-14 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-1.5 py-1 text-center text-xs font-bold text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                          className="w-14 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded px-1.5 py-1 text-center text-xs font-bold text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                           required
                         />
                       </td>
 
                       {/* Satuan */}
-                      <td className="px-2 py-2 text-center border-r border-[#D8D2CB]/40">
+                      <td className="px-2 py-2 text-center border-r border-[#DCDFE3]/40">
                         <input
                           type="text"
                           value={item.unit || 'Unit'}
                           onChange={(e) => handleUpdateItem(item.id, 'unit', e.target.value)}
-                          className="w-16 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-1.5 py-1 text-center text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                          className="w-16 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded px-1.5 py-1 text-center text-xs text-slate-900 focus:ring-1 focus:ring-[#1C658C] outline-none"
                         />
                       </td>
 
                       {/* Unit Price */}
-                      <td className="px-2.5 py-2 text-right border-r border-[#D8D2CB]/40">
+                      <td className="px-2.5 py-2 text-right border-r border-[#DCDFE3]/40">
                         <input
                           type="number"
                           value={item.unitPrice === 0 || !item.unitPrice ? '' : item.unitPrice}
@@ -1364,20 +1364,20 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                       </td>
 
                       {/* Total Price (Otomatis = Qty * Unit Price) */}
-                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 border-r border-[#D8D2CB]/40">
+                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 border-r border-[#DCDFE3]/40">
                         Rp {formatNumber(item.totalPrice)}
                       </td>
 
                       {/* Link E-Catalogue Column */}
                       {sphType === 'ecatalogue' && (
-                        <td className="px-2.5 py-2 border-r border-[#D8D2CB]/40">
+                        <td className="px-2.5 py-2 border-r border-[#DCDFE3]/40">
                           <div className="flex items-center gap-1">
                             <input
                               type="text"
                               value={item.eCatalogueUrl || ''}
                               onChange={(e) => handleUpdateItem(item.id, 'eCatalogueUrl', e.target.value)}
                               placeholder="https://katalog.inaproc.id/..."
-                              className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded px-2 py-1 text-[11px] text-blue-700 font-mono focus:ring-1 focus:ring-[#1C658C] outline-none"
+                              className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded px-2 py-1 text-[11px] text-blue-700 font-mono focus:ring-1 focus:ring-[#1C658C] outline-none"
                             />
                             {item.eCatalogueUrl && (
                               <a 
@@ -1416,7 +1416,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
               
               {/* Opsi Tambahan (Akomodasi & PPN) */}
               <div className="space-y-3 text-xs">
-                <div className="flex items-center justify-between p-3 bg-[#EEEEEE]/40 border border-[#D8D2CB] rounded-xl">
+                <div className="flex items-center justify-between p-3 bg-[#EEEEEE]/40 border border-[#DCDFE3] rounded-xl">
                   <label className="text-slate-700 font-medium">Biaya Akomodasi & Transportasi (Rp):</label>
                   <input
                     type="number"
@@ -1425,12 +1425,12 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                       const raw = e.target.value.replace(/^0+(?=\d)/, '');
                       setAccommodationFee(raw === '' ? ('' as any) : parseFloat(raw));
                     }}
-                    className="w-36 bg-white border border-[#D8D2CB] rounded-lg px-2.5 py-1.5 text-right font-mono font-bold text-slate-900 outline-none"
+                    className="w-36 bg-white border border-[#DCDFE3] rounded-lg px-2.5 py-1.5 text-right font-mono font-bold text-slate-900 outline-none"
                     placeholder="0"
                   />
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-[#EEEEEE]/40 border border-[#D8D2CB] rounded-xl">
+                <div className="flex items-center justify-between p-3 bg-[#EEEEEE]/40 border border-[#DCDFE3] rounded-xl">
                   <div>
                     <span className="font-semibold text-slate-800 block">Sertakan PPN 11%</span>
                     <span className="text-[11px] text-slate-500">Kalkulasi pajak resmi standar Kemenkeu RI</span>
@@ -1444,7 +1444,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 </div>
 
                 {/* Terbilang Box */}
-                <div className="p-3 bg-white border border-[#D8D2CB] rounded-xl space-y-1">
+                <div className="p-3 bg-white border border-[#DCDFE3] rounded-xl space-y-1">
                   <span className="text-[11px] font-bold text-[#1C658C] uppercase tracking-wider block">
                     Terbilang (Angka Huruf):
                   </span>
@@ -1455,7 +1455,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
               </div>
 
               {/* Rekapitulasi Angka */}
-              <div className="bg-[#EEEEEE]/50 border border-[#D8D2CB] p-4 rounded-xl space-y-2 text-xs">
+              <div className="bg-[#EEEEEE]/50 border border-[#DCDFE3] p-4 rounded-xl space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600">
                   <span>Total 1 (Subtotal Biaya Kalibrasi):</span>
                   <span className="font-mono font-semibold text-slate-800">Rp {formatNumber(subtotal1)}</span>
@@ -1488,11 +1488,11 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
           </div>
 
           {/* Footer Submit & Download Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#D8D2CB]">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#DCDFE3]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-white hover:bg-[#EEEEEE] text-slate-700 text-xs font-semibold rounded-xl border border-[#D8D2CB] transition-all cursor-pointer"
+              className="px-4 py-2 bg-white hover:bg-[#EEEEEE] text-slate-700 text-xs font-semibold rounded-xl border border-[#DCDFE3] transition-all cursor-pointer"
             >
               Batal
             </button>
@@ -1521,7 +1521,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
         {/* MODAL POPUP: KATALOG ALAT MEDIS (TAB E-CATALOGUE & BROSUR) */}
         {showCatalogModal && (
           <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="bg-white border border-[#DCDFE3] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
               
               <div className="px-6 py-4 bg-[#1C658C] text-white border-b border-[#144966] flex items-center justify-between">
                 <div>
@@ -1529,7 +1529,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     <Search className="w-5 h-5 text-[#EEEEEE]" />
                     <span>Katalog Alat Medis PT. Sarana Multi Kalibrasi</span>
                   </h3>
-                  <p className="text-xs text-[#D8D2CB]">
+                  <p className="text-xs text-[#DCDFE3]">
                     Pilih alat dari E-Katalog LKPP Inaproc ({SPH_ECATALOGUE_CATALOG.length} Item) atau Tarif Brosur Standar ({SPH_TARIFF_CATALOG.length} Item)
                   </p>
                 </div>
@@ -1572,7 +1572,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
               </div>
 
               {/* Filter and Search Bar */}
-              <div className="p-4 bg-[#EEEEEE]/50 border-b border-[#D8D2CB] grid grid-cols-1 sm:grid-cols-12 gap-3">
+              <div className="p-4 bg-[#EEEEEE]/50 border-b border-[#DCDFE3] grid grid-cols-1 sm:grid-cols-12 gap-3">
                 <div className="sm:col-span-8 relative">
                   <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                   <input
@@ -1580,7 +1580,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     value={catalogSearch}
                     onChange={(e) => setCatalogSearch(e.target.value)}
                     placeholder="Cari nama alat (misal: Syringe Pump, Sphygmomanometer, Autoclave)..."
-                    className="w-full bg-white border border-[#D8D2CB] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                    className="w-full bg-white border border-[#DCDFE3] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-[#1C658C] outline-none"
                     autoFocus
                   />
                 </div>
@@ -1589,7 +1589,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     <select
                       value={selectedCatalogCategory}
                       onChange={(e) => setSelectedCatalogCategory(e.target.value)}
-                      className="w-full bg-white border border-[#D8D2CB] rounded-xl px-3 py-2 text-xs text-slate-800 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                      className="w-full bg-white border border-[#DCDFE3] rounded-xl px-3 py-2 text-xs text-slate-800 focus:ring-1 focus:ring-[#1C658C] outline-none"
                     >
                       {brochureCategories.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -1608,7 +1608,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                       <div
                         key={ec.id}
                         onClick={() => handleAddItemFromECatalogue(ec)}
-                        className="p-3 bg-white hover:bg-blue-50/60 border border-[#D8D2CB] hover:border-[#1C658C] rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-xs group"
+                        className="p-3 bg-white hover:bg-blue-50/60 border border-[#DCDFE3] hover:border-[#1C658C] rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-xs group"
                       >
                         <div className="space-y-1 max-w-[75%]">
                           <div className="flex items-center gap-1.5">
@@ -1646,11 +1646,11 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                     <div
                       key={tariff.id}
                       onClick={() => handleAddItemFromBrochure(tariff)}
-                      className="p-3 bg-white hover:bg-[#EEEEEE]/60 border border-[#D8D2CB] hover:border-[#398AB9] rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-xs group"
+                      className="p-3 bg-white hover:bg-[#EEEEEE]/60 border border-[#DCDFE3] hover:border-[#398AB9] rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-xs group"
                     >
                       <div className="space-y-0.5 max-w-[75%]">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] bg-[#EEEEEE] text-[#1C658C] border border-[#D8D2CB] px-1.5 py-0.2 rounded font-mono font-bold">
+                          <span className="text-[10px] bg-[#EEEEEE] text-[#1C658C] border border-[#DCDFE3] px-1.5 py-0.2 rounded font-mono font-bold">
                             #{tariff.id}
                           </span>
                           <span className="font-semibold text-slate-900 group-hover:text-[#1C658C] transition-colors line-clamp-1">
@@ -1678,7 +1678,7 @@ export const SphFormModal: React.FC<SphFormModalProps> = ({
                 )}
               </div>
 
-              <div className="px-6 py-3 bg-[#EEEEEE] border-t border-[#D8D2CB] flex justify-between items-center text-xs text-slate-600">
+              <div className="px-6 py-3 bg-[#EEEEEE] border-t border-[#DCDFE3] flex justify-between items-center text-xs text-slate-600">
                 <span>
                   Ditemukan {catalogTab === 'ecatalogue' ? filteredECatalogue.length : filteredBrochureCatalog.length} alat medis
                 </span>

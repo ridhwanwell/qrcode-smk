@@ -446,14 +446,14 @@ export function TemplateSettings() {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-[#D8D2CB]">
+      <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-[#DCDFE3]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-[#1C658C]/10 text-[#1C658C] text-xs font-bold font-mono border border-[#1C658C]/20">
                 PT. SARANA MULTI KALIBRASI
               </span>
-              <span className="text-[#D8D2CB]">•</span>
+              <span className="text-[#DCDFE3]">•</span>
               <span className="text-xs text-slate-500 font-medium">Sistem Pemetaan & Versi Dokumen</span>
             </div>
             <h2 className="text-2xl font-black text-[#1C658C] mt-1.5 tracking-tight flex items-center gap-2.5">
@@ -544,7 +544,7 @@ export function TemplateSettings() {
 
       {/* Main Content Area */}
       {loading ? (
-        <div className="bg-white rounded-2xl p-16 flex flex-col items-center justify-center border border-[#D8D2CB]">
+        <div className="bg-white rounded-2xl p-16 flex flex-col items-center justify-center border border-[#DCDFE3]">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#1C658C]"></div>
           <p className="text-xs text-slate-500 mt-4 font-medium">Memuat konfigurasi template...</p>
         </div>
@@ -554,7 +554,7 @@ export function TemplateSettings() {
           {/* ========================================================================= */}
           {/* 1. VISUAL VERSION HISTORY SELECTOR                                        */}
           {/* ========================================================================= */}
-          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-[#D8D2CB]">
+          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-[#DCDFE3]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs">
@@ -716,7 +716,7 @@ export function TemplateSettings() {
           {/* ========================================================================= */}
           {/* 2. DIGITAL SIGNATURE MANAGER (SIGNATURE PAD INTEGRATION)                  */}
           {/* ========================================================================= */}
-          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-[#D8D2CB]">
+          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-[#DCDFE3]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-2xs">
@@ -763,7 +763,7 @@ export function TemplateSettings() {
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
               {/* Signature Image Preview Box */}
-              <div className="md:col-span-1 bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-col items-center justify-center min-h-[120px] relative">
+              <div className="paper-light md:col-span-1 bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-col items-center justify-center min-h-[120px] relative">
                 {storedSignature ? (
                   <div className="text-center w-full">
                     <img
@@ -831,7 +831,7 @@ export function TemplateSettings() {
           <div className="lg:col-span-2 space-y-6">
             
             {/* Active Template Status Card */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#D8D2CB]">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#DCDFE3]">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Template Aktif</span>
@@ -903,7 +903,7 @@ export function TemplateSettings() {
             </div>
 
             {/* Field Mapping UI Section */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#D8D2CB]">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#DCDFE3]">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -1047,7 +1047,7 @@ export function TemplateSettings() {
           <div className="space-y-6">
             
             {/* Version History Card */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#D8D2CB]">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#DCDFE3]">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <History className="w-5 h-5 text-[#398AB9]" />
@@ -1189,7 +1189,7 @@ export function TemplateSettings() {
       {/* ========================================================================= */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#D8D2CB] animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#DCDFE3] animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                 <Upload className="w-5 h-5 text-[#1C658C]" />
@@ -1314,10 +1314,10 @@ export function TemplateSettings() {
       {/* ========================================================================= */}
       {previewModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 overflow-hidden">
-          <div className="bg-white rounded-2xl w-full max-w-5xl h-[92vh] flex flex-col shadow-2xl border border-[#D8D2CB] overflow-hidden">
+          <div className="bg-white rounded-2xl w-full max-w-5xl h-[92vh] flex flex-col shadow-2xl border border-[#DCDFE3] overflow-hidden">
             
             {/* Modal Header */}
-            <div className="px-6 py-4 bg-[#EEEEEE] border-b border-[#D8D2CB] flex items-center justify-between gap-3 shrink-0">
+            <div className="px-6 py-4 bg-[#EEEEEE] border-b border-[#DCDFE3] flex items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-[#1C658C]/10 border border-[#1C658C]/20 rounded-xl text-[#1C658C]">
                   <Eye className="w-5 h-5" />
@@ -1359,7 +1359,7 @@ export function TemplateSettings() {
 
             {/* Google Drive Preview Switcher Bar */}
             {previewGdriveFileId && (
-              <div className="bg-slate-100 px-6 py-2 border-b border-[#D8D2CB] flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="bg-slate-100 px-6 py-2 border-b border-[#DCDFE3] flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPreviewTabMode('injected')}

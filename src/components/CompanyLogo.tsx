@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../lib/apiClient';
+import { useTheme } from '../lib/theme';
 
 interface CompanyLogoProps {
   className?: string;
@@ -7,6 +8,10 @@ interface CompanyLogoProps {
   showSubtitle?: boolean;
   variant?: 'light' | 'dark';
   allowUpload?: boolean;
+  /** Pakai logo versi terang/gelap otomatis sesuai tema (hanya bila belum ada logo kustom). */
+  themeAware?: boolean;
+  /** Override tinggi logo (px). */
+  heightPx?: number;
 }
 
 export const CompanyLogo: React.FC<CompanyLogoProps> = ({
@@ -14,8 +19,11 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
   size = 'md',
   showSubtitle = true,
   variant = 'dark',
-  allowUpload = false
+  allowUpload = false,
+  themeAware = false,
+  heightPx
 }) => {
+  const { theme } = useTheme();
   const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -110,7 +118,9 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
   };
 
   const currentSize = sizeMap[size];
-  const defaultVectorLogo = '/smk-logo.webp';
+  const defaultVectorLogo = themeAware
+    ? (theme === 'dark' ? '/brand/smk-logo-dark.png' : '/brand/smk-logo-light.png')
+    : '/smk-logo.webp';
   const logoSource = customLogoUrl || defaultVectorLogo;
 
   return (
@@ -129,7 +139,7 @@ export const CompanyLogo: React.FC<CompanyLogoProps> = ({
       {/* Official SMK Logo Graphic */}
       <div 
         className={`relative flex items-center justify-center shrink-0 ${allowUpload ? 'cursor-pointer hover:opacity-90 group' : ''}`}
-        style={{ height: `${currentSize.height}px` }}
+        style={{ height: `${heightPx ?? currentSize.height}px`, transition: 'height .45s cubic-bezier(.2,.8,.2,1)' }}
         onClick={() => allowUpload && fileInputRef.current?.click()}
         title={allowUpload ? 'Klik untuk mengganti / upload logo resmi (PNG/SVG/JPG)' : 'PT. Sarana Multi Kalibrasi'}
       >

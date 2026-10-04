@@ -118,12 +118,12 @@ export const SphManager: React.FC<SphManagerProps> = ({
               <span className="bg-[#398AB9]/25 text-[#EEEEEE] text-xs px-3 py-0.5 rounded-full font-mono border border-[#398AB9]/40 font-semibold">
                 Permenkes No. 54/2015 & LK-532-IDN
               </span>
-              <span className="text-[#D8D2CB] text-xs">• PT. Sarana Multi Kalibrasi</span>
+              <span className="text-[#DCDFE3] text-xs">• PT. Sarana Multi Kalibrasi</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               Surat Penawaran Harga (SPH) Kalibrasi
             </h1>
-            <p className="text-sm text-[#D8D2CB] max-w-2xl mt-1 leading-relaxed">
+            <p className="text-sm text-[#DCDFE3] max-w-2xl mt-1 leading-relaxed">
               Kelola dokumen penawaran harga resmi, katalog tarif {SPH_TARIFF_CATALOG.length} alat brosur & 313 item E-Katalog Inaproc LKPP, dan simulasi negosiasi target deal rumah sakit dengan perhitungan PPN 11% proporsional.
             </p>
           </div>
@@ -151,33 +151,33 @@ export const SphManager: React.FC<SphManagerProps> = ({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-[#1C658C]">
           
           <div className="bg-[#0F364C]/70 border border-[#1C658C] p-4 rounded-xl">
-            <div className="flex items-center justify-between text-[#D8D2CB] mb-1">
+            <div className="flex items-center justify-between text-[#DCDFE3] mb-1">
               <span className="text-xs font-medium">Total SPH Diterbitkan</span>
               <FileText className="w-4 h-4 text-[#398AB9]" />
             </div>
             <div className="text-2xl font-bold font-mono text-white">
               {totalSphCount}
             </div>
-            <span className="text-[11px] text-[#D8D2CB]/80 mt-1 block">
+            <span className="text-[11px] text-[#DCDFE3]/80 mt-1 block">
               {totalUnitsOffered} Total unit alat
             </span>
           </div>
 
           <div className="bg-[#0F364C]/70 border border-[#1C658C] p-4 rounded-xl">
-            <div className="flex items-center justify-between text-[#D8D2CB] mb-1">
+            <div className="flex items-center justify-between text-[#DCDFE3] mb-1">
               <span className="text-xs font-medium">Nilai Pipeline Penawaran</span>
               <TrendingUp className="w-4 h-4 text-[#398AB9]" />
             </div>
             <div className="text-2xl font-bold font-mono text-[#EEEEEE]">
               {formatRupiah(totalPipelineValue)}
             </div>
-            <span className="text-[11px] text-[#D8D2CB]/80 mt-1 block">
+            <span className="text-[11px] text-[#DCDFE3]/80 mt-1 block">
               Semua status penawaran
             </span>
           </div>
 
           <div className="bg-[#0F364C]/70 border border-[#1C658C] p-4 rounded-xl">
-            <div className="flex items-center justify-between text-[#D8D2CB] mb-1">
+            <div className="flex items-center justify-between text-[#DCDFE3] mb-1">
               <span className="text-xs font-medium">Nilai Deal Disetujui RS</span>
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             </div>
@@ -190,14 +190,14 @@ export const SphManager: React.FC<SphManagerProps> = ({
           </div>
 
           <div className="bg-[#0F364C]/70 border border-[#1C658C] p-4 rounded-xl">
-            <div className="flex items-center justify-between text-[#D8D2CB] mb-1">
+            <div className="flex items-center justify-between text-[#DCDFE3] mb-1">
               <span className="text-xs font-medium">Dalam Tahap Negosiasi</span>
               <Calculator className="w-4 h-4 text-amber-400" />
             </div>
             <div className="text-2xl font-bold font-mono text-amber-300">
               {negotiationSphList.length} SPH
             </div>
-            <span className="text-[11px] text-[#D8D2CB]/80 mt-1 block">
+            <span className="text-[11px] text-[#DCDFE3]/80 mt-1 block">
               Menunggu target kesepakatan
             </span>
           </div>
@@ -208,7 +208,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
 
 
       {/* Filter and Search Bar */}
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+      <div className="bg-white border border-[#DCDFE3] rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
         
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
@@ -217,7 +217,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Cari nomor SPH, rumah sakit, atau nama alat..."
-            className="w-full bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-[#1C658C] outline-none"
+            className="w-full bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-[#1C658C] outline-none"
           />
         </div>
 
@@ -233,7 +233,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
               className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
                 statusFilter === st
                   ? 'bg-[#1C658C] text-white shadow-sm font-semibold'
-                  : 'bg-[#EEEEEE] text-slate-600 hover:text-[#1C658C] hover:bg-[#D8D2CB]/50 border border-[#D8D2CB]'
+                  : 'bg-[#EEEEEE] text-slate-600 hover:text-[#1C658C] hover:bg-[#DCDFE3]/50 border border-[#DCDFE3]'
               }`}
             >
               {st === 'all' ? 'Semua Status' : st}
@@ -246,8 +246,8 @@ export const SphManager: React.FC<SphManagerProps> = ({
       {/* SPH List Cards */}
       <div className="space-y-4">
         {filteredSphList.length === 0 ? (
-          <div className="bg-white border border-[#D8D2CB] rounded-2xl p-12 text-center text-slate-500 space-y-3 shadow-sm">
-            <FileText className="w-12 h-12 text-[#D8D2CB] mx-auto" />
+          <div className="bg-white border border-[#DCDFE3] rounded-2xl p-12 text-center text-slate-500 space-y-3 shadow-sm">
+            <FileText className="w-12 h-12 text-[#DCDFE3] mx-auto" />
             <h3 className="text-base font-bold text-slate-800">Belum Ada Dokumen SPH yang Sesuai</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
               Tidak ditemukan penawaran harga dengan kata kunci atau filter status yang dipilih.
@@ -267,10 +267,10 @@ export const SphManager: React.FC<SphManagerProps> = ({
             return (
               <div 
                 key={sph.id}
-                className="bg-white border border-[#D8D2CB] hover:border-[#398AB9] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all space-y-4 group"
+                className="bg-white border border-[#DCDFE3] hover:border-[#398AB9] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all space-y-4 group"
               >
                 {/* Card Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#D8D2CB]/60 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#DCDFE3]/60 pb-4">
                   <div className="flex items-start gap-3">
                     <div className="p-3 bg-[#1C658C]/10 border border-[#1C658C]/20 rounded-xl text-[#1C658C] mt-0.5">
                       <FileText className="w-5 h-5" />
@@ -282,7 +282,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                         </span>
 
                         {/* Status Changer for Admin */}
-                        <div className="flex items-center gap-1.5 bg-[#EEEEEE] border border-[#D8D2CB] rounded-lg px-2.5 py-1">
+                        <div className="flex items-center gap-1.5 bg-[#EEEEEE] border border-[#DCDFE3] rounded-lg px-2.5 py-1">
                           <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Status:</span>
                           <select
                             value={sph.status}
@@ -293,7 +293,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                               sph.status === 'Negosiasi' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
                               sph.status === 'Terkirim ke RS' ? 'bg-[#398AB9]/20 text-[#1C658C] border border-[#398AB9]/40' :
                               sph.status === 'Ditolak' ? 'bg-rose-100 text-rose-800 border border-rose-300' :
-                              'bg-white text-slate-700 border border-[#D8D2CB]'
+                              'bg-white text-slate-700 border border-[#DCDFE3]'
                             }`}
                             title={canMarkDeal ? "Admin dapat mengubah status penawaran SPH di sini" : "Hanya Admin Utama & Keuangan yang dapat mengubah status SPH"}
                           >
@@ -364,7 +364,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                       </span>
                     </div>
 
-                    <div className="bg-[#EEEEEE]/40 border border-[#D8D2CB] rounded-xl p-3 max-h-28 overflow-y-auto space-y-1.5 text-xs">
+                    <div className="bg-[#EEEEEE]/40 border border-[#DCDFE3] rounded-xl p-3 max-h-28 overflow-y-auto space-y-1.5 text-xs">
                       {sph.items.map((item, idx) => (
                         <div key={item.id || idx} className="flex justify-between items-center text-slate-700">
                           <div className="flex items-center gap-2 truncate pr-2">
@@ -381,7 +381,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                   </div>
 
                   {/* Financial & Negotiation Summary */}
-                  <div className="md:col-span-5 bg-[#EEEEEE]/60 border border-[#D8D2CB] p-3.5 rounded-xl space-y-1.5 text-xs">
+                  <div className="md:col-span-5 bg-[#EEEEEE]/60 border border-[#DCDFE3] p-3.5 rounded-xl space-y-1.5 text-xs">
                     <div className="flex justify-between text-slate-500">
                       <span>Nilai Katalog Brosur:</span>
                       <span className="font-mono text-slate-400 line-through">
@@ -403,7 +403,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                       </span>
                     </div>
 
-                    <div className="border-t border-[#D8D2CB] pt-1.5 flex justify-between items-center">
+                    <div className="border-t border-[#DCDFE3] pt-1.5 flex justify-between items-center">
                       <span className="font-bold text-[#1C658C]">GRAND TOTAL DEAL:</span>
                       <span className="font-mono font-black text-[#1C658C] text-sm">
                         Rp {formatNumber(sph.grandTotal)}
@@ -418,7 +418,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                 </div>
 
                 {/* Card Action Footer */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#D8D2CB]/60">
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#DCDFE3]/60">
                   <div className="flex flex-wrap items-center gap-2">
                     {sph.status === 'Disetujui (Deal)' ? (
                       <button
@@ -473,7 +473,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
 
                     <button
                       onClick={() => onEditSph(sph)}
-                      className="px-3 py-1.5 bg-[#EEEEEE] hover:bg-[#D8D2CB]/50 text-slate-700 hover:text-[#1C658C] text-xs font-medium rounded-lg border border-[#D8D2CB] transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="px-3 py-1.5 bg-[#EEEEEE] hover:bg-[#DCDFE3]/50 text-slate-700 hover:text-[#1C658C] text-xs font-medium rounded-lg border border-[#DCDFE3] transition-all flex items-center gap-1.5 cursor-pointer"
                     >
                       <Edit3 className="w-3.5 h-3.5 text-slate-500" />
                       <span>Nego / Edit SPH</span>
@@ -515,14 +515,14 @@ export const SphManager: React.FC<SphManagerProps> = ({
       {/* POPUP BROWSER KATALOG 121 ALAT RESMI */}
       {showCatalogModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+          <div className="bg-white border border-[#DCDFE3] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
             <div className="px-6 py-4 bg-[#1C658C] text-white flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-white text-base flex items-center gap-2">
                   <BookOpen className="w-5 h-5 text-[#EEEEEE]" />
                   <span>Katalog Pola Tarif Resmi PT. Sarana Multi Kalibrasi</span>
                 </h3>
-                <p className="text-xs text-[#D8D2CB]">
+                <p className="text-xs text-[#DCDFE3]">
                   Standar Akreditasi Kemenkes RI No: 26062301565850001 • Kode Lab: LK-532-IDN
                 </p>
               </div>
@@ -534,7 +534,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
               </button>
             </div>
 
-            <div className="p-4 bg-[#EEEEEE]/50 border-b border-[#D8D2CB]">
+            <div className="p-4 bg-[#EEEEEE]/50 border-b border-[#DCDFE3]">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                 <input
@@ -542,7 +542,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                   value={catalogSearch}
                   onChange={(e) => setCatalogSearch(e.target.value)}
                   placeholder="Cari alat di brosur (misal: Thermohygrometer, Infusion, Syringe, ECG, USG, Autoclave)..."
-                  className="w-full bg-white border border-[#D8D2CB] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-[#1C658C] outline-none"
+                  className="w-full bg-white border border-[#DCDFE3] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-[#1C658C] outline-none"
                   autoFocus
                 />
               </div>
@@ -554,11 +554,11 @@ export const SphManager: React.FC<SphManagerProps> = ({
                 .map(tariff => (
                   <div
                     key={tariff.id}
-                    className="p-3 bg-white border border-[#D8D2CB] rounded-xl flex items-center justify-between shadow-xs hover:border-[#398AB9] transition-colors"
+                    className="p-3 bg-white border border-[#DCDFE3] rounded-xl flex items-center justify-between shadow-xs hover:border-[#398AB9] transition-colors"
                   >
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] bg-[#EEEEEE] text-[#1C658C] border border-[#D8D2CB] px-1.5 py-0.2 rounded font-mono font-bold">
+                        <span className="text-[10px] bg-[#EEEEEE] text-[#1C658C] border border-[#DCDFE3] px-1.5 py-0.2 rounded font-mono font-bold">
                           #{tariff.id}
                         </span>
                         <span className="font-semibold text-slate-900">
@@ -577,7 +577,7 @@ export const SphManager: React.FC<SphManagerProps> = ({
                 ))}
             </div>
 
-            <div className="px-6 py-3 bg-[#EEEEEE] border-t border-[#D8D2CB] flex justify-between items-center text-xs text-slate-600">
+            <div className="px-6 py-3 bg-[#EEEEEE] border-t border-[#DCDFE3] flex justify-between items-center text-xs text-slate-600">
               <span className="font-medium">Total {SPH_TARIFF_CATALOG.length} Item Tarif Kalibrasi Resmi Brosur</span>
               <button
                 onClick={() => setShowCatalogModal(false)}

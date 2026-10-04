@@ -276,14 +276,14 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
                   Supabase Live
                 </span>
               </div>
-              <p className="text-xs text-[#D8D2CB]">
+              <p className="text-xs text-[#DCDFE3]">
                 Membandingkan data lokal di browser/laptop dengan database server Supabase.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[#D8D2CB] hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-lg text-[#DCDFE3] hover:text-white hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -294,20 +294,20 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
           <div className="bg-[#144966]/40 p-3 rounded-xl border border-[#1C658C]/40 flex items-center gap-3">
             <HardDrive className="w-8 h-8 text-cyan-400 shrink-0" />
             <div>
-              <div className="text-[11px] text-[#D8D2CB]">Total di Browser/Laptop</div>
+              <div className="text-[11px] text-[#DCDFE3]">Total di Browser/Laptop</div>
               <div className="text-lg font-bold text-white font-mono">{totalLocal} record</div>
             </div>
           </div>
           <div className="bg-[#144966]/40 p-3 rounded-xl border border-[#1C658C]/40 flex items-center gap-3">
             <Database className="w-8 h-8 text-emerald-400 shrink-0" />
             <div>
-              <div className="text-[11px] text-[#D8D2CB]">Total di Server Supabase</div>
+              <div className="text-[11px] text-[#DCDFE3]">Total di Server Supabase</div>
               <div className="text-lg font-bold text-white font-mono">{totalServer} record</div>
             </div>
           </div>
           <div className="bg-[#144966]/40 p-3 rounded-xl border border-[#1C658C]/40 flex items-center justify-between">
             <div>
-              <div className="text-[11px] text-[#D8D2CB]">Status Sinkronisasi</div>
+              <div className="text-[11px] text-[#DCDFE3]">Status Sinkronisasi</div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 {!hasDiscrepancy ? (
                   <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
@@ -333,7 +333,7 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
 
         {/* Table Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2.5 custom-scrollbar">
-          <div className="flex items-center justify-between text-xs text-[#D8D2CB] mb-2 px-1">
+          <div className="flex items-center justify-between text-xs text-[#DCDFE3] mb-2 px-1">
             <span>Daftar Tabel Koleksi Data ({items.length} tabel)</span>
             <span>Terakhir dicek: {lastChecked || '-'}</span>
           </div>
@@ -368,7 +368,7 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
                           {item.name}
                         </code>
                       </div>
-                      <div className="text-xs text-[#D8D2CB] flex items-center gap-3 mt-0.5 font-mono">
+                      <div className="text-xs text-[#DCDFE3] flex items-center gap-3 mt-0.5 font-mono">
                         <span>Laptop: <strong className="text-white">{item.localCount}</strong></span>
                         <span className="text-cyan-400/40">•</span>
                         <span>Supabase: <strong className="text-white">{item.serverCount}</strong></span>
@@ -425,7 +425,7 @@ export const CheckSyncModal: React.FC<CheckSyncModalProps> = ({
 
         {/* Modal Footer with Auto-Fix Option */}
         <div className="bg-gradient-to-r from-[#0B2A3D] to-[#0F364C] px-6 py-4 border-t border-[#1C658C]/50 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-xs text-[#D8D2CB] text-center sm:text-left">
+          <div className="text-xs text-[#DCDFE3] text-center sm:text-left">
             {hasDiscrepancy ? (
               <span className="text-amber-300 font-medium">
                 Ditemukan perbedaan jumlah record. Klik tombol di kanan untuk menyamakan semua otomatis.

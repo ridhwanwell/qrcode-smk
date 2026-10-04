@@ -107,14 +107,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-[#398AB9]" />
                 PT. SARANA MULTI KALIBRASI
               </span>
-              <span className="text-xs text-[#D8D2CB]">
+              <span className="text-xs text-[#DCDFE3]">
                 Update Realtime {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
               Sistem Aset & Penjadwalan Kalibrasi RS
             </h1>
-            <p className="text-[#D8D2CB] text-xs sm:text-sm mt-1 max-w-2xl">
+            <p className="text-[#DCDFE3] text-xs sm:text-sm mt-1 max-w-2xl">
               Pusat kendali terpadu PT. Sarana Multi Kalibrasi untuk monitoring aset finansial, alat metrologi kalibrator medis, dan penugasan teknisi kalibrasi rumah sakit berstandar ISO/IEC 17025.
             </p>
           </div>
@@ -163,7 +163,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* KPI 1: Aset Keuangan */}
         <div 
           onClick={() => onNavigateToTab('financial')}
-          className="bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
+          className="bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
           id="kpi-financial-card"
         >
           <div className="flex items-center justify-between">
@@ -181,7 +181,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {formatRupiah(totalFinancialValue)}
             </h3>
           </div>
-          <div className="mt-3 pt-3 border-t border-[#D8D2CB]/60 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-3 pt-3 border-t border-[#DCDFE3]/60 flex items-center justify-between text-xs text-slate-500">
             <span>Kas: <strong className="text-slate-800">{formatRupiah(liquidCash)}</strong></span>
             <span>Piutang: <strong className="text-amber-700">{formatRupiah(receivables)}</strong></span>
           </div>
@@ -190,7 +190,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* KPI 2: Aset Alat Kalibrator */}
         <div 
           onClick={() => onNavigateToTab('calibrators')}
-          className="bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
+          className="bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
           id="kpi-calibrators-card"
         >
           <div className="flex items-center justify-between">
@@ -207,7 +207,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {calibrators.length} Unit Master
             </h3>
           </div>
-          <div className="mt-3 pt-3 border-t border-[#D8D2CB]/60 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-3 pt-3 border-t border-[#DCDFE3]/60 flex items-center justify-between text-xs text-slate-500">
             <span>Nilai Alat: <strong className="text-slate-800">{formatRupiah(calibratorAssetsValue)}</strong></span>
             {expiringCalibrators.length > 0 ? (
               <span className="text-amber-600 font-semibold">{expiringCalibrators.length} butuh re-kalibrasi</span>
@@ -220,7 +220,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* KPI 3: Jadwal Kalibrasi RS */}
         <div 
           onClick={() => onNavigateToTab('schedules')}
-          className="bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
+          className="bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
           id="kpi-schedules-card"
         >
           <div className="flex items-center justify-between">
@@ -237,7 +237,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {schedules.length} Work Orders
             </h3>
           </div>
-          <div className="mt-3 pt-3 border-t border-[#D8D2CB]/60 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-3 pt-3 border-t border-[#DCDFE3]/60 flex items-center justify-between text-xs text-slate-500">
             <span>Selesai/Sertifikat: <strong className="text-emerald-700">{completedSchedules.length}</strong></span>
             <span>Berjalan: <strong className="text-[#398AB9]">{activeSchedules.length}</strong></span>
           </div>
@@ -246,7 +246,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* KPI 4: Peminjaman Tablet Kalibrasi */}
         <div 
           onClick={() => onNavigateToTab('tablets')}
-          className="bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
+          className="bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm hover:shadow-md hover:border-[#398AB9] transition-all cursor-pointer group"
           id="kpi-tablets-card"
         >
           <div className="flex items-center justify-between">
@@ -265,7 +265,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               6 Unit Tablet
             </h3>
           </div>
-          <div className="mt-3 pt-3 border-t border-[#D8D2CB]/60 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-3 pt-3 border-t border-[#DCDFE3]/60 flex items-center justify-between text-xs text-slate-500">
             <span>Tersedia: <strong className="text-emerald-700">{availableTabletsCount} Unit</strong></span>
             <span className="text-[#398AB9] font-semibold group-hover:underline">Form Pinjam →</span>
           </div>
@@ -275,8 +275,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       {/* 2-Column Section: Active Calibration Schedule & Financial Cashflow Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Main Active Calibration Schedules Matrix */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm">
-          <div className="flex items-center justify-between pb-4 border-b border-[#D8D2CB]/60">
+        <div className="lg:col-span-2 bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm">
+          <div className="flex items-center justify-between pb-4 border-b border-[#DCDFE3]/60">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-[#1C658C]/10 text-[#1C658C] flex items-center justify-center">
                 <Building2 className="w-4 h-4" />
@@ -299,7 +299,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </button>
           </div>
 
-          <div className="divide-y divide-[#D8D2CB]/50 mt-2">
+          <div className="divide-y divide-[#DCDFE3]/50 mt-2">
             {schedules.slice(0, 5).map((schedule) => {
               const urgency = getUrgencyInfo(schedule);
               return (
@@ -322,7 +322,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
-                        <span className="font-mono text-[#1C658C] bg-[#EEEEEE] px-1.5 py-0.2 rounded text-[11px] border border-[#D8D2CB]">
+                        <span className="font-mono text-[#1C658C] bg-[#EEEEEE] px-1.5 py-0.2 rounded text-[11px] border border-[#DCDFE3]">
                           {schedule.workOrderNumber}
                         </span>
                         <span className="flex items-center gap-1">
@@ -352,7 +352,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         e.stopPropagation();
                         onSelectSchedule(schedule);
                       }}
-                      className="bg-[#EEEEEE] hover:bg-[#398AB9]/15 hover:text-[#1C658C] text-slate-700 p-2 rounded-lg text-xs font-semibold transition-colors border border-[#D8D2CB]"
+                      className="bg-[#EEEEEE] hover:bg-[#398AB9]/15 hover:text-[#1C658C] text-slate-700 p-2 rounded-lg text-xs font-semibold transition-colors border border-[#DCDFE3]"
                       title="Lihat Detail & Checklist"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -367,8 +367,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         {/* Right 1 Col: Calibrator Fleet & Technician Workload */}
         <div className="space-y-6">
           {/* Calibrator Fleet Status */}
-          <div className="bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm">
-            <div className="flex items-center justify-between pb-3 border-b border-[#D8D2CB]/60">
+          <div className="bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm">
+            <div className="flex items-center justify-between pb-3 border-b border-[#DCDFE3]/60">
               <div className="flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-[#398AB9]" />
                 <h3 className="font-bold text-sm text-[#1C658C]">
@@ -385,7 +385,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
             <div className="space-y-2.5 mt-3">
               {calibrators.slice(0, 4).map((cal) => (
-                <div key={cal.id} className="p-2.5 rounded-xl border border-[#D8D2CB]/70 hover:border-[#398AB9] bg-[#EEEEEE]/40 flex items-center justify-between gap-2 transition-colors">
+                <div key={cal.id} className="p-2.5 rounded-xl border border-[#DCDFE3]/70 hover:border-[#398AB9] bg-[#EEEEEE]/40 flex items-center justify-between gap-2 transition-colors">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-[10px] font-bold text-[#1C658C] bg-[#1C658C]/10 px-1.5 py-0.2 rounded border border-[#1C658C]/20">
@@ -413,8 +413,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           {/* Master Elektromedis / Technicians Quick Status */}
-          <div className="bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm">
-            <div className="flex items-center justify-between pb-3 border-b border-[#D8D2CB]/60">
+          <div className="bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm">
+            <div className="flex items-center justify-between pb-3 border-b border-[#DCDFE3]/60">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-[#1C658C]" />
                 <h3 className="font-bold text-sm text-[#1C658C]">
@@ -456,8 +456,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       </div>
 
       {/* Financial Quick Breakdown Journal */}
-      <div className="bg-white rounded-2xl p-5 border border-[#D8D2CB] shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#D8D2CB]/60">
+      <div className="bg-white rounded-2xl p-5 border border-[#DCDFE3] shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#DCDFE3]/60">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#1C658C]/10 text-[#1C658C] flex items-center justify-center">
               <DollarSign className="w-4 h-4" />
@@ -482,29 +482,29 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
-          <div className="bg-[#EEEEEE]/50 p-4 rounded-xl border border-[#D8D2CB]">
+          <div className="bg-[#EEEEEE]/50 p-4 rounded-xl border border-[#DCDFE3]">
             <p className="text-xs text-slate-500">Kas & Rekening Operasional</p>
             <p className="text-lg font-bold text-[#1C658C] mt-0.5">{formatRupiah(liquidCash)}</p>
             <span className="text-[11px] text-emerald-600 font-medium mt-1 inline-block">Siap digunakan untuk operasional</span>
           </div>
 
-          <div className="bg-[#EEEEEE]/50 p-4 rounded-xl border border-[#D8D2CB]">
+          <div className="bg-[#EEEEEE]/50 p-4 rounded-xl border border-[#DCDFE3]">
             <p className="text-xs text-slate-500">Piutang Kontrak Kalibrasi RS</p>
             <p className="text-lg font-bold text-amber-700 mt-0.5">{formatRupiah(receivables)}</p>
             <span className="text-[11px] text-slate-500 mt-1 inline-block">Menunggu termin pencairan RS rekanan</span>
           </div>
 
-          <div className="bg-[#EEEEEE]/50 p-4 rounded-xl border border-[#D8D2CB]">
+          <div className="bg-[#EEEEEE]/50 p-4 rounded-xl border border-[#DCDFE3]">
             <p className="text-xs text-slate-500">Total Nilai Investasi Kalibrator</p>
             <p className="text-lg font-bold text-[#398AB9] mt-0.5">{formatRupiah(calibratorAssetsValue)}</p>
             <span className="text-[11px] text-slate-500 mt-1 inline-block">Nilai buku 6 unit alat metrologi</span>
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-[#D8D2CB]">
+        <div className="overflow-x-auto rounded-xl border border-[#DCDFE3]">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="bg-[#EEEEEE] text-[#1C658C] border-b border-[#D8D2CB]">
+              <tr className="bg-[#EEEEEE] text-[#1C658C] border-b border-[#DCDFE3]">
                 <th className="py-2.5 px-3 font-bold">Tanggal</th>
                 <th className="py-2.5 px-3 font-bold">Tipe Transaksi</th>
                 <th className="py-2.5 px-3 font-bold">Kategori / Keterangan</th>
@@ -512,7 +512,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 <th className="py-2.5 px-3 font-bold text-right">Nominal</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#D8D2CB]/50">
+            <tbody className="divide-y divide-[#DCDFE3]/50">
               {transactions.slice(0, 4).map((trx) => (
                 <tr key={trx.id} className="hover:bg-[#EEEEEE]/40 transition-colors">
                   <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">{formatIndonesianDate(trx.date)}</td>

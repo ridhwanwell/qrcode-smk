@@ -161,7 +161,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-4xl my-auto flex flex-col max-h-[92vh] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white border border-[#DCDFE3] rounded-2xl w-full max-w-4xl my-auto flex flex-col max-h-[92vh] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Modal Header */}
         <div className="px-6 py-4 bg-gradient-to-r from-[#1C658C] to-[#144966] text-white flex items-center justify-between shrink-0">
@@ -176,7 +176,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
                   BO • FP • KWP • BAP
                 </span>
               </h3>
-              <p className="text-xs text-[#D8D2CB]">
+              <p className="text-xs text-[#DCDFE3]">
                 {sph.hospitalName} • No. SPH: {sph.sphNumber} ({formatRupiah(sph.grandTotal)})
               </p>
             </div>
@@ -207,8 +207,8 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
           </div>
 
           {/* SECTION 1: PENANGGALAN & SINKRONISASI NOMOR URUT */}
-          <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#D8D2CB] shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#D8D2CB] pb-2.5">
+          <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#DCDFE3] shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[#DCDFE3] pb-2.5">
               <h4 className="font-bold text-[#1C658C] flex items-center gap-2">
                 <Hash className="w-4 h-4 text-[#398AB9]" />
                 <span>1. Parameter Nomor & Tanggal Deal</span>
@@ -304,8 +304,8 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
           </div>
 
           {/* SECTION 2: PENERIMA / PEMBUAT & REKENING PEMBAYARAN */}
-          <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#D8D2CB] shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#D8D2CB] pb-2.5">
+          <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#DCDFE3] shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[#DCDFE3] pb-2.5">
               <h4 className="font-bold text-[#1C658C] flex items-center gap-2">
                 <User className="w-4 h-4 text-[#398AB9]" />
                 <span>2. Penerima Dokumen & Rekening Pembayaran</span>
@@ -410,8 +410,8 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
           </div>
 
           {/* SECTION 3: RINGKASAN TABEL ALAT & NOMINAL DEAL */}
-          <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#D8D2CB] shadow-xs space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#D8D2CB] pb-2.5">
+          <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#DCDFE3] shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#DCDFE3] pb-2.5">
               <h4 className="font-bold text-[#1C658C] flex items-center gap-2">
                 <Layers className="w-4 h-4 text-[#398AB9]" />
                 <span>3. Rincian Item Alat & Nominal Penagihan (Masuk ke BO, FP, & KWP)</span>
@@ -661,7 +661,7 @@ export const SphDealModal: React.FC<SphDealModalProps> = ({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="px-6 py-4 bg-white border-t border-[#D8D2CB] flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="px-6 py-4 bg-white border-t border-[#DCDFE3] flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
             {savedSuccess ? (
               <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">

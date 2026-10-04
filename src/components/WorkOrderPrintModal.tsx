@@ -175,16 +175,16 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto">
-      <div className="bg-white rounded-2xl max-w-5xl w-full p-4 sm:p-8 shadow-2xl border border-[#D8D2CB] my-4 max-h-[96vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:p-0 print:overflow-visible">
+      <div className="paper-light bg-white rounded-2xl max-w-5xl w-full p-4 sm:p-8 shadow-2xl border border-[#DCDFE3] my-4 max-h-[96vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:p-0 print:overflow-visible">
         
         {/* Navigation & Controls Bar (HIDDEN ON PRINT) */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-6 border-b border-[#D8D2CB] print:hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-6 border-b border-[#DCDFE3] print:hidden">
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-[#1C658C]/10 text-[#1C658C] text-xs font-bold font-mono border border-[#1C658C]/20">
                 PT. SARANA MULTI KALIBRASI
               </span>
-              <span className="text-[#D8D2CB]">•</span>
+              <span className="text-[#DCDFE3]">•</span>
               <span className="text-xs text-slate-500 font-medium">Modul Dokumen Resmi Kalibrasi</span>
             </div>
             <h3 className="font-bold text-lg text-[#1C658C] mt-1">
@@ -202,7 +202,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
               className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border shadow-xs ${
                 digitalSignatureUrl 
                   ? 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100' 
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border-[#D8D2CB]'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-[#DCDFE3]'
               }`}
               title="Bubuhkan atau ganti tanda tangan digital resmi pada dokumen"
             >
@@ -220,7 +220,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
                   onClose();
                   onOpenEditForm(schedule);
                 }}
-                className="bg-white hover:bg-[#EEEEEE] text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[#D8D2CB] shadow-xs"
+                className="bg-white hover:bg-[#EEEEEE] text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[#DCDFE3] shadow-xs"
               >
                 <Edit3 className="w-4 h-4 text-[#1C658C]" />
                 <span>Edit Data SPK</span>
@@ -278,12 +278,12 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
         </div>
 
         {/* Tab Switcher for Separated Documents (HIDDEN ON PRINT) */}
-        <div className="flex flex-wrap items-center gap-2 p-1.5 bg-[#EEEEEE] rounded-xl mb-6 border border-[#D8D2CB] print:hidden">
+        <div className="flex flex-wrap items-center gap-2 p-1.5 bg-[#EEEEEE] rounded-xl mb-6 border border-[#DCDFE3] print:hidden">
           <button
             onClick={() => setActiveDoc('SPK')}
             className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
               activeDoc === 'SPK'
-                ? 'bg-white text-[#1C658C] shadow-xs border border-[#D8D2CB]'
+                ? 'bg-white text-[#1C658C] shadow-xs border border-[#DCDFE3]'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
@@ -295,7 +295,7 @@ export const WorkOrderPrintModal: React.FC<WorkOrderPrintModalProps> = ({
             onClick={() => setActiveDoc('BAP')}
             className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
               activeDoc === 'BAP'
-                ? 'bg-white text-[#1C658C] shadow-xs border border-[#D8D2CB]'
+                ? 'bg-white text-[#1C658C] shadow-xs border border-[#DCDFE3]'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >

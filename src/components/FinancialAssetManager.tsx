@@ -279,7 +279,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
   return (
     <div className="space-[#1C658C] flex flex-col gap-6 pb-12">
       {/* HEADER SECTION */}
-      <div className="bg-white rounded-2xl p-6 border border-[#D8D2CB] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl p-6 border border-[#DCDFE3] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <div className="p-3 bg-[#1C658C]/10 text-[#1C658C] rounded-xl">
@@ -297,7 +297,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
         {/* TOP ACTION & ROLE TOGGLE */}
         <div className="flex items-center gap-3 flex-wrap">
           {/* Admin Utama vs Staf Role Toggle */}
-          <div className="flex items-center bg-[#EEEEEE] p-1 rounded-xl border border-[#D8D2CB]">
+          <div className="flex items-center bg-[#EEEEEE] p-1 rounded-xl border border-[#DCDFE3]">
             <button
               onClick={() => setUserRole('admin_utama')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -333,13 +333,13 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
       </div>
 
       {/* NAVIGATION TABS (Dashboard | Pemasukan | Pengeluaran | Transaksi | Audit) */}
-      <div className="flex items-center gap-2 border-b border-[#D8D2CB] pb-1 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-[#DCDFE3] pb-1 overflow-x-auto">
         <button
           onClick={() => setActiveTab('dashboard')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'dashboard'
               ? 'bg-[#1C658C] text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-[#EEEEEE] border border-[#D8D2CB]'
+              : 'bg-white text-slate-600 hover:bg-[#EEEEEE] border border-[#DCDFE3]'
           }`}
         >
           <LayoutDashboard className="w-4 h-4" />
@@ -464,7 +464,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
           </div>
 
           {/* FINANCIAL CHART SECTION */}
-          <div className="bg-white rounded-2xl p-6 border border-[#D8D2CB] shadow-sm">
+          <div className="bg-white rounded-2xl p-6 border border-[#DCDFE3] shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div>
                 <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
@@ -504,7 +504,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     contentStyle={{ 
                       backgroundColor: '#ffffff', 
                       borderRadius: '12px', 
-                      border: '1px solid #D8D2CB',
+                      border: '1px solid #DCDFE3',
                       boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' 
                     }}
                   />
@@ -545,8 +545,8 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
           </div>
 
           {/* TABLE PEMASUKAN */}
-          <div className="bg-white rounded-2xl border border-[#D8D2CB] overflow-hidden shadow-sm">
-            <div className="p-4 bg-[#EEEEEE] border-b border-[#D8D2CB] flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="bg-white rounded-2xl border border-[#DCDFE3] overflow-hidden shadow-sm">
+            <div className="p-4 bg-[#EEEEEE] border-b border-[#DCDFE3] flex flex-col md:flex-row md:items-center justify-between gap-3">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Riwayat Catatan Pemasukan ({incomeTransactions.length} Data)
               </span>
@@ -558,7 +558,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   placeholder="Cari pemasukan / PIC / RS..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#D8D2CB] rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#DCDFE3] rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
             </div>
@@ -566,7 +566,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#D8D2CB]">
+                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#DCDFE3]">
                     <th className="p-3">Tanggal</th>
                     <th className="p-3">Kategori</th>
                     <th className="p-3">Keterangan</th>
@@ -660,8 +660,8 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
           </div>
 
           {/* TABLE PENGELUARAN */}
-          <div className="bg-white rounded-2xl border border-[#D8D2CB] overflow-hidden shadow-sm">
-            <div className="p-4 bg-[#EEEEEE] border-b border-[#D8D2CB] flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="bg-white rounded-2xl border border-[#DCDFE3] overflow-hidden shadow-sm">
+            <div className="p-4 bg-[#EEEEEE] border-b border-[#DCDFE3] flex flex-col md:flex-row md:items-center justify-between gap-3">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Riwayat Catatan Pengeluaran ({expenseTransactions.length} Data)
               </span>
@@ -673,7 +673,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   placeholder="Cari pengeluaran / PIC..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#D8D2CB] rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#DCDFE3] rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500"
                 />
               </div>
             </div>
@@ -681,7 +681,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#D8D2CB]">
+                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#DCDFE3]">
                     <th className="p-3">Tanggal</th>
                     <th className="p-3">Kategori</th>
                     <th className="p-3">Keterangan</th>
@@ -777,8 +777,8 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
           </div>
 
           {/* TABLE GABUNGAN TRANSAKSI */}
-          <div className="bg-white rounded-2xl border border-[#D8D2CB] overflow-hidden shadow-sm">
-            <div className="p-4 bg-[#EEEEEE] border-b border-[#D8D2CB] flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="bg-white rounded-2xl border border-[#DCDFE3] overflow-hidden shadow-sm">
+            <div className="p-4 bg-[#EEEEEE] border-b border-[#DCDFE3] flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                   Semua Transaksi ({allFilteredTransactions.length})
@@ -787,7 +787,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                 <select
                   value={trxTypeFilter}
                   onChange={(e) => setTrxTypeFilter(e.target.value)}
-                  className="px-3 py-1 text-xs bg-white border border-[#D8D2CB] rounded-lg text-slate-700 font-medium"
+                  className="px-3 py-1 text-xs bg-white border border-[#DCDFE3] rounded-lg text-slate-700 font-medium"
                 >
                   <option value="ALL">Semua Tipe (Masuk & Keluar)</option>
                   <option value="INCOME">Khusus Uang Masuk (Pemasukan)</option>
@@ -802,7 +802,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   placeholder="Cari transaksi..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#D8D2CB] rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#DCDFE3] rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
             </div>
@@ -810,7 +810,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#D8D2CB]">
+                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#DCDFE3]">
                     <th className="p-3">Tanggal</th>
                     <th className="p-3">Tipe</th>
                     <th className="p-3">Kategori</th>
@@ -948,8 +948,8 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
           </div>
 
           {/* TABLE AUDIT */}
-          <div className="bg-white rounded-2xl border border-[#D8D2CB] overflow-hidden shadow-sm">
-            <div className="p-4 bg-[#EEEEEE] border-b border-[#D8D2CB] flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="bg-white rounded-2xl border border-[#DCDFE3] overflow-hidden shadow-sm">
+            <div className="p-4 bg-[#EEEEEE] border-b border-[#DCDFE3] flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                   Daftar Transaksi Audit ({allFilteredTransactions.length})
@@ -958,7 +958,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                 <select
                   value={auditFilter}
                   onChange={(e) => setAuditFilter(e.target.value)}
-                  className="px-3 py-1 text-xs bg-white border border-[#D8D2CB] rounded-lg text-slate-700 font-medium"
+                  className="px-3 py-1 text-xs bg-white border border-[#DCDFE3] rounded-lg text-slate-700 font-medium"
                 >
                   <option value="ALL">Semua Status Audit</option>
                   <option value="Lolos Audit">Lolos Audit</option>
@@ -975,7 +975,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   placeholder="Cari transaksi audit..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#D8D2CB] rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-[#DCDFE3] rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
               </div>
             </div>
@@ -983,7 +983,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#D8D2CB]">
+                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-[#DCDFE3]">
                     <th className="p-3">Tanggal</th>
                     <th className="p-3">Tipe</th>
                     <th className="p-3">Kategori</th>
@@ -1038,7 +1038,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                           </td>
                           <td className="p-3 text-slate-700 max-w-xs">
                             {t.auditNotes ? (
-                              <div className="p-2 bg-slate-50 border border-[#D8D2CB] rounded-lg text-[11px] text-slate-700 italic">
+                              <div className="p-2 bg-slate-50 border border-[#DCDFE3] rounded-lg text-[11px] text-slate-700 italic">
                                 "{t.auditNotes}"
                               </div>
                             ) : (
@@ -1088,7 +1088,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
       {/* ========================================================================= */}
       {showAddTrxModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-[#D8D2CB] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+          <div className="bg-white border border-[#DCDFE3] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
             <div className={`px-6 py-4 flex items-center justify-between text-white ${
               formType === 'Pemasukan' ? 'bg-[#398E3D]' : 'bg-rose-600'
             }`}>
@@ -1115,7 +1115,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     className={`py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                       formType === 'Pemasukan' 
                         ? 'bg-[#398E3D] text-white border-[#398E3D]' 
-                        : 'bg-white text-slate-700 border-[#D8D2CB]'
+                        : 'bg-white text-slate-700 border-[#DCDFE3]'
                     }`}
                   >
                     + Uang Masuk (Pemasukan)
@@ -1127,7 +1127,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     className={`py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                       formType === 'Pengeluaran' 
                         ? 'bg-rose-600 text-white border-rose-600' 
-                        : 'bg-white text-slate-700 border-[#D8D2CB]'
+                        : 'bg-white text-slate-700 border-[#DCDFE3]'
                     }`}
                   >
                     - Uang Keluar (Pengeluaran)
@@ -1144,7 +1144,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
+                    className="w-full px-3 py-2 text-xs bg-white border border-[#DCDFE3] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
                   />
                 </div>
 
@@ -1156,7 +1156,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     placeholder="e.g. Sari / Dimas / Ahmad"
                     value={formPic}
                     onChange={(e) => setFormPic(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
+                    className="w-full px-3 py-2 text-xs bg-white border border-[#DCDFE3] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
                   />
                 </div>
               </div>
@@ -1170,7 +1170,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   placeholder={formType === 'Pemasukan' ? 'e.g. Pelunasan Invoice RS Siloam / DP Kontrak' : 'e.g. Biaya Operasional Lapangan / Re-Kalibrasi BPFK'}
                   value={formCategory}
                   onChange={(e) => setFormCategory(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
+                  className="w-full px-3 py-2 text-xs bg-white border border-[#DCDFE3] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
                 />
               </div>
 
@@ -1181,7 +1181,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   <select
                     value={formPaymentMethod}
                     onChange={(e) => setFormPaymentMethod(e.target.value as 'Transfer' | 'Cash')}
-                    className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
+                    className="w-full px-3 py-2 text-xs bg-white border border-[#DCDFE3] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
                   >
                     <option value="Transfer">Transfer Bank</option>
                     <option value="Cash">Tunai (Cash)</option>
@@ -1200,7 +1200,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                       const raw = e.target.value.replace(/^0+(?=\d)/, '');
                       setFormAmount(raw);
                     }}
-                    className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl font-bold focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
+                    className="w-full px-3 py-2 text-xs bg-white border border-[#DCDFE3] rounded-xl font-bold focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
                   />
                 </div>
               </div>
@@ -1213,15 +1213,15 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   placeholder="Detail rincian catatan transaksi..."
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
+                  className="w-full px-3 py-2 text-xs bg-white border border-[#DCDFE3] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#1C658C]"
                 />
               </div>
 
-              <div className="pt-3 border-t border-[#D8D2CB] flex items-center justify-end gap-2">
+              <div className="pt-3 border-t border-[#DCDFE3] flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAddTrxModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 bg-[#EEEEEE] hover:bg-[#D8D2CB] rounded-xl cursor-pointer"
+                  className="px-4 py-2 text-xs font-medium text-slate-600 bg-[#EEEEEE] hover:bg-[#DCDFE3] rounded-xl cursor-pointer"
                 >
                   Batal
                 </button>
@@ -1274,7 +1274,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 cursor-pointer ${
                       auditStatusInput === 'Lolos Audit'
                         ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white text-slate-700 border-[#D8D2CB] hover:bg-emerald-50'
+                        : 'bg-white text-slate-700 border-[#DCDFE3] hover:bg-emerald-50'
                     }`}
                   >
                     <CheckCircle2 className="w-4 h-4" />
@@ -1287,7 +1287,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 cursor-pointer ${
                       auditStatusInput === 'Tidak Lolos Audit'
                         ? 'bg-rose-600 text-white border-rose-600'
-                        : 'bg-white text-slate-700 border-[#D8D2CB] hover:bg-rose-50'
+                        : 'bg-white text-slate-700 border-[#DCDFE3] hover:bg-rose-50'
                     }`}
                   >
                     <XCircle className="w-4 h-4" />
@@ -1300,7 +1300,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 cursor-pointer ${
                       auditStatusInput === 'Diverifikasi Auditor'
                         ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-slate-700 border-[#D8D2CB] hover:bg-blue-50'
+                        : 'bg-white text-slate-700 border-[#DCDFE3] hover:bg-blue-50'
                     }`}
                   >
                     <UserCheck className="w-4 h-4" />
@@ -1313,7 +1313,7 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                     className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 cursor-pointer ${
                       auditStatusInput === 'Belum Diaudit'
                         ? 'bg-slate-700 text-white border-slate-700'
-                        : 'bg-white text-slate-700 border-[#D8D2CB] hover:bg-slate-100'
+                        : 'bg-white text-slate-700 border-[#DCDFE3] hover:bg-slate-100'
                     }`}
                   >
                     <HelpCircle className="w-4 h-4" />
@@ -1333,15 +1333,15 @@ export const FinancialAssetManager: React.FC<FinancialAssetManagerProps> = ({
                   placeholder="Ketikkan catatan audit terperinci di sini (alasan tidak lolos audit, kelengkapan kwitansi, bukti transfer, dll)..."
                   value={auditNotesInput}
                   onChange={(e) => setAuditNotesInput(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-[#D8D2CB] rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-600"
+                  className="w-full px-3 py-2 text-xs bg-white border border-[#DCDFE3] rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-600"
                 />
               </div>
 
-              <div className="pt-3 border-t border-[#D8D2CB] flex items-center justify-end gap-2">
+              <div className="pt-3 border-t border-[#DCDFE3] flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setAuditTargetTrx(null)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 bg-[#EEEEEE] hover:bg-[#D8D2CB] rounded-xl cursor-pointer"
+                  className="px-4 py-2 text-xs font-medium text-slate-600 bg-[#EEEEEE] hover:bg-[#DCDFE3] rounded-xl cursor-pointer"
                 >
                   Batal
                 </button>

@@ -162,7 +162,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
       </div>
 
       {/* Control Bar: Search & Filter */}
-      <div className="bg-white border border-[#D8D2CB] rounded-2xl p-4 shadow-sm space-y-3">
+      <div className="bg-white border border-[#DCDFE3] rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-96">
             <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
@@ -171,7 +171,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Cari Rumah Sakit, No. SPH, No. BO, FP, KWP..."
-              className="w-full bg-[#EEEEEE]/40 border border-[#D8D2CB] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-blue-600 outline-none"
+              className="w-full bg-[#EEEEEE]/40 border border-[#DCDFE3] rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-blue-600 outline-none"
             />
           </div>
 
@@ -205,7 +205,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
       {/* Billing SPH Cards Grid */}
       <div className="space-y-4">
         {filteredSph.length === 0 ? (
-          <div className="bg-white border border-[#D8D2CB] rounded-2xl p-12 text-center space-y-3">
+          <div className="bg-white border border-[#DCDFE3] rounded-2xl p-12 text-center space-y-3">
             <Receipt className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="font-bold text-slate-700 text-base">Tidak ada dokumen penagihan ditemukan</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
@@ -230,7 +230,7 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
             return (
               <div
                 key={sph.id}
-                className="bg-white border border-[#D8D2CB] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all space-y-4"
+                className="bg-white border border-[#DCDFE3] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all space-y-4"
               >
                 {/* Header Info */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -285,8 +285,8 @@ export const HospitalBillingManager: React.FC<HospitalBillingManagerProps> = ({
                 </div>
 
                 {/* Parameter Deal Summary Table */}
-                <div className="bg-[#EEEEEE]/30 border border-[#D8D2CB]/80 rounded-xl p-3.5 space-y-2 text-xs">
-                  <div className="flex items-center justify-between border-b border-[#D8D2CB]/60 pb-2">
+                <div className="bg-[#EEEEEE]/30 border border-[#DCDFE3]/80 rounded-xl p-3.5 space-y-2 text-xs">
+                  <div className="flex items-center justify-between border-b border-[#DCDFE3]/60 pb-2">
                     <div className="flex items-center gap-2 font-bold text-slate-800">
                       <Hash className="w-4 h-4 text-blue-600" />
                       <span>Parameter Nomor Dokumen Deal</span>

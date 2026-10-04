@@ -281,10 +281,10 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
       <form 
         onSubmit={(e) => handleSubmit(e, false)} 
-        className="bg-white text-slate-800 rounded-2xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl border border-[#D8D2CB] my-4 max-h-[94vh] flex flex-col justify-between"
+        className="bg-white text-slate-800 rounded-2xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl border border-[#DCDFE3] my-4 max-h-[94vh] flex flex-col justify-between"
       >
         {/* Header Modal - Flux Theme */}
-        <div className="flex items-center justify-between pb-4 border-b border-[#D8D2CB] shrink-0">
+        <div className="flex items-center justify-between pb-4 border-b border-[#DCDFE3] shrink-0">
           <div className="flex items-center gap-3">
             <CompanyLogo size="sm" showSubtitle={false} variant="light" />
             <div>
@@ -314,8 +314,8 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
         <div className="overflow-y-auto py-4 space-y-4 text-xs pr-1.5 custom-scrollbar">
           
           {/* SECTION 1: NAMA RS & ALAMAT RS */}
-          <div className="p-4 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
-            <div className="flex items-center justify-between border-b border-[#D8D2CB]/60 pb-2">
+          <div className="p-4 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
+            <div className="flex items-center justify-between border-b border-[#DCDFE3]/60 pb-2">
               <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-[#1C658C]" />
                 <span>1. Data Klien Rumah Sakit & Alamat Lengkap (Wajib)</span>
@@ -334,7 +334,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   value={hospitalName}
                   onChange={(e) => setHospitalName(e.target.value)}
                   placeholder="Contoh: RS Unim Islam YAKSSI Gemolong"
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -347,7 +347,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   required
                   value={workOrderNumber}
                   onChange={(e) => setWorkOrderNumber(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-[#1C658C] font-mono font-bold focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-[#1C658C] font-mono font-bold focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
             </div>
@@ -363,7 +363,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   value={hospitalCity}
                   onChange={(e) => setHospitalCity(e.target.value)}
                   placeholder="Contoh: Kab. Sragen / Kota Surakarta"
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -378,13 +378,13 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   value={hospitalAddress}
                   onChange={(e) => setHospitalAddress(e.target.value)}
                   placeholder="Contoh: Jl. Kolonel Sutarto No.132, Jebres, Kec. Jebres, Kota Surakarta, Jawa Tengah 57126"
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C] text-xs"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C] text-xs"
                 />
               </div>
             </div>
 
             {/* PIC RS & Marketing */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#D8D2CB]/60">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#DCDFE3]/60">
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">Nama PIC RS (IPSRS/ATEM) *</label>
                 <input
@@ -393,7 +393,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   value={hospitalPicName}
                   onChange={(e) => setHospitalPicName(e.target.value)}
                   placeholder="Contoh: H. Bambang Setiawan, S.ST."
-                  className="w-full p-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg text-slate-900 focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -404,7 +404,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   value={hospitalPicRole}
                   onChange={(e) => setHospitalPicRole(e.target.value)}
                   placeholder="Kepala IPSRS / ATEM"
-                  className="w-full p-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg text-slate-900 focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -415,15 +415,15 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   value={hospitalPicPhone}
                   onChange={(e) => setHospitalPicPhone(e.target.value)}
                   placeholder="0812-xxxx-xxxx"
-                  className="w-full p-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-lg text-slate-900 font-mono focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-lg text-slate-900 font-mono focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
             </div>
           </div>
 
           {/* SECTION 2: TANGGAL PELAKSANAAN & TEKNISI */}
-          <div className="p-4 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
-            <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-2 border-b border-[#D8D2CB]/60 pb-2">
+          <div className="p-4 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
+            <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-2 border-b border-[#DCDFE3]/60 pb-2">
               <Calendar className="w-4 h-4 text-[#1C658C]" />
               <span>2. Tanggal Pelaksanaan & Tim Teknisi Elektromedis (11 Personil)</span>
             </h3>
@@ -438,7 +438,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   required
                   value={scheduledDate}
                   onChange={(e) => setScheduledDate(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
 
@@ -451,13 +451,13 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   required
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
+                  className="w-full p-2.5 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#1C658C]"
                 />
               </div>
             </div>
 
             {/* Lead Teknisi & Teknisi Pendamping */}
-            <div className="space-y-2 pt-2 border-t border-[#D8D2CB]/60">
+            <div className="space-y-2 pt-2 border-t border-[#DCDFE3]/60">
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">
                   Lead Teknisi Elektromedis (Penanggung Jawab Lapangan) *
@@ -486,7 +486,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                       className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
                         selectedSupportIds.includes(tech.id)
                           ? 'bg-[#1C658C]/10 border-[#1C658C] text-[#1C658C] font-semibold'
-                          : 'bg-[#EEEEEE]/30 border-[#D8D2CB] text-slate-600 hover:text-slate-900'
+                          : 'bg-[#EEEEEE]/30 border-[#DCDFE3] text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       <input
@@ -507,8 +507,8 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
           </div>
 
           {/* SECTION 3: KALIBRATOR STANDAR */}
-          <div className="p-4 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
-            <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-2 border-b border-[#D8D2CB]/60 pb-2">
+          <div className="p-4 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
+            <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-2 border-b border-[#DCDFE3]/60 pb-2">
               <Wrench className="w-4 h-4 text-[#1C658C]" />
               <span>3. Alat Kalibrator Standar yang Ditugaskan ke Lapangan</span>
             </h3>
@@ -520,7 +520,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
                     selectedCalibratorIds.includes(cal.id)
                       ? 'bg-[#398AB9]/10 border-[#398AB9] text-[#1C658C] font-semibold'
-                      : 'bg-[#EEEEEE]/30 border-[#D8D2CB] text-slate-600 hover:text-slate-900'
+                      : 'bg-[#EEEEEE]/30 border-[#DCDFE3] text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <input
@@ -539,8 +539,8 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
           </div>
 
           {/* SECTION 4: DAFTAR ALAT & NOMOR LABEL 7-DIGIT */}
-          <div className="p-4 bg-white rounded-xl border border-[#D8D2CB] space-y-3 shadow-xs">
-            <div className="flex items-center justify-between border-b border-[#D8D2CB]/60 pb-2">
+          <div className="p-4 bg-white rounded-xl border border-[#DCDFE3] space-y-3 shadow-xs">
+            <div className="flex items-center justify-between border-b border-[#DCDFE3]/60 pb-2">
               <div>
                 <h3 className="font-bold text-[#1C658C] text-xs flex items-center gap-2">
                   <Layers className="w-4 h-4 text-[#1C658C]" />
@@ -571,7 +571,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
               </div>
 
               {devices.map((d, idx) => (
-                <div key={d.id} className="grid grid-cols-12 gap-2 bg-[#EEEEEE]/40 p-2 rounded-xl border border-[#D8D2CB] items-center">
+                <div key={d.id} className="grid grid-cols-12 gap-2 bg-[#EEEEEE]/40 p-2 rounded-xl border border-[#DCDFE3] items-center">
                   <div className="col-span-1 text-center font-bold text-[#1C658C] text-xs">
                     #{idx + 1}
                   </div>
@@ -582,7 +582,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                       placeholder="Contoh: Suction Pump, Patient Monitor"
                       value={d.name}
                       onChange={(e) => handleDeviceChange(d.id, 'name', e.target.value)}
-                      className="w-full p-2 bg-white border border-[#D8D2CB] rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#1C658C] font-medium"
+                      className="w-full p-2 bg-white border border-[#DCDFE3] rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#1C658C] font-medium"
                     />
                   </div>
                   <div className="col-span-2">
@@ -614,7 +614,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                       placeholder="ICU / IGD / Poli"
                       value={d.room}
                       onChange={(e) => handleDeviceChange(d.id, 'room', e.target.value)}
-                      className="w-full p-2 bg-white border border-[#D8D2CB] rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                      className="w-full p-2 bg-white border border-[#DCDFE3] rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#1C658C]"
                     />
                   </div>
                   <div className="col-span-2">
@@ -643,7 +643,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
           </div>
 
           {/* SECTION 5: KONTRAK & OTORISASI */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-white rounded-xl border border-[#D8D2CB] shadow-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-white rounded-xl border border-[#DCDFE3] shadow-xs">
             <div>
               <label className="font-semibold text-slate-700 block mb-1">Nilai Kontrak Kalibrasi (Rp)</label>
               <input
@@ -654,7 +654,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                   setContractValue(raw);
                 }}
                 placeholder="0"
-                className="w-full p-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-[#1C658C] font-mono font-bold focus:outline-none focus:border-[#1C658C]"
+                className="w-full p-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-[#1C658C] font-mono font-bold focus:outline-none focus:border-[#1C658C]"
               />
             </div>
             <div>
@@ -663,7 +663,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                 type="text"
                 value={marketingName}
                 onChange={(e) => setMarketingName(e.target.value)}
-                className="w-full p-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                className="w-full p-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
               />
             </div>
             <div className="sm:col-span-2">
@@ -673,11 +673,11 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Instruksi tambahan..."
-                className="w-full p-2 bg-[#EEEEEE]/50 border border-[#D8D2CB] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
+                className="w-full p-2 bg-[#EEEEEE]/50 border border-[#DCDFE3] rounded-xl text-slate-900 focus:outline-none focus:border-[#1C658C]"
               />
             </div>
             {initialData?.id && (
-              <div className="sm:col-span-2 mt-2 pt-2 border-t border-[#D8D2CB]">
+              <div className="sm:col-span-2 mt-2 pt-2 border-t border-[#DCDFE3]">
                 <PdfUploader 
                   folder="spk"
                   documentId={initialData.id}
@@ -691,11 +691,11 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
         </div>
 
         {/* Modal Footer Buttons */}
-        <div className="pt-4 border-t border-[#D8D2CB] flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="pt-4 border-t border-[#DCDFE3] flex flex-wrap items-center justify-between gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-[#D8D2CB] text-slate-600 hover:bg-[#EEEEEE] text-xs font-semibold transition-colors"
+            className="px-4 py-2.5 rounded-xl border border-[#DCDFE3] text-slate-600 hover:bg-[#EEEEEE] text-xs font-semibold transition-colors"
           >
             Batal
           </button>
