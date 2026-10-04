@@ -7,6 +7,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { extractLabelFromLocation } from './lib/labelParser';
+import { ThemeProvider, ThemeRouteSync } from './lib/theme';
 
 // Pages
 import PublicScanPage from './pages/PublicScanPage';
@@ -20,7 +21,12 @@ import AsetPortalApp from './pages/AsetPortalApp';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="h-screen w-screen flex items-center justify-center bg-slate-50 text-slate-500 font-sans">Memuat...</div>;
+  if (loading) return (
+    <div className="app-surface h-screen w-screen flex flex-col items-center justify-center gap-3 font-sans">
+      <span className="smk-spinner" aria-hidden="true" />
+      <span className="text-sm text-slate-500">Memuat...</span>
+    </div>
+  );
   if (!user) return <Navigate to="/admin/login" replace />;
   return <>{children}</>;
 };
@@ -31,6 +37,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
  * render PublicScanPage.
  * Otherwise, render the main portal (Manajemen Aset & Penjadwalan Kalibrasi RS / Label Stiker).
  */
+/** Menyamakan tema (terang / Hitam Kaca) dengan halaman yang sedang dibuka. */
+const ThemeLocationSync = () => {
+  const location = useLocation();
+  return <ThemeRouteSync pathname={location.pathname} search={location.search} />;
+};
+
 const ScanOrRedirect = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -57,8 +69,10 @@ const ScanOrRedirect = () => {
 
 export default function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <BrowserRouter>
+        <ThemeLocationSync />
         <Routes>
           {/* Scanned QR code routes with specific label parameter */}
           <Route path="/sertifikat/:noLabel" element={<PublicScanPage />} />
@@ -99,5 +113,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ThemeProvider>
   );
 }
