@@ -50,7 +50,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
   const [tglManual, setTglManual] = useState('');
   const [lookupTab, setLookupTab] = useState<'ruang' | 'alat' | 'nik' | 'tgl'>('ruang');
   // Master kode alat (3.540 kode) dimuat terpisah hanya saat dibutuhkan
-  const [alatMaster, setAlatMaster] = useState<{ index: AlatIndex; kamus: Record<string, string>; byKode: Map<string, string>; options: [string, string][] } | null>(null);
+  const [alatMaster, setAlatMaster] = useState<{ index: AlatIndex; kamus: Record<string, string>; byKode: Map<string, string>; options: ComboOption[] } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const toast = (m: string) => (showToast ? showToast(m) : alert(m));
@@ -94,7 +94,13 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
         index: buildAlatIndex(mod.ASPAK_ALAT_MASTER),
         kamus: mod.ASPAK_ALAT_KAMUS_SMK,
         byKode: new Map(mod.ASPAK_ALAT_MASTER.map(([k, n]) => [k, n])),
-        options: mod.ASPAK_ALAT_MASTER.map(([k, n]) => [k, n] as [string, string]),
+        // dikelompokkan per golongan ASPAK (Anestesi, Kardiologi, RS Umum, dst.)
+        options: mod.ASPAK_ALAT_MASTER
+          .map(([k, n, syn]) => {
+            const g = mod.alatGroupOf(k);
+            return { value: k, label: n, group: g.golongan, sub: [g.subgolongan, syn].filter(Boolean).join(' · ') };
+          })
+          .sort((a, b) => Number(a.group === 'Lainnya') - Number(b.group === 'Lainnya') || a.group.localeCompare(b.group) || a.value.localeCompare(b.value)),
       });
     }).catch(() => toast('Gagal memuat master kode alat. Cek koneksi internet lalu upload ulang.'));
     return () => { cancelled = true; };
@@ -164,13 +170,10 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
 
   // SEMUA ruang (497), dikelompokkan per kategori; ruang nonaktif [x] tetap tampil tapi diberi tanda
   const ruangOptions: ComboOption[] = useMemo(
-    () => ASPAK_RUANG_LIST.map(r => ({ value: r.kode, label: r.induk ? `${r.nama} (bagian dari ${r.induk})` : r.nama, group: r.kategori, muted: r.nonaktif })),
+    () => ASPAK_RUANG_LIST.map(r => ({ value: r.kode, label: r.nama, group: r.kategori, sub: r.induk ? `${r.kategori} · bagian dari ${r.induk}` : r.kategori, muted: r.nonaktif })),
     [],
   );
-  const alatOptions: ComboOption[] = useMemo(
-    () => (alatMaster ? alatMaster.options.map(([k, n]) => ({ value: k, label: n })) : []),
-    [alatMaster],
-  );
+  const alatOptions: ComboOption[] = alatMaster ? alatMaster.options : [];
 
   const issues = useMemo(() => validateAspakRows(effectiveRows), [effectiveRows]);
   const issuesByRow = useMemo(() => {
@@ -534,7 +537,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
                         <td className={`px-2 py-1.5 ${cellCls(i, 'noSeri')}`}>{r.noSeri}</td>
                         <td className="max-w-[120px] truncate px-2 py-1.5">{[r.merk, r.tipe].filter(Boolean).join(' / ')}</td>
                         <td className={`px-1 py-1 ${cellCls(i, 'kodeRuang')}`}>
-                          <AspakCombobox value={r.kodeRuang === '0' ? '' : r.kodeRuang} options={ruangOptions}
+                          <AspakCombobox value={r.kodeRuang === '0' ? '' : r.kodeRuang} options={ruangOptions} heading="Kode Ruang ASPAK"
                             onChange={v => updateRow(i, { kodeRuang: v.replace(/\D/g, '') })}
                             customPattern={/^\d{2,6}$/} className="w-56" placeholder="Cari ruang…" />
                         </td>
@@ -550,7 +553,7 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
                         <td className={`px-1 py-1 ${cellCls(i, 'metode')}`}>
                           <div className="flex items-center gap-1">
                             {r.metodeOtomatis && <Wand2 className="h-3 w-3 shrink-0 text-amber-600" aria-label="diisi otomatis" />}
-                            <AspakCombobox value={r.metode} options={metodeOptions} placeholder="Cari alat / MK…"
+                            <AspakCombobox value={r.metode} options={metodeOptions} heading="Metode KMK" placeholder="Cari alat / MK…"
                               onChange={v => updateRow(i, { metode: v.toUpperCase().replace(/[^A-Z0-9\/-]/g, ''), metodeOtomatis: false })}
                               customPattern={/^[A-Za-z0-9][A-Za-z0-9\/-]{4,}$/} className="w-56" />
                           </div>

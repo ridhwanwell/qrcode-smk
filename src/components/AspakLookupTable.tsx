@@ -21,6 +21,7 @@ interface Props {
   options?: ComboOption[];
   customPattern?: RegExp;
   maxRender?: number;
+  heading?: string;
   placeholder: string;
   sanitize: (raw: string) => string;
   firstColTitle: string;
@@ -71,7 +72,7 @@ export function AspakLookupTable(p: Props) {
                       {p.options ? (
                         <AspakCombobox value={v} options={p.options} placeholder={p.placeholder}
                           onChange={nv => p.onChange(it.key, p.sanitize(nv))}
-                          customPattern={p.customPattern} maxRender={p.maxRender}
+                          customPattern={p.customPattern} heading={p.heading || p.valueColTitle}
                           invalid={!!d && !d.ok} className={p.inputWidth || 'w-72'} />
                       ) : (
                         <input value={v} placeholder={p.placeholder}
