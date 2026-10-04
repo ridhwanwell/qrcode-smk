@@ -4,6 +4,7 @@
  */
 import React, { useState } from 'react';
 import { Wand2 } from 'lucide-react';
+import { AspakCombobox, ComboOption } from './AspakCombobox';
 
 export interface LookupItem { key: string; label: string; count: number; note?: string }
 export interface LookupCandidate { value: string; label: string }
@@ -16,7 +17,10 @@ interface Props {
   /** Penjelasan nilai terpilih (mis. nama ruang). ok=false -> ditandai merah */
   describe: (value: string) => { text: string; ok: boolean };
   candidates?: (key: string) => LookupCandidate[];
-  datalistId?: string;
+  /** Jika diisi: pakai kotak pencarian (bisa cari huruf/angka). Jika tidak: input biasa (mis. NIK). */
+  options?: ComboOption[];
+  customPattern?: RegExp;
+  maxRender?: number;
   placeholder: string;
   sanitize: (raw: string) => string;
   firstColTitle: string;
@@ -64,9 +68,16 @@ export function AspakLookupTable(p: Props) {
                   <td className="px-1 py-1">
                     <div className="flex items-center gap-1">
                       {st === 'guess' && <Wand2 className="h-3 w-3 shrink-0 text-amber-600" aria-label="saran otomatis" />}
-                      <input list={p.datalistId} value={v} placeholder={p.placeholder}
-                        onChange={e => p.onChange(it.key, p.sanitize(e.target.value))}
-                        className={`${p.inputWidth || 'w-28'} rounded border px-1 py-0.5 font-mono ${!v ? 'border-amber-400 bg-amber-50' : d && !d.ok ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
+                      {p.options ? (
+                        <AspakCombobox value={v} options={p.options} placeholder={p.placeholder}
+                          onChange={nv => p.onChange(it.key, p.sanitize(nv))}
+                          customPattern={p.customPattern} maxRender={p.maxRender}
+                          invalid={!!d && !d.ok} className={p.inputWidth || 'w-72'} />
+                      ) : (
+                        <input value={v} placeholder={p.placeholder}
+                          onChange={e => p.onChange(it.key, p.sanitize(e.target.value))}
+                          className={`${p.inputWidth || 'w-28'} rounded border px-1 py-0.5 font-mono ${!v ? 'border-amber-400 bg-amber-50' : d && !d.ok ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
+                      )}
                     </div>
                     {cands.length > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1">

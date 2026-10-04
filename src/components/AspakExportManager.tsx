@@ -18,6 +18,7 @@ import {
   TglSertifikatMode,
 } from '../utils/aspakExport';
 import { AspakLookupTable, LookupItem } from './AspakLookupTable';
+import { AspakCombobox, ComboOption } from './AspakCombobox';
 import { buildAlatIndex, matchAlat, AlatIndex } from '../utils/aspakAlatMatcher';
 import { ASPAK_RUANG_LIST, ASPAK_RUANG_BY_KODE, guessKodeRuang, lokasiKey } from '../data/aspakRuangList';
 import { KMK_DEVICE_METODES, KMK_DRIVE_FOLDER_URL, toMetodeCode } from '../data/kmkMetodeList';
@@ -161,7 +162,15 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
     toast(`Pemetaan untuk ${hospital.name} tersimpan. Upload berikutnya akan terisi otomatis.`);
   };
 
-  const ruangOptions = useMemo(() => ASPAK_RUANG_LIST.filter(r => !r.nonaktif), []);
+  // SEMUA ruang (497), dikelompokkan per kategori; ruang nonaktif [x] tetap tampil tapi diberi tanda
+  const ruangOptions: ComboOption[] = useMemo(
+    () => ASPAK_RUANG_LIST.map(r => ({ value: r.kode, label: r.induk ? `${r.nama} (bagian dari ${r.induk})` : r.nama, group: r.kategori, muted: r.nonaktif })),
+    [],
+  );
+  const alatOptions: ComboOption[] = useMemo(
+    () => (alatMaster ? alatMaster.options.map(([k, n]) => ({ value: k, label: n })) : []),
+    [alatMaster],
+  );
 
   const issues = useMemo(() => validateAspakRows(effectiveRows), [effectiveRows]);
   const issuesByRow = useMemo(() => {
@@ -266,8 +275,8 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / ASPAK_MAX_ROWS));
   const safePage = Math.min(page, pageCount - 1);
   const visibleRows = filteredRows.slice(safePage * ASPAK_MAX_ROWS, (safePage + 1) * ASPAK_MAX_ROWS);
-  const metodeTitle = useMemo(
-    () => new Map(KMK_DEVICE_METODES.map(m => [toMetodeCode(m.no), m.title])),
+  const metodeOptions: ComboOption[] = useMemo(
+    () => KMK_DEVICE_METODES.map(m => ({ value: toMetodeCode(m.no), label: m.title, group: 'Metode KMK (MK 002–133)' })),
     [],
   );
 
@@ -390,14 +399,12 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
 
           {lookupTab === 'ruang' && lokasiList.length > 0 && (
             <>
-              <datalist id="aspak-ruang-options">
-                {ruangOptions.map(r => <option key={r.kode} value={r.kode}>{r.nama} — {r.kategori}</option>)}
-              </datalist>
               <AspakLookupTable
                 items={lokasiList} firstColTitle="Lokasi di file" valueColTitle="Kode Ruang ASPAK"
                 value={k => ruangEff[k] || ''} status={k => statusOf(k, ruangEff, ruangMap, savedRuang)}
                 onChange={(k, v) => setRuangMap(prev => ({ ...prev, [k]: v }))}
-                sanitize={v => v.replace(/\D/g, '')} datalistId="aspak-ruang-options" placeholder="cari kode/nama…"
+                sanitize={v => v.replace(/\D/g, '')} options={ruangOptions} customPattern={/^\d{2,6}$/}
+                inputWidth="w-80" placeholder="Cari nama ruang / kode…"
                 describe={v => {
                   const r = ASPAK_RUANG_BY_KODE.get(v);
                   return r ? { text: `${r.nama} · ${r.kategori}`, ok: true } : { text: 'Kode tidak ada di daftar ruang ASPAK', ok: false };
@@ -409,14 +416,12 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
           {lookupTab === 'alat' && alatList.length > 0 && (
             !alatMaster ? <p className="text-xs text-slate-500">Memuat master kode alat ASPAK…</p> : (
               <>
-                <datalist id="aspak-alat-options">
-                  {alatMaster.options.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
-                </datalist>
                 <AspakLookupTable
-                  items={alatList} firstColTitle="Nama alat di file" valueColTitle="Kode Alat ASPAK" inputWidth="w-32"
+                  items={alatList} firstColTitle="Nama alat di file" valueColTitle="Kode Alat ASPAK" inputWidth="w-80"
                   value={k => alatEff[k] || ''} status={k => statusOf(k, alatEff, alatMap, savedAlat)}
                   onChange={(k, v) => setAlatMap(prev => ({ ...prev, [k]: v }))}
-                  sanitize={v => v.replace(/[^0-9A-Za-z-]/g, '')} datalistId="aspak-alat-options" placeholder="cari kode/nama…"
+                  sanitize={v => v.replace(/[^0-9A-Za-z-]/g, '')} options={alatOptions} customPattern={/^[0-9][0-9A-Za-z-]{4,14}$/}
+                  maxRender={300} placeholder="Cari nama alat / kode…"
                   candidates={k => alatCandidates.get(k) || []}
                   describe={v => {
                     const n = alatMaster.byKode.get(v);
@@ -495,14 +500,6 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
               </a>
             </div>
 
-            {/* Satu daftar metode dipakai bersama oleh semua baris (ringan untuk browser) */}
-            <datalist id="kmk-metode-options">
-              {KMK_DEVICE_METODES.map(m => {
-                const code = toMetodeCode(m.no);
-                return <option key={code} value={code}>{m.title}</option>;
-              })}
-            </datalist>
-
             {pageCount > 1 && (
               <div className="mb-2 flex flex-wrap items-center gap-1 text-xs">
                 <span className="mr-1 text-slate-600">{onlyProblems ? 'Halaman:' : 'File:'}</span>
@@ -537,8 +534,9 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
                         <td className={`px-2 py-1.5 ${cellCls(i, 'noSeri')}`}>{r.noSeri}</td>
                         <td className="max-w-[120px] truncate px-2 py-1.5">{[r.merk, r.tipe].filter(Boolean).join(' / ')}</td>
                         <td className={`px-1 py-1 ${cellCls(i, 'kodeRuang')}`}>
-                          <input value={r.kodeRuang} title={ASPAK_RUANG_BY_KODE.get(r.kodeRuang)?.nama || ''} onChange={e => updateRow(i, { kodeRuang: e.target.value.replace(/[^\d]/g, '') })}
-                            className="w-20 rounded border border-slate-200 bg-transparent px-1 py-0.5" />
+                          <AspakCombobox value={r.kodeRuang === '0' ? '' : r.kodeRuang} options={ruangOptions}
+                            onChange={v => updateRow(i, { kodeRuang: v.replace(/\D/g, '') })}
+                            customPattern={/^\d{2,6}$/} className="w-56" placeholder="Cari ruang…" />
                         </td>
                         <td className={`whitespace-nowrap px-2 py-1.5 ${cellCls(i, 'tglKalibrasi')}`}>{r.tglKalibrasi}</td>
                         <td className={`px-1 py-1 ${cellCls(i, 'laik')}`}>
@@ -552,10 +550,9 @@ export function AspakExportManager({ hospitals, onUpdateHospital, showToast }: P
                         <td className={`px-1 py-1 ${cellCls(i, 'metode')}`}>
                           <div className="flex items-center gap-1">
                             {r.metodeOtomatis && <Wand2 className="h-3 w-3 shrink-0 text-amber-600" aria-label="diisi otomatis" />}
-                            <input list="kmk-metode-options" value={r.metode} placeholder="KMK-MK-000-0"
-                              title={metodeTitle.get(r.metode) || 'Ketik nomor MK atau pilih dari daftar'}
-                              onChange={e => updateRow(i, { metode: e.target.value.toUpperCase().replace(/[^A-Z0-9\/-]/g, ''), metodeOtomatis: false })}
-                              className="w-32 rounded border border-slate-200 bg-transparent px-1 py-0.5 font-mono" />
+                            <AspakCombobox value={r.metode} options={metodeOptions} placeholder="Cari alat / MK…"
+                              onChange={v => updateRow(i, { metode: v.toUpperCase().replace(/[^A-Z0-9\/-]/g, ''), metodeOtomatis: false })}
+                              customPattern={/^[A-Za-z0-9][A-Za-z0-9\/-]{4,}$/} className="w-56" />
                           </div>
                         </td>
                         <td className="max-w-[220px] px-2 py-1.5">
