@@ -1,11 +1,32 @@
 <!doctype html>
-<html lang="en">
+<html lang="id">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/brand/smk-logo-light.png" />
     <link rel="icon" type="image/webp" href="/logo-smk.webp" />
     <link rel="icon" type="image/svg+xml" href="/logo-smk.svg" />
     <title>Manajemen Aset SMK</title>
+    <meta name="theme-color" content="#121B21" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      // Pasang tema sebelum halaman tampil (mencegah kedip putih). Halaman scan QR publik selalu terang.
+      (function () {
+        try {
+          var p = location.pathname, q = location.search;
+          var isPortal = p === '/' || p === '' || p === '/portal-aset' || p.indexOf('/admin') === 0;
+          if ((p === '/' || p === '') && /[?&](noLabel|nolabel|label|cert|no_label)=/.test(q)) isPortal = false;
+          var t = localStorage.getItem('smk_theme');
+          if (t !== 'light' && t !== 'dark') t = 'dark';
+          var eff = isPortal ? t : 'light';
+          document.documentElement.setAttribute('data-theme', eff);
+          document.documentElement.style.colorScheme = eff;
+          if (localStorage.getItem('smk_sidebar_collapsed') === '1') document.documentElement.classList.add('sb-collapsed');
+        } catch (e) {}
+      })();
+    </script>
     <meta name="description" content="Sistem Informasi Terpadu Manajemen Aset, Kalibrasi, Logistik & Keuangan PT Sarana Multi Kalibrasi." />
     <meta property="og:title" content="Manajemen Aset SMK" />
     <meta property="og:description" content="Sistem Informasi Terpadu Manajemen Aset, Kalibrasi, Logistik & Keuangan PT Sarana Multi Kalibrasi." />
