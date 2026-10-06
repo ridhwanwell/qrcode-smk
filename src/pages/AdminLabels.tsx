@@ -255,25 +255,8 @@ export default function AdminLabels() {
         return;
       }
 
-      // Kondisi c: SERVER MENGEMBALIKAN ARRAY KOSONG padahal cache 'smk_labels' berisi lebih dari 0 label
-      if (rawApiLabels.length === 0 && cachedLabels.length > 0) {
-        setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
-        console.warn('[AdminLabels] Server mengembalikan 0 label padahal cache berisi', cachedLabels.length, 'label');
-        if (labels.length === 0) {
-          setLabels(cachedLabels);
-        }
-        return;
-      }
-
-      // Pengaman jumlah: jika jumlah label dari server LEBIH SEDIKIT dari 50% jumlah di cache 'smk_labels'
-      const isCountSuspicious = cachedLabels.length > 0 && rawApiLabels.length < (cachedLabels.length * 0.5);
-      if (isCountSuspicious) {
-        setLabelsLoadError('Jumlah label dari server jauh lebih sedikit dari biasanya, periksa koneksi lalu muat ulang.');
-        console.warn('[AdminLabels] Jumlah label dari server jauh lebih sedikit dari biasanya:', rawApiLabels.length, 'vs cache:', cachedLabels.length);
-      } else {
-        // Kondisi a: BERHASIL normal
-        setLabelsLoadError(null);
-      }
+      // Kondisi a: BERHASIL — data server adalah sumber kebenaran untuk SEMUA perangkat
+      setLabelsLoadError(null);
 
       const mergedFolderMap = {
         ...folderRsMap,
@@ -284,18 +267,13 @@ export default function AdminLabels() {
         localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(mergedFolderMap));
       } catch (_) {}
 
-      // Tombstone sets to guarantee deleted folders and labels never resurrect
-      const deletedFolders = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]'));
-      const deletedLabels = new Set<string>(JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]'));
-
       const formatted: any[] = [];
 
       // Format API data (which is paginated and holds all 1395+ labels)
       rawApiLabels.forEach((d: any) => {
         const no = d.noLabel || d.no_label || d.id;
-        if (!no || no.startsWith('__meta_') || no.startsWith('__aset_') || no.startsWith('__item_') || no.startsWith('__tombstone_')) return;
+        if (!no || no.startsWith('__')) return;
         const prefix = extractLabelPrefix(no);
-        if (deletedFolders.has(prefix) || deletedLabels.has(no)) return;
 
         formatted.push({
           id: no,
@@ -322,12 +300,10 @@ export default function AdminLabels() {
 
       setLabels(formatted);
 
-      // Only write to localStorage cache if NOT suspicious and NOT failed
-      if (!isCountSuspicious) {
-        try {
-          localStorage.setItem('smk_labels', JSON.stringify(formatted));
-        } catch (_) {}
-      }
+      // Simpan salinan data server (dipakai hanya saat internet putus)
+      try {
+        localStorage.setItem('smk_labels', JSON.stringify(formatted));
+      } catch (_) {}
     } catch (err: any) {
       console.error('Error fetching labels:', err);
       setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
@@ -676,12 +652,6 @@ export default function AdminLabels() {
           const map = JSON.parse(localStorage.getItem('smk_folder_nama_rs_map') || '{}');
           delete map[folder.prefix];
           localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
-
-          const delF = JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]');
-          if (!delF.includes(folder.prefix)) {
-            delF.push(folder.prefix);
-            localStorage.setItem('smk_deleted_folders', JSON.stringify(delF));
-          }
         } catch (_) {}
 
         try {
@@ -712,14 +682,7 @@ export default function AdminLabels() {
               return no !== targetId && it.id !== targetId;
             });
             localStorage.setItem('smk_labels', JSON.stringify(remaining));
-          }
-
-          const delL = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
-          if (!delL.includes(targetId)) {
-            delL.push(targetId);
-            localStorage.setItem('smk_deleted_labels', JSON.stringify(delL));
-          }
-        } catch (_) {}
+          }        } catch (_) {}
 
         try {
           await deleteLabelCompletely(targetId);

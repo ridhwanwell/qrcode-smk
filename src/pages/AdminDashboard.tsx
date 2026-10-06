@@ -174,25 +174,8 @@ END $$;`;
         return;
       }
 
-      // Kondisi c: SERVER MENGEMBALIKAN ARRAY KOSONG padahal cache berisi > 0 label
-      if (rawApiLabels.length === 0 && cachedLabels.length > 0) {
-        setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');
-        console.warn('[AdminDashboard] Server mengembalikan 0 label padahal cache berisi', cachedLabels.length, 'label');
-        if (labels.length === 0) {
-          setLabels(cachedLabels);
-        }
-        return;
-      }
-
-      // Pengaman jumlah: jika jumlah label dari server LEBIH SEDIKIT dari 50% jumlah di cache 'smk_labels'
-      const isCountSuspicious = cachedLabels.length > 0 && rawApiLabels.length < (cachedLabels.length * 0.5);
-      if (isCountSuspicious) {
-        setLabelsLoadError('Jumlah label dari server jauh lebih sedikit dari biasanya, periksa koneksi lalu muat ulang.');
-        console.warn('[AdminDashboard] Jumlah label dari server jauh lebih sedikit dari biasanya:', rawApiLabels.length, 'vs cache:', cachedLabels.length);
-      } else {
-        // Kondisi a: BERHASIL normal
-        setLabelsLoadError(null);
-      }
+      // Kondisi a: BERHASIL — data server adalah sumber kebenaran untuk SEMUA perangkat
+      setLabelsLoadError(null);
 
       let apiMap: Record<string, any> = {};
       rawApiLabels.forEach((d: any) => {
@@ -231,11 +214,9 @@ END $$;`;
 
       setLabels(formatted);
 
-      if (!isCountSuspicious) {
-        try {
-          localStorage.setItem('smk_labels', JSON.stringify(formatted));
-        } catch (_) {}
-      }
+      try {
+        localStorage.setItem('smk_labels', JSON.stringify(formatted));
+      } catch (_) {}
     } catch (err) {
       console.warn('Dashboard fetch error:', err);
       setLabelsLoadError('Gagal memuat semua label dari server. Data yang tampil mungkin belum terbaru.');

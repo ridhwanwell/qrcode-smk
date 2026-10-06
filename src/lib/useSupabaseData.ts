@@ -1,70 +1,86 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 import { apiFetch } from './apiClient';
-import { enqueueOfflineItem, subscribePendingCount, flushOfflineQueue } from './offlineQueue';
+import { enqueueOfflineItem, subscribePendingCount, flushOfflineQueue, getPendingEntries } from './offlineQueue';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+
+/**
+ * ATURAN DATA (versi Oktober 2026 — database ditata ulang):
+ * 1. SERVER (Supabase) adalah satu-satunya sumber kebenaran. Data dari server SELALU
+ *    ditampilkan apa adanya di semua perangkat.
+ * 2. Tidak ada lagi "daftar hapus" yang disimpan permanen di browser. Hapus dicatat di server.
+ * 3. Browser hanya menyimpan:
+ *    - salinan terakhir dari server (cache) agar tetap bisa dibuka saat internet RS putus;
+ *    - antrean perubahan yang belum terkirim (IndexedDB, lihat offlineQueue.ts).
+ *    Perubahan yang masih di antrean tetap ditampilkan di atas data server sampai terkirim.
+ */
 
 const getCollectionItemKey = (i: any): string => {
   return String(i?.id || i?.sphNumber || i?.workOrderNumber || i?.bapNumber || i?.noLabel || i?.no_label || '').trim();
 };
 
-const getPersistedDeletedIds = (key: string, collName: string): Set<string> => {
-  const set = new Set<string>();
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        arr.forEach(id => set.add(String(id).trim()));
-      }
-    }
-  } catch (_) {}
-  return set;
-};
+const newIdempotencyKey = (prefix: string) =>
+  typeof crypto !== 'undefined' && (crypto as any).randomUUID
+    ? (crypto as any).randomUUID()
+    : `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-const persistDeletedId = (key: string, collName: string, id: string) => {
+/** Tumpuk perubahan yang belum terkirim (antrean offline) di atas data server. */
+async function applyPendingChanges<T>(collectionName: string, serverItems: T[]): Promise<T[]> {
+  let pending: Awaited<ReturnType<typeof getPendingEntries>> = [];
   try {
-    const set = getPersistedDeletedIds(key, collName);
-    set.add(String(id).trim());
-    localStorage.setItem(key, JSON.stringify(Array.from(set)));
-  } catch (_) {}
-};
+    pending = await getPendingEntries(collectionName);
+  } catch (_) {
+    return serverItems;
+  }
+  if (pending.length === 0) return serverItems;
+
+  const map = new Map<string, T>();
+  const order: string[] = [];
+  serverItems.forEach(it => {
+    const k = getCollectionItemKey(it);
+    if (!map.has(k)) order.push(k);
+    map.set(k, it);
+  });
+
+  for (const entry of pending) {
+    if (entry.action === 'delete') {
+      const delId = String(entry.item?.id || entry.item || '').trim();
+      map.delete(delId);
+    } else if (entry.item) {
+      const k = getCollectionItemKey(entry.item);
+      if (!k) continue;
+      if (!map.has(k)) order.unshift(k);
+      map.set(k, entry.item as T);
+    }
+  }
+  return order.filter(k => map.has(k)).map(k => map.get(k) as T);
+}
 
 /**
- * Universal React Hook for durable data persistence and live Realtime cross-device sync.
- * Strictly uses secure backend API (apiFetch) with token authentication, offline IndexedDB queue,
- * version conflict detection, and WebSocket Broadcast channels.
+ * Hook universal untuk data portal aset (jadwal, SPH, BAP, kalibrator, RS, teknisi, dll).
+ * Nama fungsi & isi yang dikembalikan sama seperti versi lama agar komponen lain tidak perlu diubah.
  */
 export function useSupabaseData<T extends { id: string }>(
   collectionName: string,
-  initialFallback: T[] = []
+  // Parameter lama (data contoh). Sengaja TIDAK dipakai lagi agar data contoh tidak pernah
+  // muncul atau terkirim ulang ke server.
+  _initialFallback: T[] = []
 ) {
   const storageKey = `smk_supa_${collectionName}`;
-  const initKey = `smk_inited_${collectionName}`;
-  const deletedKey = `smk_deleted_${collectionName}`;
 
-  // Unique client instance ID to identify broadcast origin and avoid redundant self-refetches
   const clientIdRef = useRef<string>(`client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // 1. Instant load from local cache or initialFallback with strict tombstone filtering
+  // 1. Tampilkan cache terakhir dari server dulu (cepat, tetap jalan saat offline)
   const [data, setData] = useState<T[]>(() => {
-    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
-    const filterDeleted = (items: T[]) => items.filter(it => !deletedSet.has(getCollectionItemKey(it)));
     try {
-      const isInited = localStorage.getItem(initKey) === 'true';
       const cached = localStorage.getItem(storageKey);
-      if (cached !== null) {
+      if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
-          const cleaned = filterDeleted(parsed as T[]);
-          if (isInited || cleaned.length > 0) {
-            return cleaned;
-          }
-        }
+        if (Array.isArray(parsed)) return parsed as T[];
       }
     } catch (_) {}
-    return filterDeleted(initialFallback);
+    return [];
   });
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -73,7 +89,6 @@ export function useSupabaseData<T extends { id: string }>(
   const dataRef = useRef<T[]>(data);
   dataRef.current = data;
 
-  // Listen to pending offline queue count
   useEffect(() => {
     const unsubscribe = subscribePendingCount(setPendingSyncCount);
     return () => {
@@ -81,59 +96,56 @@ export function useSupabaseData<T extends { id: string }>(
     };
   }, []);
 
-  const updateCache = useCallback((nextItems: T[]) => {
-    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
-    const cleanItems = nextItems.filter(it => !deletedSet.has(getCollectionItemKey(it)));
-    setData(cleanItems);
-    dataRef.current = cleanItems;
+  // Tampilkan di layar (tanpa menyimpan ke cache)
+  const showItems = useCallback((nextItems: T[]) => {
+    setData(nextItems);
+    dataRef.current = nextItems;
+  }, []);
+
+  // Simpan salinan data SERVER ke cache browser
+  const saveServerCache = useCallback((serverItems: T[]) => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(cleanItems));
-      localStorage.setItem(initKey, 'true');
+      localStorage.setItem(storageKey, JSON.stringify(serverItems));
     } catch (_) {}
-  }, [storageKey, initKey, deletedKey, collectionName]);
+  }, [storageKey]);
 
-  const initialFallbackRef = useRef(initialFallback);
-  initialFallbackRef.current = initialFallback;
-
-  // Broadcast function to notify all other clients instantly via Supabase WebSocket Broadcast
   const broadcastSync = useCallback(() => {
     try {
-      if (channelRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: `sync_${collectionName}`,
-          payload: {
-            senderId: clientIdRef.current,
-            timestamp: Date.now()
-          }
-        });
-      }
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: `sync_${collectionName}`,
+        payload: { senderId: clientIdRef.current, timestamp: Date.now() }
+      });
     } catch (e) {
       console.warn(`[useSupabaseData] Broadcast error on ${collectionName}:`, e);
     }
   }, [collectionName]);
 
-  // Fetch from backend API proxy
+  // Ambil data dari server. null = gagal (internet putus / server error)
   const fetchFromServer = useCallback(async (): Promise<T[] | null> => {
-    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
     try {
       const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}?_t=${Date.now()}`);
       if (res.ok) {
         const json = await res.json();
-        if (json && json.found === true && Array.isArray(json.items)) {
-          return (json.items as T[]).filter(it => !deletedSet.has(getCollectionItemKey(it)));
+        if (json && Array.isArray(json.items)) {
+          return json.items as T[];
         }
       }
     } catch (e) {
-      console.warn(`[useSupabaseData] API proxy fetch failed for ${collectionName}:`, e);
+      console.warn(`[useSupabaseData] Gagal mengambil ${collectionName} dari server:`, e);
     }
-
     return null;
-  }, [collectionName, deletedKey]);
+  }, [collectionName]);
 
-  // Conflict notification helper
+  // Terima data server -> simpan cache -> tampilkan (plus perubahan yang belum terkirim)
+  const acceptServerItems = useCallback(async (serverItems: T[]) => {
+    saveServerCache(serverItems);
+    const merged = await applyPendingChanges(collectionName, serverItems);
+    showItems(merged);
+  }, [collectionName, saveServerCache, showItems]);
+
   const handleConflictWarning = useCallback((conflicts: any[]) => {
-    console.warn(`[useSupabaseData] Terdeteksi konflik versi pada koleksi ${collectionName}:`, conflicts);
+    console.warn(`[useSupabaseData] Konflik versi pada ${collectionName}:`, conflicts);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('app_data_conflict', {
@@ -147,32 +159,33 @@ export function useSupabaseData<T extends { id: string }>(
     }
   }, [collectionName]);
 
-  // 2. Fetch from Backend API and set up Supabase Realtime Broadcast Channel
+  const forcePullFromSupabase = useCallback(async () => {
+    try {
+      setLoading(true);
+      const serverItems = await fetchFromServer();
+      if (serverItems !== null) {
+        await acceptServerItems(serverItems);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.warn(`[useSupabaseData] forcePull error on ${collectionName}:`, e);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchFromServer, acceptServerItems, collectionName]);
+
+  // 2. Muat dari server + dengarkan perubahan dari perangkat lain
   useEffect(() => {
     let isMounted = true;
     let debounceTimer: any = null;
 
     const loadData = async () => {
       try {
-        const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
         const serverItems = await fetchFromServer();
-
-        if (serverItems !== null) {
-          const cleanServerItems = serverItems.filter(it => !deletedSet.has(getCollectionItemKey(it)));
-          if (isMounted) {
-            updateCache(cleanServerItems);
-            setLoading(false);
-          }
-          return;
-        }
-
-        // If not found on server yet, initialize fallback
-        const isInited = localStorage.getItem(initKey) === 'true';
-        if (!isInited && initialFallbackRef.current.length > 0) {
-          const cleanFallback = initialFallbackRef.current.filter(it => !deletedSet.has(getCollectionItemKey(it)));
-          if (isMounted) {
-            updateCache(cleanFallback);
-          }
+        if (serverItems !== null && isMounted) {
+          await acceptServerItems(serverItems);
         }
       } catch (err) {
         console.warn(`[useSupabaseData] Error loading ${collectionName}:`, err);
@@ -184,292 +197,219 @@ export function useSupabaseData<T extends { id: string }>(
     const debouncedLoadData = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        if (isMounted) {
-          loadData();
-        }
-      }, 200);
+        if (isMounted) loadData();
+      }, 300);
     };
 
-    // Initial data fetch
     loadData();
 
-    // 3. Supabase Realtime Broadcast Channel Subscription (No direct postgres_changes)
-    const channelName = `broadcast_channel_${collectionName}`;
-    const channel = supabase.channel(channelName);
+    const channel = supabase.channel(`broadcast_channel_${collectionName}`);
     channelRef.current = channel;
 
     channel
-      .on(
-        'broadcast',
-        { event: `sync_${collectionName}` },
-        (msg: any) => {
-          if (msg?.payload?.senderId !== clientIdRef.current) {
-            console.log(`[useSupabaseData] Realtime broadcast received on ${collectionName}`);
-            debouncedLoadData();
-          }
-        }
-      )
-      .on(
-        'broadcast',
-        { event: `deleted_${collectionName}` },
-        (msg: any) => {
-          const delId = msg?.payload?.deletedId;
-          if (delId) {
-            console.log(`[useSupabaseData] Broadcast delete received for ${delId} in ${collectionName}`);
-            persistDeletedId(deletedKey, collectionName, delId);
-            const current = dataRef.current;
-            const next = current.filter(i => getCollectionItemKey(i) !== delId);
-            if (isMounted) {
-              updateCache(next);
-            }
-          }
-        }
-      )
+      .on('broadcast', { event: `sync_${collectionName}` }, (msg: any) => {
+        if (msg?.payload?.senderId !== clientIdRef.current) debouncedLoadData();
+      })
+      .on('broadcast', { event: `deleted_${collectionName}` }, (msg: any) => {
+        if (msg?.payload?.senderId !== clientIdRef.current) debouncedLoadData();
+      })
       .subscribe((status) => {
-        if (isMounted) {
-          setIsRealtimeConnected(status === 'SUBSCRIBED');
-        }
+        if (isMounted) setIsRealtimeConnected(status === 'SUBSCRIBED');
       });
 
-    // Sync when user switches back to tab
     const handleFocus = () => {
-      loadData();
+      if (document.visibilityState === 'visible') debouncedLoadData();
+    };
+    const handleOnline = () => debouncedLoadData();
+    const handleFlushed = (ev: any) => {
+      const cols: string[] = ev?.detail?.collections || [];
+      if (cols.includes(collectionName)) debouncedLoadData();
+    };
+    const handleExternalSync = (ev: any) => {
+      if (!ev?.detail?.collection || ev.detail.collection === collectionName) debouncedLoadData();
     };
 
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('smk_offline_flushed', handleFlushed);
+    window.addEventListener('supabase_collection_sync', handleExternalSync);
 
     return () => {
       isMounted = false;
       if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
-      if (channel) {
-        try {
-          supabase.removeChannel(channel);
-        } catch (_) {}
-      }
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('smk_offline_flushed', handleFlushed);
+      window.removeEventListener('supabase_collection_sync', handleExternalSync);
+      try {
+        supabase.removeChannel(channel);
+      } catch (_) {}
       channelRef.current = null;
     };
-  }, [collectionName, updateCache, initKey, fetchFromServer, deletedKey]);
+  }, [collectionName, fetchFromServer, acceptServerItems]);
 
-  // Add an item (Sends new item, server assigns official updatedAt)
+  // Kirim satu item ke server. Jika gagal karena jaringan -> masuk antrean offline.
+  const sendItem = useCallback(async (itemToSend: any) => {
+    const idempotencyKey = newIdempotencyKey('idem_save');
+    try {
+      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({ items: [itemToSend] })
+      });
+
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (Array.isArray(json?.conflicts) && json.conflicts.length > 0) {
+          handleConflictWarning(json.conflicts);
+          await forcePullFromSupabase();
+        } else if (Array.isArray(json?.rejected) && json.rejected.length > 0) {
+          window.dispatchEvent(new CustomEvent('app_data_conflict', {
+            detail: { collection: collectionName, conflicts: json.rejected, message: json.rejected[0]?.reason || 'Perubahan ditolak server' }
+          }));
+          await forcePullFromSupabase();
+        } else if (Array.isArray(json?.items)) {
+          await acceptServerItems(json.items);
+        } else {
+          await forcePullFromSupabase();
+        }
+      } else if (res.status === 400 || res.status === 403) {
+        // Ditolak permanen (izin / format). Jangan diantrekan, tampilkan lagi data server.
+        const json = await res.json().catch(() => ({}));
+        window.dispatchEvent(new CustomEvent('app_data_conflict', {
+          detail: { collection: collectionName, conflicts: [], message: json?.error || 'Perubahan ditolak server' }
+        }));
+        await forcePullFromSupabase();
+      } else {
+        await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
+      }
+    } catch (e) {
+      await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
+    }
+    broadcastSync();
+  }, [collectionName, handleConflictWarning, forcePullFromSupabase, acceptServerItems, broadcastSync]);
+
+  // Tambah item baru (bila id sudah ada, diperlakukan sebagai ubah)
   const add = async (item: T) => {
     const itemKey = getCollectionItemKey(item);
+    const existing = dataRef.current.find(i => getCollectionItemKey(i) === itemKey) as any;
     const itemToSend: any = { ...item };
+    if (existing?.updatedAt) itemToSend.baseUpdatedAt = existing.updatedAt;
 
-    const current = dataRef.current;
-    const next = [itemToSend as T, ...current.filter(i => getCollectionItemKey(i) !== itemKey)];
-    updateCache(next);
-
-    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `idem_add_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-    try {
-      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey
-        },
-        body: JSON.stringify({
-          items: [itemToSend],
-          replaceAll: false
-        })
-      });
-
-      if (res.ok) {
-        const json = await res.json().catch(() => ({}));
-        if (json && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
-          handleConflictWarning(json.conflicts);
-          await forcePullFromSupabase();
-        } else if (json && Array.isArray(json.items)) {
-          updateCache(json.items);
-        }
-      } else {
-        // Enqueue to IndexedDB for offline retry
-        await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
-      }
-    } catch (e) {
-      await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
-    }
-
-    broadcastSync();
+    showItems([itemToSend as T, ...dataRef.current.filter(i => getCollectionItemKey(i) !== itemKey)]);
+    await sendItem(itemToSend);
   };
 
-  // Update an item (Sends item with baseUpdatedAt = server updatedAt timestamp, queues in IndexedDB if offline)
+  // Ubah item. baseUpdatedAt = updatedAt terakhir yang diterima DARI SERVER (deteksi konflik)
   const update = async (item: T) => {
-    const current = dataRef.current;
     const targetId = getCollectionItemKey(item);
-    const existing = current.find(i => getCollectionItemKey(i) === targetId);
+    const existing = dataRef.current.find(i => getCollectionItemKey(i) === targetId) as any;
+    const baseUpdatedAt = (item as any).baseUpdatedAt || existing?.updatedAt || (item as any).updatedAt || undefined;
+    const itemToSend: any = { ...item, baseUpdatedAt };
 
-    // baseUpdatedAt = nilai updatedAt item yang terakhir diterima DARI SERVER
-    const baseUpdatedAt = (item as any).baseUpdatedAt || (item as any).updatedAt || (existing as any)?.updatedAt || undefined;
-    const itemToSend: any = {
-      ...item,
-      baseUpdatedAt
-    };
-
-    const next = current.map(i => {
-      return getCollectionItemKey(i) === targetId ? (itemToSend as T) : i;
-    });
-    updateCache(next);
-
-    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `idem_upd_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-    try {
-      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey
-        },
-        body: JSON.stringify({
-          items: [itemToSend],
-          replaceAll: false
-        })
-      });
-
-      if (res.ok) {
-        const json = await res.json().catch(() => ({}));
-        if (json && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
-          handleConflictWarning(json.conflicts);
-          await forcePullFromSupabase();
-        } else if (json && Array.isArray(json.items)) {
-          updateCache(json.items);
-        }
-      } else {
-        // Enqueue to IndexedDB for offline retry
-        await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
-      }
-    } catch (e) {
-      await enqueueOfflineItem(collectionName, itemToSend, idempotencyKey, 'upsert');
-    }
-
-    broadcastSync();
+    showItems(dataRef.current.map(i => (getCollectionItemKey(i) === targetId ? (itemToSend as T) : i)));
+    await sendItem(itemToSend);
   };
 
-  // Remove an item permanently with tombstone persistence and server purge
+  // Hapus item: dicatat di SERVER, sehingga hilang di semua perangkat
   const remove = async (id: string) => {
-    persistDeletedId(deletedKey, collectionName, id);
-    const deletedSet = getPersistedDeletedIds(deletedKey, collectionName);
+    const delId = String(id).trim();
+    showItems(dataRef.current.filter(i => getCollectionItemKey(i) !== delId));
 
-    const current = dataRef.current;
-    const next = current.filter(i => {
-      const itemKey = getCollectionItemKey(i);
-      return itemKey !== id && !deletedSet.has(itemKey);
-    });
-    
-    updateCache(next);
-
-    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `idem_del_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
+    const idempotencyKey = newIdempotencyKey('idem_del');
     try {
-      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}`, {
+      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}/${encodeURIComponent(delId)}`, {
         method: 'DELETE',
-        headers: {
-          'Idempotency-Key': idempotencyKey
-        }
+        headers: { 'Idempotency-Key': idempotencyKey }
       });
-
-      if (!res.ok && res.status !== 404) {
-        await enqueueOfflineItem(collectionName, { id }, idempotencyKey, 'delete');
+      if (res.ok || res.status === 404) {
+        await forcePullFromSupabase();
+      } else if (res.status === 400 || res.status === 403) {
+        const json = await res.json().catch(() => ({}));
+        window.dispatchEvent(new CustomEvent('app_data_conflict', {
+          detail: { collection: collectionName, conflicts: [], message: json?.error || 'Penghapusan ditolak server' }
+        }));
+        await forcePullFromSupabase();
+      } else {
+        await enqueueOfflineItem(collectionName, { id: delId }, idempotencyKey, 'delete');
       }
     } catch (e) {
-      await enqueueOfflineItem(collectionName, { id }, idempotencyKey, 'delete');
+      await enqueueOfflineItem(collectionName, { id: delId }, idempotencyKey, 'delete');
     }
 
-    // Broadcast permanent deletion to all open tabs and connected devices
     try {
-      if (channelRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: `deleted_${collectionName}`,
-          payload: {
-            deletedId: id,
-            senderId: clientIdRef.current,
-            timestamp: Date.now()
-          }
-        });
-      }
-    } catch (_) {}
-
-    broadcastSync();
-  };
-
-  // Clear all items in collection
-  const clearAll = async () => {
-    dataRef.current.forEach(i => {
-      const key = getCollectionItemKey(i);
-      if (key) persistDeletedId(deletedKey, collectionName, key);
-    });
-
-    updateCache([]);
-
-    try {
-      await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-        method: 'DELETE'
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: `deleted_${collectionName}`,
+        payload: { deletedId: delId, senderId: clientIdRef.current, timestamp: Date.now() }
       });
     } catch (_) {}
-
     broadcastSync();
   };
 
-  // Force push all data currently in memory/localStorage to Supabase
+  // Kosongkan seluruh koleksi (server hanya mengizinkan admin_utama)
+  const clearAll = async () => {
+    try {
+      const res = await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        window.dispatchEvent(new CustomEvent('app_data_conflict', {
+          detail: { collection: collectionName, conflicts: [], message: json?.error || 'Gagal mengosongkan data' }
+        }));
+      }
+    } catch (_) {}
+    await forcePullFromSupabase();
+    broadcastSync();
+  };
+
+  // "Kirim ulang data perangkat ke server" — AMAN: hanya menambah item yang belum ada di server.
+  // Item yang sudah ada di server tidak ditimpa (server menolak sebagai konflik versi),
+  // dan item yang sudah dihapus di server tidak akan hidup lagi.
   const forceSyncToSupabase = useCallback(async () => {
     try {
-      const current = dataRef.current;
-      if (Array.isArray(current)) {
-        await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: current, replaceAll: true })
-        });
-        await flushOfflineQueue();
-        broadcastSync();
-        return true;
+      await flushOfflineQueue();
+      const serverItems = await fetchFromServer();
+      if (serverItems === null) return false;
+      const serverKeys = new Set(serverItems.map(getCollectionItemKey));
+      const missing = dataRef.current.filter(it => {
+        const k = getCollectionItemKey(it);
+        return k && !serverKeys.has(k);
+      });
+      if (missing.length > 0) {
+        for (let i = 0; i < missing.length; i += 200) {
+          const chunk = missing.slice(i, i + 200).map((it: any) => {
+            const copy = { ...it };
+            delete copy.baseUpdatedAt;
+            return copy;
+          });
+          await apiFetch(`/api/collections/${encodeURIComponent(collectionName)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Idempotency-Key': newIdempotencyKey('idem_sync') },
+            body: JSON.stringify({ items: chunk })
+          });
+        }
       }
-      return false;
+      await forcePullFromSupabase();
+      broadcastSync();
+      return true;
     } catch (e) {
       console.warn(`[useSupabaseData] forceSync error on ${collectionName}:`, e);
       return false;
     }
-  }, [collectionName, broadcastSync]);
+  }, [collectionName, broadcastSync, forcePullFromSupabase, fetchFromServer]);
 
-  // Force pull latest data directly from Supabase server
-  const forcePullFromSupabase = useCallback(async () => {
-    try {
-      setLoading(true);
-      const serverItems = await fetchFromServer();
-      if (serverItems !== null) {
-        updateCache(serverItems);
-        setLoading(false);
-        return true;
-      }
-      setLoading(false);
-      return false;
-    } catch (e) {
-      console.warn(`[useSupabaseData] forcePull error on ${collectionName}:`, e);
-      setLoading(false);
-      return false;
-    }
-  }, [fetchFromServer, updateCache]);
-
-  return { 
-    data, 
-    add, 
-    update, 
-    remove, 
-    clearAll, 
-    forceSyncToSupabase, 
+  return {
+    data,
+    add,
+    update,
+    remove,
+    clearAll,
+    forceSyncToSupabase,
     forcePullFromSupabase,
-    setData: updateCache, 
-    loading, 
+    setData: showItems,
+    loading,
     isRealtimeConnected,
     pendingSyncCount
   };

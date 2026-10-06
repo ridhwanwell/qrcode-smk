@@ -13,26 +13,6 @@ export interface IdempotencyRecord {
 // In-memory idempotency store (fallback & short-term cache)
 export const idempotencyStore = new Map<string, IdempotencyRecord>();
 
-// Per-collection queue/mutex to prevent simultaneous write race conditions
-const collectionQueues = new Map<string, Promise<any>>();
-
-export function runInCollectionQueue<T>(collectionName: string, task: () => Promise<T>): Promise<T> {
-  const currentPromise = collectionQueues.get(collectionName) || Promise.resolve();
-  const nextPromise = currentPromise
-    .catch(() => {})
-    .then(task);
-
-  collectionQueues.set(collectionName, nextPromise);
-
-  nextPromise.finally(() => {
-    if (collectionQueues.get(collectionName) === nextPromise) {
-      collectionQueues.delete(collectionName);
-    }
-  });
-
-  return nextPromise;
-}
-
 // Helper: ambil catatan idempotensi (Memory + Database public.api_idempotency)
 async function getIdempotencyRecord(key: string): Promise<IdempotencyRecord | null> {
   // 1. Cek memory store terlebih dahulu
@@ -213,15 +193,16 @@ export function createApp() {
         }
       };
 
-      const [collectionsCheck, settingsCheck, activityLogCheck, idempotencyCheck] = await Promise.all([
-        checkTable('app_collections'),
+      const [collectionsCheck, settingsCheck, activityLogCheck, idempotencyCheck, foldersCheck] = await Promise.all([
+        checkTable('jadwal_kalibrasi'),
         checkTable('settings'),
         checkTable('activity_log'),
-        checkTable('api_idempotency')
+        checkTable('api_idempotency'),
+        checkTable('folder_label')
       ]);
 
       const allOk = hasSupabaseUrl && hasServiceRoleKey && 
-        collectionsCheck.ok && settingsCheck.ok && activityLogCheck.ok && idempotencyCheck.ok;
+        collectionsCheck.ok && settingsCheck.ok && activityLogCheck.ok && idempotencyCheck.ok && foldersCheck.ok;
 
       res.status(allOk ? 200 : 503).json({
         ok: allOk,
@@ -231,7 +212,8 @@ export function createApp() {
           hasServiceRoleKey
         },
         tables: {
-          app_collections: collectionsCheck,
+          jadwal_kalibrasi: collectionsCheck,
+          folder_label: foldersCheck,
           settings: settingsCheck,
           activity_log: activityLogCheck,
           api_idempotency: idempotencyCheck
@@ -357,14 +339,11 @@ export function createApp() {
   // --- API: ADMIN LABELS (Protected by requireAuth with Pagination for ALL labels) ---
   app.get("/api/labels", requireAuth, async (req: AuthRequest, res) => {
     try {
+      res.setHeader('Cache-Control', 'no-store');
       const data = await fetchAllRows((from, to) =>
         supabaseAdmin
           .from('labels')
-          .select('*')
-          .not('no_label', 'like', '__meta_%')
-          .not('no_label', 'like', '__aset_%')
-          .not('no_label', 'like', '__item_%')
-          .not('no_label', 'like', '__tombstone_%')
+          .select('no_label, nama_rs, nama_alat, ruangan, status, pdf_source, pdf_url, pdf_drive_url, pdforiginal_url, pdf_name, calibrated_at, valid_until, verify_code, qr_secured, void_reason, voided_at, created_at, updated_at')
           .order('no_label', { ascending: true })
           .range(from, to)
       );
@@ -372,7 +351,7 @@ export function createApp() {
       const formatted = (data || []).map((it: any) => ({
         noLabel: it.no_label,
         namaRs: it.nama_rs || null,
-        namaAlat: it.nama_alat || it.namaAlat || it.pdf_name || null,
+        namaAlat: it.nama_alat || it.pdf_name || null,
         ruangan: it.ruangan || null,
         status: it.status,
         pdfSource: it.pdf_source,
@@ -409,6 +388,37 @@ export function createApp() {
     } catch (e) {
       console.warn('[Server Broadcast] Gagal mengirim broadcast labels_changed:', e);
     }
+  }
+
+  // Folder label (prefix 3 digit) + nama Rumah Sakit disimpan di tabel folder_label
+  function getLabelPrefix(noLabel: string): string {
+    const clean = String(noLabel || '').trim();
+    const dotIdx = clean.indexOf('.');
+    return dotIdx > 0 ? clean.substring(0, dotIdx) : (clean.length >= 3 ? clean.substring(0, 3) : clean);
+  }
+
+  async function saveFolderName(prefix: string, namaRs: string | null): Promise<{ error?: any }> {
+    if (!prefix || !/^[A-Za-z0-9_-]{1,10}$/.test(prefix)) return { error: new Error('Format prefix folder tidak valid') };
+    const { error } = await supabaseAdmin
+      .from('folder_label')
+      .upsert({ prefix, nama_rs: namaRs, updated_at: new Date().toISOString() }, { onConflict: 'prefix' });
+    return { error };
+  }
+
+  async function ensureFolders(prefixes: string[]): Promise<void> {
+    const valid = Array.from(new Set(prefixes)).filter(p => /^[A-Za-z0-9_-]{1,10}$/.test(p));
+    if (valid.length === 0) return;
+    await supabaseAdmin
+      .from('folder_label')
+      .upsert(valid.map(prefix => ({ prefix })), { onConflict: 'prefix', ignoreDuplicates: true });
+  }
+
+  async function fetchFolderNameMap(): Promise<Record<string, string>> {
+    const { data, error } = await supabaseAdmin.from('folder_label').select('prefix, nama_rs');
+    if (error) throw error;
+    const map: Record<string, string> = {};
+    (data || []).forEach((r: any) => { if (r.prefix && r.nama_rs) map[r.prefix] = r.nama_rs; });
+    return map;
   }
 
   /**
@@ -451,26 +461,17 @@ export function createApp() {
   // --- API: ADMIN LABELS SUMMARY (Protected by requireAuth, calculated across ALL labels) ---
   app.get("/api/labels/summary", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const [allLabels, folderNameRes] = await Promise.all([
+      res.setHeader('Cache-Control', 'no-store');
+      const [allLabels, folderRsMap] = await Promise.all([
         fetchAllRows((from, to) =>
           supabaseAdmin
             .from('labels')
-            .select('no_label, nama_rs, pdforiginal_url')
+            .select('no_label, nama_rs')
             .order('no_label', { ascending: true })
             .range(from, to)
         ),
-        supabaseAdmin
-          .from('labels')
-          .select('no_label, pdforiginal_url')
-          .like('no_label', '__meta_folder_rs_%')
+        fetchFolderNameMap()
       ]);
-
-      const folderRsMap: Record<string, string> = {};
-      (folderNameRes.data || []).forEach((r: any) => {
-        const prefix = r.no_label.replace('__meta_folder_rs_', '');
-        const val = r.pdforiginal_url || r.pdf_original_url;
-        if (prefix && val) folderRsMap[prefix] = val;
-      });
 
       const prefixMap: Record<string, {
         prefix: string;
@@ -555,8 +556,8 @@ export function createApp() {
         clearCertificate
       } = req.body;
 
-      if (!noLabel) {
-        return res.status(400).json({ error: "Nomor label wajib diisi" });
+      if (!noLabel || typeof noLabel !== 'string' || !/^[A-Za-z0-9.\-_/]{1,64}$/.test(noLabel) || noLabel.startsWith('__')) {
+        return res.status(400).json({ error: "Nomor label wajib diisi dengan format yang benar" });
       }
 
       // 1. Cek record lama untuk proteksi sertifikat
@@ -632,20 +633,11 @@ export function createApp() {
         }
       }
 
-      // Save folder RS name to metadata if applicable
+      // Simpan nama RS folder (tabel folder_label) bila diisi
       if (namaRs && typeof namaRs === 'string' && namaRs.trim()) {
-        const dotIdx = noLabel.indexOf('.');
-        const prefix = dotIdx > 0 ? noLabel.substring(0, dotIdx) : (noLabel.length >= 3 ? noLabel.substring(0, 3) : noLabel);
-        try {
-          await upsertLabelsAdmin([{
-            no_label: `__meta_folder_rs_${prefix}`,
-            status: 'metadata',
-            pdf_source: 'folder_rs_name',
-            nama_rs: namaRs.trim(),
-            pdforiginal_url: namaRs.trim(),
-            updated_at: new Date().toISOString()
-          }]);
-        } catch (_) {}
+        try { await saveFolderName(getLabelPrefix(noLabel), namaRs.trim()); } catch (_) {}
+      } else {
+        try { await ensureFolders([getLabelPrefix(noLabel)]); } catch (_) {}
       }
 
       const result = await upsertLabelsAdmin([payload]);
@@ -673,7 +665,10 @@ export function createApp() {
       const isUpdateMode = mode === 'update' && (req.userRole === 'admin_utama' || req.userRole === 'admin_teknik');
 
       const incomingRecords = items
-        .filter((it: any) => it && (it.noLabel || it.no_label || it.id))
+        .filter((it: any) => {
+          const no = it && (it.noLabel || it.no_label || it.id);
+          return typeof no === 'string' && /^[A-Za-z0-9.\-_/]{1,64}$/.test(no) && !no.startsWith('__');
+        })
         .map((it: any) => ({
           no_label: it.noLabel || it.no_label || it.id,
           nama_rs: it.namaRs || it.nama_rs || null,
@@ -760,17 +755,11 @@ export function createApp() {
         }
       });
 
+      try {
+        await ensureFolders(incomingRecords.map(r => getLabelPrefix(r.no_label)));
+      } catch (_) {}
       for (const [prefix, rsName] of Object.entries(folderRsMap)) {
-        try {
-          await upsertLabelsAdmin([{
-            no_label: `__meta_folder_rs_${prefix}`,
-            status: 'metadata',
-            pdf_source: 'folder_rs_name',
-            nama_rs: rsName,
-            pdforiginal_url: rsName,
-            updated_at: new Date().toISOString()
-          }]);
-        } catch (_) {}
+        try { await saveFolderName(prefix, rsName); } catch (_) {}
       }
 
       if (recordsToSave.length > 0) {
@@ -1005,7 +994,9 @@ export function createApp() {
   app.delete("/api/labels/:noLabel", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
       const { noLabel } = req.params;
-      console.log(`[API] Deleting label: ${noLabel}`);
+      if (!noLabel || noLabel.startsWith('__')) {
+        return res.status(404).json({ error: "Label tidak ditemukan" });
+      }
       const { error } = await supabaseAdmin
         .from('labels')
         .delete()
@@ -1015,6 +1006,7 @@ export function createApp() {
         console.error("Supabase delete label error:", error);
         return res.status(500).json({ error: "Gagal menghapus label dari database" });
       }
+      await logActivity(req, 'DELETE_LABEL', `Label ${noLabel} dihapus`, { noLabel });
 
       await broadcastLabelsChanged();
       res.json({ success: true });
@@ -1027,21 +1019,25 @@ export function createApp() {
   // Batch delete labels endpoint
   app.post("/api/labels/batch-delete", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
-      const { noLabels } = req.body;
-      if (!Array.isArray(noLabels) || noLabels.length === 0) {
+      const rawNoLabels = req.body?.noLabels;
+      const noLabels: string[] = Array.isArray(rawNoLabels)
+        ? rawNoLabels.filter((n: any) => typeof n === 'string' && n && !n.startsWith('__'))
+        : [];
+      if (noLabels.length === 0) {
         return res.json({ success: true, count: 0 });
       }
 
-      console.log(`[API] Batch deleting ${noLabels.length} labels:`, noLabels);
-      const { error } = await supabaseAdmin
-        .from('labels')
-        .delete()
-        .in('no_label', noLabels);
-
-      if (error) {
-        console.error("Supabase batch delete error:", error);
-        return res.status(500).json({ error: "Gagal menghapus data label secara kelompok" });
+      for (let i = 0; i < noLabels.length; i += 500) {
+        const { error } = await supabaseAdmin
+          .from('labels')
+          .delete()
+          .in('no_label', noLabels.slice(i, i + 500));
+        if (error) {
+          console.error("Supabase batch delete error:", error);
+          return res.status(500).json({ error: "Gagal menghapus data label secara kelompok" });
+        }
       }
+      await logActivity(req, 'DELETE_LABELS', `${noLabels.length} label dihapus`, { count: noLabels.length, contoh: noLabels.slice(0, 5) });
 
       await broadcastLabelsChanged();
       res.json({ success: true, count: noLabels.length });
@@ -1051,53 +1047,29 @@ export function createApp() {
     }
   });
 
-  // --- API: FOLDERS (Protected by requireAuth) ---
+  // --- API: FOLDER LABEL (tabel folder_label: prefix + nama Rumah Sakit) ---
   app.get("/api/folders", requireAuth, requireRole(['admin_utama', 'admin_teknik', 'admin_keuangan']), async (req: AuthRequest, res) => {
     try {
       const { data, error } = await supabaseAdmin
-        .from('label_folders')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+        .from('folder_label')
+        .select('prefix, nama_rs, created_at, updated_at')
+        .order('prefix', { ascending: true });
       if (error) {
         console.error("Supabase get folders error:", error);
         return res.status(500).json({ error: "Gagal mengambil daftar folder label" });
       }
-
-      res.json(data || []);
+      res.json((data || []).map((f: any) => ({ id: f.prefix, prefix: f.prefix, name: f.nama_rs, namaRs: f.nama_rs, createdAt: f.created_at, updatedAt: f.updated_at })));
     } catch (err: any) {
       console.error("API error in GET /api/folders:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat mengambil data folder" });
     }
   });
 
-  // Folder RS Name Mapping endpoints (Paginated to fetch all metadata rows)
+  // Peta nama RS per folder: { "095": "RSU Hidayah Boyolali", ... }
   app.get("/api/folders/nama-rs", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const data = await fetchAllRows((from, to) =>
-        supabaseAdmin
-          .from('labels')
-          .select('no_label, nama_rs, pdforiginal_url')
-          .or('no_label.like.__meta_folder_rs_%,no_label.like.__meta_folder_%')
-          .order('no_label', { ascending: true })
-          .range(from, to)
-      );
-
-      const map: Record<string, string> = {};
-      (data || []).forEach((row: any) => {
-        const no = row.no_label || '';
-        let prefix = '';
-        if (no.startsWith('__meta_folder_rs_')) {
-          prefix = no.replace('__meta_folder_rs_', '');
-        } else if (no.startsWith('__meta_folder_')) {
-          prefix = no.replace('__meta_folder_', '');
-        }
-        const val = row.nama_rs || row.pdforiginal_url || row.pdf_original_url;
-        if (prefix && val) {
-          map[prefix] = val;
-        }
-      });
-      res.json(map);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(await fetchFolderNameMap());
     } catch (err: any) {
       console.error("API error in GET /api/folders/nama-rs:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat memproses permintaan" });
@@ -1106,94 +1078,54 @@ export function createApp() {
 
   app.post("/api/folders/nama-rs", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
-      const { prefix, namaRs } = req.body;
-      if (!prefix || typeof prefix !== 'string') {
-        return res.status(400).json({ error: "Prefix folder wajib diisi" });
+      const { prefix, namaRs } = req.body || {};
+      const cleanPrefix = typeof prefix === 'string' ? prefix.trim() : '';
+      if (!/^[A-Za-z0-9_-]{1,10}$/.test(cleanPrefix)) {
+        return res.status(400).json({ error: "Format prefix folder tidak valid" });
       }
-      const cleanPrefix = prefix.replace(/[^a-zA-Z0-9._-]/g, '');
-      if (!cleanPrefix) {
-        return res.status(400).json({ error: "Format prefix tidak valid" });
-      }
-
-      const payload: any = {
-        no_label: `__meta_folder_rs_${cleanPrefix}`,
-        status: 'metadata',
-        pdf_source: 'folder_rs_name',
-        nama_rs: namaRs ? String(namaRs).trim() : null,
-        pdforiginal_url: namaRs ? String(namaRs).trim() : null,
-        updated_at: new Date().toISOString()
-      };
-
-      const { error } = await supabaseAdmin
-        .from('labels')
-        .upsert(payload, { onConflict: 'no_label' });
-
+      const cleanNamaRs = typeof namaRs === 'string' && namaRs.trim() ? namaRs.trim().slice(0, 200) : null;
+      const { error } = await saveFolderName(cleanPrefix, cleanNamaRs);
       if (error) {
         console.error("Supabase upsert folder RS error:", error);
         return res.status(500).json({ error: "Gagal menyimpan nama rumah sakit folder" });
       }
-
       await broadcastLabelsChanged();
-      res.json({ success: true, prefix: cleanPrefix, namaRs });
+      res.json({ success: true, prefix: cleanPrefix, namaRs: cleanNamaRs });
     } catch (err: any) {
       console.error("API error in POST /api/folders/nama-rs:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat menyimpan nama rumah sakit" });
     }
   });
 
-  // --- API: RENAME FOLDER RS (Protected: admin_utama & admin_teknik) ---
+  // Ganti nama RS satu folder: ubah folder_label + kolom nama_rs semua label "<prefix>.%"
   app.post("/api/folders/:prefix/rename-rs", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
       const { prefix } = req.params;
-      const { namaRs } = req.body;
-
-      // 1. Validasi format prefix ^[A-Za-z0-9_-]{1,10}$
+      const { namaRs } = req.body || {};
       if (!prefix || !/^[A-Za-z0-9_-]{1,10}$/.test(prefix)) {
         return res.status(400).json({ error: "Format prefix folder tidak valid" });
       }
+      const cleanNamaRs = typeof namaRs === 'string' && namaRs.trim() ? namaRs.trim().slice(0, 200) : null;
 
-      const cleanNamaRs = typeof namaRs === 'string' && namaRs.trim() ? namaRs.trim() : null;
+      const { error: folderErr } = await saveFolderName(prefix, cleanNamaRs);
+      if (folderErr) {
+        console.error("Gagal menyimpan folder_label:", folderErr);
+        return res.status(500).json({ error: "Gagal menyimpan nama Rumah Sakit folder" });
+      }
 
-      // 2. Update kolom nama_rs untuk semua label "<prefix>.%" dalam satu query
       const { data: updatedData, error: updateError } = await supabaseAdmin
         .from('labels')
-        .update({
-          nama_rs: cleanNamaRs,
-          updated_at: new Date().toISOString()
-        })
+        .update({ nama_rs: cleanNamaRs, updated_at: new Date().toISOString() })
         .like('no_label', `${prefix}.%`)
         .select('no_label');
-
       if (updateError) {
         console.error("Gagal update nama_rs folder labels:", updateError);
         return res.status(500).json({ error: "Gagal memperbarui nama Rumah Sakit di database" });
       }
 
-      // 3. Simpan juga metadata __meta_folder_rs_<prefix> dan cek error secara eksplisit
-      const { error: metaErr } = await supabaseAdmin
-        .from('labels')
-        .upsert({
-          no_label: `__meta_folder_rs_${prefix}`,
-          status: 'metadata',
-          pdf_source: 'folder_rs_name',
-          nama_rs: cleanNamaRs,
-          pdforiginal_url: cleanNamaRs,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'no_label' });
-
-      if (metaErr) {
-        console.error("Gagal memperbarui metadata folder rs:", metaErr);
-        return res.status(500).json({ error: "Gagal menyimpan metadata nama Rumah Sakit folder" });
-      }
-
+      await logActivity(req, 'RENAME_FOLDER_RS', `Nama RS folder ${prefix} diubah menjadi ${cleanNamaRs || '(kosong)'}`, { prefix, namaRs: cleanNamaRs });
       await broadcastLabelsChanged();
-
-      res.json({
-        success: true,
-        updatedCount: updatedData ? updatedData.length : 0,
-        prefix,
-        namaRs: cleanNamaRs
-      });
+      res.json({ success: true, updatedCount: updatedData ? updatedData.length : 0, prefix, namaRs: cleanNamaRs });
     } catch (err: any) {
       console.error("API error in POST /api/folders/:prefix/rename-rs:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat mengganti nama Rumah Sakit folder" });
@@ -1202,102 +1134,89 @@ export function createApp() {
 
   app.post("/api/folders", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
-      const { id, name, color, labelIds } = req.body;
-      if (!id || !name) {
-        return res.status(400).json({ error: "Parameter id dan name folder wajib diisi" });
+      const { id, prefix, name, namaRs } = req.body || {};
+      const cleanPrefix = String(prefix || id || '').trim();
+      if (!/^[A-Za-z0-9_-]{1,10}$/.test(cleanPrefix)) {
+        return res.status(400).json({ error: "Prefix folder wajib diisi (contoh: 095)" });
       }
-
-      const { data, error } = await supabaseAdmin
-        .from('label_folders')
-        .upsert({
-          id,
-          name,
-          color: color || '#3b82f6',
-          label_ids: labelIds || [],
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
+      const rs = String(namaRs || name || '').trim() || null;
+      const { error } = await saveFolderName(cleanPrefix, rs);
       if (error) {
         console.error("Supabase upsert folder error:", error);
         return res.status(500).json({ error: "Gagal menyimpan data folder label" });
       }
-
       await broadcastLabelsChanged();
-      res.json(data);
+      res.json({ id: cleanPrefix, prefix: cleanPrefix, name: rs, namaRs: rs });
     } catch (err: any) {
       console.error("API error in POST /api/folders:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat menyimpan folder" });
     }
   });
 
+  // Hapus satu folder beserta seluruh labelnya (permanen di server -> hilang di semua perangkat)
+  async function deleteFolderByPrefix(req: AuthRequest, res: any, rawPrefix: string) {
+    const prefix = String(rawPrefix || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,10}$/.test(prefix)) {
+      return res.status(400).json({ error: "Format prefix folder tidak valid" });
+    }
+    const { data: deleted, error } = await supabaseAdmin
+      .from('labels')
+      .delete()
+      .like('no_label', `${prefix}.%`)
+      .select('no_label');
+    if (error) {
+      console.error("Supabase delete folder labels error:", error);
+      return res.status(500).json({ error: "Gagal menghapus label di folder ini" });
+    }
+    const { error: folderErr } = await supabaseAdmin.from('folder_label').delete().eq('prefix', prefix);
+    if (folderErr) {
+      console.error("Supabase delete folder_label error:", folderErr);
+      return res.status(500).json({ error: "Label terhapus, tetapi data folder gagal dihapus. Coba lagi." });
+    }
+    await logActivity(req, 'DELETE_FOLDER', `Folder ${prefix} dihapus (${deleted?.length || 0} label)`, { prefix, count: deleted?.length || 0 });
+    await broadcastLabelsChanged();
+    return res.json({ success: true, deletedCount: deleted?.length || 0 });
+  }
+
   app.delete("/api/folders/:id", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
-      const { id } = req.params;
-      console.log(`[API] Deleting folder or prefix: ${id}`);
-
-      // 1. If this id is a 3-digit prefix or contains alphanumeric prefix, delete all related labels
-      const escapedPrefix = id.replace(/[%_\\]/g, '\\$&');
-      await supabaseAdmin.from('labels').delete().like('no_label', `${escapedPrefix}.%`);
-      await supabaseAdmin.from('labels').delete().eq('no_label', id);
-      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_${id}`);
-      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_rs_${id}`);
-
-      // 2. Also attempt deletion from label_folders if table exists
-      try {
-        await supabaseAdmin.from('label_folders').delete().eq('id', id);
-      } catch (_) {}
-
-      await broadcastLabelsChanged();
-      res.json({ success: true });
+      await deleteFolderByPrefix(req, res, req.params.id);
     } catch (err: any) {
       console.error("API error in DELETE /api/folders/:id:", err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat menghapus folder" });
     }
   });
 
-  // Strict sanitization & escaping for folder prefix deletion to prevent wildcards like % or _
   app.delete("/api/folders/prefix/:prefix", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     try {
-      const { prefix } = req.params;
-      
-      // Validate prefix strictly: only allow alphanumeric, dash, underscore, and dots
-      if (!prefix || !/^[a-zA-Z0-9._-]+$/.test(prefix)) {
-        return res.status(400).json({ error: "Format prefix tidak valid. Hanya karakter alfanumerik dan .-_ yang diizinkan." });
-      }
-
-      const escapedPrefix = prefix.replace(/[%_\\]/g, '\\$&');
-
-      await supabaseAdmin.from('labels').delete().like('no_label', `${escapedPrefix}.%`);
-      await supabaseAdmin.from('labels').delete().eq('no_label', prefix);
-      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_${prefix}`);
-      await supabaseAdmin.from('labels').delete().eq('no_label', `__meta_folder_rs_${prefix}`);
-
-      await broadcastLabelsChanged();
-      res.json({ success: true });
+      await deleteFolderByPrefix(req, res, req.params.prefix);
     } catch (err: any) {
       console.error("API error in DELETE /api/folders/prefix/:prefix:", err);
-      res.status(500).json({ error: "Terjadi kesalahan sistem saat menghapus label prefix folder" });
+      res.status(500).json({ error: "Terjadi kesalahan sistem saat menghapus folder" });
     }
   });
 
-  // --- API: DURABLE ASSET COLLECTIONS (SPH, Schedules, Calibrators, etc.) ---
-  
-  // Whitelist nama koleksi yang valid sesuai aturan keamanan
-  const VALID_COLLECTIONS = new Set([
-    'schedules',
-    'sphDocuments',
-    'bapDocuments',
-    'calibratorAssets',
-    'hospitals',
-    'technicians',
-    'marketingStaff',
-    'tabletAssets',
-    'tabletLoans',
-    'financialAssets',
-    'financialTransactions'
-  ]);
+  // --- API: DATA PORTAL ASET (Jadwal, SPH, BAP, Kalibrator, RS, Teknisi, dll) ---
+  // Struktur baru (Oktober 2026): SATU TABEL PER JENIS DATA, SATU BARIS PER ITEM.
+  //  - Tidak ada lagi penyimpanan dobel (app_collections / __aset_coll_ / __item_).
+  //  - Hapus = "soft delete" (kolom deleted_at) di server, otomatis berlaku di semua perangkat.
+  //  - Tidak ada lagi daftar hapus yang disimpan di browser masing-masing perangkat.
+
+  // Nama koleksi (dipakai website) -> nama tabel di Supabase
+  const COLLECTION_TABLES: Record<string, string> = {
+    schedules: 'jadwal_kalibrasi',
+    sphDocuments: 'dokumen_sph',
+    bapDocuments: 'dokumen_bap',
+    calibratorAssets: 'aset_kalibrator',
+    hospitals: 'rumah_sakit',
+    technicians: 'teknisi',
+    marketingStaff: 'staf_marketing',
+    tabletAssets: 'aset_tablet',
+    tabletLoans: 'peminjaman_tablet',
+    financialAssets: 'aset_keuangan',
+    financialTransactions: 'transaksi_keuangan'
+  };
+  const VALID_COLLECTIONS = new Set(Object.keys(COLLECTION_TABLES));
 
   // Peta Izin Akses Baca per Koleksi
   function canReadCollection(role: UserRole | undefined, collName: string): boolean {
@@ -1343,167 +1262,100 @@ export function createApp() {
     return false;
   }
 
-  function isSameCollectionItem(a: any, b: any): boolean {
-    if (!a || !b) return false;
-    if (a.id && b.id && String(a.id).trim() === String(b.id).trim()) return true;
-    if (a.sphNumber && b.sphNumber && String(a.sphNumber).trim() === String(b.sphNumber).trim()) return true;
-    if (a.workOrderNumber && b.workOrderNumber && String(a.workOrderNumber).trim() === String(b.workOrderNumber).trim()) return true;
-    if (a.bapNumber && b.bapNumber && String(a.bapNumber).trim() === String(b.bapNumber).trim()) return true;
-    if (a.noLabel && b.noLabel && String(a.noLabel).trim() === String(b.noLabel).trim()) return true;
-    if (a.no_label && b.no_label && String(a.no_label).trim() === String(b.no_label).trim()) return true;
-    return false;
-  }
-
-  function getCollectionItemKey(it: any): string {
-    if (!it || typeof it !== 'object') return `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  // Kunci unik item: id (utama), atau nomor dokumen bila id kosong
+  function getCollectionItemKey(it: any): string | null {
+    if (!it || typeof it !== 'object') return null;
     const k = it.id || it.sphNumber || it.workOrderNumber || it.bapNumber || it.noLabel || it.no_label;
-    return k ? String(k).trim().replace(/[^a-zA-Z0-9_\-\.]/g, '_') : `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const clean = k !== undefined && k !== null ? String(k).trim() : '';
+    if (!clean || clean.length > 120) return null;
+    return clean;
   }
 
-  // GET /api/collections/:name (Protected by requireAuth and collection read permission)
+  // Ubah baris database -> item yang dipakai website (updatedAt selalu dari server)
+  function rowToItem(row: any): any {
+    const item = (row?.data && typeof row.data === 'object') ? { ...row.data } : {};
+    if (!item.id) item.id = row.id;
+    item.updatedAt = row.updated_at;
+    return item;
+  }
+
+  // Bandingkan dua waktu (toleran format ISO berbeda)
+  function sameTimestamp(a: any, b: any): boolean {
+    if (!a || !b) return false;
+    const ta = Date.parse(String(a));
+    const tb = Date.parse(String(b));
+    if (!isNaN(ta) && !isNaN(tb)) return ta === tb;
+    return String(a).trim() === String(b).trim();
+  }
+
+  async function fetchActiveCollection(table: string): Promise<any[]> {
+    const rows = await fetchAllRows((from, to) =>
+      supabaseAdmin
+        .from(table)
+        .select('id, data, updated_at')
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, to)
+    );
+    return (rows || []).map(rowToItem);
+  }
+
+  async function logCollectionActivity(req: AuthRequest, action: string, collName: string, recordId: string, payload: any) {
+    try {
+      await supabaseAdmin.from('activity_log').insert({
+        user_id: req.user?.id || null,
+        user_email: req.user?.email || null,
+        user_role: req.userRole || null,
+        action,
+        table_name: COLLECTION_TABLES[collName] || collName,
+        record_id: String(recordId),
+        payload,
+        ip_address: req.ip || null,
+        created_at: new Date().toISOString()
+      });
+    } catch (logErr) {
+      console.error(`[ActivityLog Error] Gagal mencatat ${action}:`, logErr);
+    }
+  }
+
+  // GET /api/collections/:name -> semua item aktif (yang belum dihapus)
   app.get("/api/collections/:name", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { name } = req.params;
-
-      // Whitelist validation
       if (!VALID_COLLECTIONS.has(name)) {
         return res.status(400).json({ error: "Nama koleksi tidak valid" });
       }
-
-      // Role check for reading
       if (!canReadCollection(req.userRole, name)) {
         return res.status(403).json({ error: "Akun belum memiliki hak akses untuk melihat koleksi ini" });
       }
 
-      // 1. Fetch tombstones for permanently deleted items (dengan pagination)
-      const itemPrefix = `__item_${name}_`;
-      const tombstonePrefix = `__tombstone_${name}_`;
-      const deletedIdSet = new Set<string>();
-
-      try {
-        const tombstoneRows = await fetchAllRows((from, to) =>
-          supabaseAdmin
-            .from('labels')
-            .select('pdf_name')
-            .like('no_label', `${tombstonePrefix}%`)
-            .order('no_label', { ascending: true })
-            .range(from, to)
-        );
-        if (tombstoneRows && tombstoneRows.length > 0) {
-          tombstoneRows.forEach(tr => {
-            if (tr.pdf_name) deletedIdSet.add(String(tr.pdf_name).trim());
-          });
-        }
-      } catch (_) {}
-
-      // 2. Try reading from dedicated app_collections table first
-      try {
-        const { data: collRow, error: collErr } = await supabaseAdmin
-          .from('app_collections')
-          .select('data')
-          .eq('collection_name', name)
-          .maybeSingle();
-
-        if (!collErr && collRow && Array.isArray(collRow.data)) {
-          // Filter out any tombstone deleted items
-          const cleanItems = collRow.data.filter((it: any) => {
-            const key = it?.id || it?.sphNumber || it?.workOrderNumber || it?.bapNumber || it?.noLabel;
-            return !key || !deletedIdSet.has(String(key).trim());
-          });
-          return res.json({ found: true, items: cleanItems });
-        }
-      } catch (_) {}
-
-      const metaKey = `__aset_coll_${name}`;
-
-      const { data: mainData, error } = await supabaseAdmin
-        .from('labels')
-        .select('pdf_url')
-        .eq('no_label', metaKey)
-        .maybeSingle();
-
-      if (error) {
-        console.error(`Supabase error reading collection ${name}:`, error);
-        return res.status(500).json({ error: "Gagal mengambil data koleksi aset" });
-      }
-
-      let individualItems: any[] = [];
-      try {
-        const itemRows = await fetchAllRows((from, to) =>
-          supabaseAdmin
-            .from('labels')
-            .select('no_label, pdf_url')
-            .like('no_label', `${itemPrefix}%`)
-            .order('no_label', { ascending: true })
-            .range(from, to)
-        );
-
-        if (itemRows && itemRows.length > 0) {
-          itemRows.forEach(row => {
-            if (row.pdf_url) {
-              try {
-                const parsed = JSON.parse(row.pdf_url);
-                if (parsed && typeof parsed === 'object') individualItems.push(parsed);
-              } catch (_) {}
-            }
-          });
-        }
-      } catch (_) {}
-
-      let mainItems: any[] = [];
-      if (mainData?.pdf_url) {
-        try {
-          const parsed = JSON.parse(mainData.pdf_url);
-          if (Array.isArray(parsed)) mainItems = parsed;
-        } catch (_) {}
-      }
-
-      if (!mainData && individualItems.length === 0) {
-        return res.json({ found: false, items: null });
-      }
-
-      const combined: any[] = [...individualItems];
-      mainItems.forEach(mainIt => {
-        const exists = combined.some(indIt => isSameCollectionItem(mainIt, indIt));
-        if (!exists) {
-          combined.push(mainIt);
-        }
-      });
-
-      // Filter out tombstones from fallback
-      const finalItems = combined.filter((it: any) => {
-        const key = it?.id || it?.sphNumber || it?.workOrderNumber || it?.bapNumber || it?.noLabel;
-        return !key || !deletedIdSet.has(String(key).trim());
-      });
-
-      return res.json({ found: true, items: finalItems });
+      const items = await fetchActiveCollection(COLLECTION_TABLES[name]);
+      res.setHeader('Cache-Control', 'no-store');
+      // found selalu true: tabel selalu ada, jadi website tidak pernah mengisi data contoh
+      return res.json({ found: true, items });
     } catch (err: any) {
       console.error(`API error in GET /api/collections/${req.params.name}:`, err);
-      res.status(500).json({ error: "Terjadi kesalahan sistem saat memproses koleksi aset" });
+      res.status(500).json({ error: "Gagal mengambil data dari database" });
     }
   });
 
-  // POST /api/collections/:name (Protected with Role check, collection queue, idempotency, version conflict, financial audit lock, and batch upsert)
+  // POST /api/collections/:name -> simpan (tambah / ubah) item SATU PER SATU
+  // Tidak pernah menghapus item lain. "replaceAll" lama diperlakukan sebagai simpan biasa.
   app.post("/api/collections/:name", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { name } = req.params;
-
-      // 1. Whitelist validation
       if (!VALID_COLLECTIONS.has(name)) {
         return res.status(400).json({ error: "Nama koleksi tidak valid" });
       }
-
-      // 2. Role check for writing
       if (!canWriteCollection(req.userRole, name)) {
         return res.status(403).json({ error: "Akun belum memiliki hak akses untuk mengubah koleksi ini" });
       }
 
-      // 3. Idempotency Check: simpan dengan kunci `${req.user.id}:${name}:${idempotencyKey}` SETELAH validasi whitelist dan role
       const rawIdempotencyKey = req.headers['idempotency-key'];
       const scopedIdempotencyKey = (typeof rawIdempotencyKey === 'string' && rawIdempotencyKey.trim())
         ? `${req.user?.id || 'user'}:${name}:${rawIdempotencyKey.trim()}`
         : null;
-
       if (scopedIdempotencyKey) {
         const cached = await getIdempotencyRecord(scopedIdempotencyKey);
         if (cached && cached.expiresAt > Date.now()) {
@@ -1511,505 +1363,235 @@ export function createApp() {
         }
       }
 
-      const { items, replaceAll } = req.body;
+      const { items } = req.body || {};
       if (!Array.isArray(items)) {
         return res.status(400).json({ error: "Format data tidak valid: parameter items harus berupa array" });
       }
-
-      // Execute inside serialized collection queue to prevent race conditions
-      const result = await runInCollectionQueue(name, async () => {
-        // 4. ATURAN: Mode replaceAll HANYA diizinkan untuk admin_utama.
-        // Untuk role lain, replaceAll diabaikan dan wajib diganti dengan "upsert per item".
-        const effectiveReplaceAll = (replaceAll === true) && (req.userRole === 'admin_utama');
-
-        // 5. Fetch tombstones to ensure deleted items are never saved back to database
-        const tombstonePrefix = `__tombstone_${name}_`;
-        const deletedIdSet = new Set<string>();
-
-        try {
-          const { data: tombstoneRows } = await supabaseAdmin
-            .from('labels')
-            .select('pdf_name')
-            .like('no_label', `${tombstonePrefix}%`);
-          if (tombstoneRows && tombstoneRows.length > 0) {
-            tombstoneRows.forEach(tr => {
-              if (tr.pdf_name) deletedIdSet.add(String(tr.pdf_name).trim());
-            });
-          }
-        } catch (_) {}
-
-        // Filter incoming items against tombstones
-        const cleanIncomingItems = items.filter(it => {
-          const k = it?.id || it?.sphNumber || it?.workOrderNumber || it?.bapNumber || it?.noLabel;
-          return !k || !deletedIdSet.has(String(k).trim());
-        });
-
-        const metaKey = `__aset_coll_${name}`;
-        const itemPrefix = `__item_${name}_`;
-
-        // 6. Fetch existing server items to handle version conflicts, financial audit locks, and upsert merging
-        let existingItems: any[] = [];
-        try {
-          const { data: collRow } = await supabaseAdmin
-            .from('app_collections')
-            .select('data')
-            .eq('collection_name', name)
-            .maybeSingle();
-
-          if (collRow && Array.isArray(collRow.data)) {
-            existingItems = collRow.data;
-          } else {
-            // Fallback to labels meta row
-            const { data: mainData } = await supabaseAdmin
-              .from('labels')
-              .select('pdf_url')
-              .eq('no_label', metaKey)
-              .maybeSingle();
-            if (mainData?.pdf_url) {
-              try {
-                const parsed = JSON.parse(mainData.pdf_url);
-                if (Array.isArray(parsed)) existingItems = parsed;
-              } catch (_) {}
-            }
-          }
-        } catch (_) {}
-
-        // Build map of existing items
-        const existingMap = new Map<string, any>();
-        existingItems.forEach(it => {
-          const k = getCollectionItemKey(it);
-          if (k) existingMap.set(k, it);
-        });
-
-        const conflicts: any[] = [];
-        const rejected: any[] = [];
-        const itemsToPersist: any[] = [];
-        const serverTimestamp = new Date().toISOString();
-
-        for (const incoming of cleanIncomingItems) {
-          if (!incoming || typeof incoming !== 'object') continue;
-          const itemKey = getCollectionItemKey(incoming);
-          const oldItem = existingMap.get(itemKey);
-
-          // 7. Deteksi Konflik Versi Berbasis baseUpdatedAt DARI SERVER:
-          // Jika oldItem ada dan incoming.baseUpdatedAt !== oldItem.updatedAt -> masukkan ke "conflicts", jangan timpa.
-          // Item baru (tanpa oldItem) diterima. Item tanpa baseUpdatedAt untuk item yang sudah ada diperlakukan sebagai conflict kecuali pengirim admin_utama.
-          if (oldItem) {
-            const isMainAdmin = req.userRole === 'admin_utama';
-            const incomingBase = incoming.baseUpdatedAt !== undefined && incoming.baseUpdatedAt !== null ? String(incoming.baseUpdatedAt).trim() : '';
-            const serverUpdated = oldItem.updatedAt ? String(oldItem.updatedAt).trim() : '';
-
-            if (!isMainAdmin && (!incomingBase || incomingBase !== serverUpdated)) {
-              conflicts.push({
-                id: incoming.id || itemKey,
-                incomingBaseUpdatedAt: incoming.baseUpdatedAt || null,
-                serverUpdatedAt: oldItem.updatedAt || null,
-                serverItem: oldItem
-              });
-              // Skip overwriting this item with the conflicting incoming version
-              continue;
-            }
-          }
-
-          const processedItem = { ...incoming };
-          delete (processedItem as any).baseUpdatedAt;
-
-          // 8. KUNCI AUDIT KEUANGAN (Hanya untuk koleksi financialTransactions):
-          // - Jika oldItem.auditStatus = 'Lolos Audit' atau 'Tidak Lolos Audit' dan pengirim bukan admin_utama:
-          //   tolak perubahan field apa pun -> masukkan item ke array "rejected" dengan alasan "Transaksi sudah diaudit, hubungi Admin Utama".
-          // - Catat setiap penolakan ke activity_log (action: 'BLOCKED_EDIT_AUDITED_TRX').
-          if (name === 'financialTransactions') {
-            const isMainAdmin = req.userRole === 'admin_utama';
-            const isOldAudited = oldItem && (oldItem.auditStatus === 'Lolos Audit' || oldItem.auditStatus === 'Tidak Lolos Audit');
-
-            if (isOldAudited && !isMainAdmin) {
-              rejected.push({
-                id: incoming.id || itemKey,
-                reason: "Transaksi sudah diaudit, hubungi Admin Utama",
-                item: oldItem
-              });
-
-              // Log blocked edit of audited transaction to activity_log
-              try {
-                await supabaseAdmin.from('activity_log').insert({
-                  user_id: req.user?.id || null,
-                  user_email: req.user?.email || null,
-                  user_role: req.userRole || null,
-                  action: 'BLOCKED_EDIT_AUDITED_TRX',
-                  table_name: 'financialTransactions',
-                  record_id: String(incoming.id || itemKey),
-                  payload: {
-                    reason: "Transaksi sudah diaudit, hubungi Admin Utama",
-                    oldAuditStatus: oldItem.auditStatus,
-                    attemptedChanges: incoming
-                  },
-                  ip_address: req.ip || null,
-                  created_at: serverTimestamp
-                });
-              } catch (logErr) {
-                console.error('[ActivityLog Error] Gagal mencatat blocked audit edit:', logErr);
-              }
-
-              // Do not apply changes; retain old audited item in the collection
-              itemsToPersist.push(oldItem);
-              continue;
-            }
-
-            if (!oldItem) {
-              // Item transaksi baru
-              if (!isMainAdmin) {
-                processedItem.auditStatus = 'Belum Diaudit';
-                processedItem.auditNotes = null;
-                processedItem.auditorName = null;
-                processedItem.auditedAt = null;
-              } else {
-                // Jika admin_utama langsung menentukan status audit pada transaksi baru
-                if (processedItem.auditStatus && processedItem.auditStatus !== 'Belum Diaudit') {
-                  processedItem.auditorName = req.user?.email || 'admin_utama';
-                  processedItem.auditedAt = serverTimestamp;
-
-                  try {
-                    await supabaseAdmin.from('activity_log').insert({
-                      user_id: req.user?.id || null,
-                      user_email: req.user?.email || null,
-                      user_role: req.userRole || null,
-                      action: 'SET_INITIAL_AUDIT_STATUS',
-                      table_name: 'financialTransactions',
-                      record_id: String(processedItem.id || itemKey),
-                      payload: {
-                        oldStatus: 'Belum Diaudit',
-                        newStatus: processedItem.auditStatus,
-                        auditNotes: processedItem.auditNotes || null,
-                        auditedAt: serverTimestamp
-                      },
-                      ip_address: req.ip || null,
-                      created_at: serverTimestamp
-                    });
-                  } catch (logErr) {
-                    console.error('[ActivityLog Error] Gagal mencatat initial audit status:', logErr);
-                  }
-                }
-              }
-            } else {
-              // Item transaksi yang belum diaudit sebelumnya
-              const oldStatus = oldItem.auditStatus || 'Belum Diaudit';
-              const oldNotes = oldItem.auditNotes || null;
-              const oldAuditor = oldItem.auditorName || null;
-              const oldAudited = oldItem.auditedAt || null;
-
-              if (!isMainAdmin) {
-                // Non-admin_utama dilarang keras mengubah field audit: kembalikan ke nilai server lama
-                processedItem.auditStatus = oldStatus;
-                processedItem.auditNotes = oldNotes;
-                processedItem.auditorName = oldAuditor;
-                processedItem.auditedAt = oldAudited;
-              } else {
-                // admin_utama diperbolehkan mengaudit transaksi
-                const isStatusChanged = processedItem.auditStatus && processedItem.auditStatus !== oldStatus;
-                if (isStatusChanged) {
-                  processedItem.auditorName = req.user?.email || 'admin_utama';
-                  processedItem.auditedAt = serverTimestamp;
-
-                  // Catat perubahan ke activity_log
-                  try {
-                    await supabaseAdmin.from('activity_log').insert({
-                      user_id: req.user?.id || null,
-                      user_email: req.user?.email || null,
-                      user_role: req.userRole || null,
-                      action: 'UPDATE_AUDIT_STATUS',
-                      table_name: 'financialTransactions',
-                      record_id: String(processedItem.id || itemKey),
-                      payload: {
-                        oldStatus,
-                        newStatus: processedItem.auditStatus,
-                        auditNotes: processedItem.auditNotes || null,
-                        auditedAt: serverTimestamp
-                      },
-                      ip_address: req.ip || null,
-                      created_at: serverTimestamp
-                    });
-                  } catch (logErr) {
-                    console.error('[ActivityLog Error] Gagal mencatat perubahan audit status:', logErr);
-                  }
-                }
-              }
-            }
-          }
-
-          // Server adalah satu-satunya sumber pengisian updatedAt
-          processedItem.updatedAt = serverTimestamp;
-          itemsToPersist.push(processedItem);
-        }
-
-        let finalItems: any[] = [];
-
-        if (effectiveReplaceAll) {
-          // Mode replaceAll eksklusif admin_utama
-          const { error: delErr } = await supabaseAdmin.from('labels').delete().like('no_label', `${itemPrefix}%`);
-          if (delErr) {
-            console.error(`Supabase error clearing collection items ${name}:`, delErr);
-            throw new Error("Gagal memperbarui koleksi aset");
-          }
-          finalItems = itemsToPersist;
-        } else {
-          // Mode upsert per item
-          finalItems = [...existingItems];
-          for (const item of itemsToPersist) {
-            const idx = finalItems.findIndex(eIt => isSameCollectionItem(eIt, item));
-            if (idx >= 0) {
-              finalItems[idx] = { ...finalItems[idx], ...item };
-            } else {
-              finalItems.unshift(item);
-            }
-          }
-        }
-
-        // 9. Simpan ke tabel labels (baris __item_*) SECARA BATCH (maks 200/batch)
-        const labelBatchRows = itemsToPersist.map(it => {
-          const itemKey = getCollectionItemKey(it);
-          return {
-            no_label: `${itemPrefix}${itemKey}`,
-            status: 'asset_item',
-            pdf_source: name,
-            pdf_name: itemKey,
-            pdf_url: JSON.stringify(it),
-            updated_at: serverTimestamp
-          };
-        });
-
-        const BATCH_SIZE = 200;
-        for (let i = 0; i < labelBatchRows.length; i += BATCH_SIZE) {
-          const chunk = labelBatchRows.slice(i, i + BATCH_SIZE);
-          const { error: batchErr } = await supabaseAdmin
-            .from('labels')
-            .upsert(chunk, { onConflict: 'no_label' });
-
-          if (batchErr) {
-            console.error(`Supabase batch upsert error on collection ${name}:`, batchErr);
-            throw new Error("Gagal menyimpan data koleksi ke database");
-          }
-        }
-
-        // 10. Simpan metadata koleksi ke labels
-        const { error: metaErr } = await supabaseAdmin
-          .from('labels')
-          .upsert({
-            no_label: metaKey,
-            status: 'asset_data',
-            pdf_source: name,
-            pdf_name: `Collection: ${name} (${finalItems.length} items)`,
-            pdf_url: JSON.stringify(finalItems),
-            updated_at: serverTimestamp
-          }, { onConflict: 'no_label' });
-
-        if (metaErr) {
-          console.error(`Supabase meta upsert error on collection ${name}:`, metaErr);
-          throw new Error("Gagal memperbarui metadata koleksi ke database");
-        }
-
-        // 11. Simpan ke tabel dedicated app_collections
-        const { error: collErr } = await supabaseAdmin
-          .from('app_collections')
-          .upsert({
-            collection_name: name,
-            data: finalItems,
-            updated_at: serverTimestamp
-          }, { onConflict: 'collection_name' });
-
-        if (collErr) {
-          console.error(`Supabase app_collections error on collection ${name}:`, collErr);
-          throw new Error("Gagal menyimpan koleksi ke database");
-        }
-
-        return {
-          success: true,
-          count: finalItems.length,
-          items: finalItems,
-          conflicts: conflicts.length > 0 ? conflicts : undefined,
-          rejected: rejected.length > 0 ? rejected : undefined
-        };
-      });
-
-      // Simpan ke memori & database idempotency store (10 menit)
-      if (scopedIdempotencyKey) {
-        await saveIdempotencyRecord(scopedIdempotencyKey, 200, result, req.user?.id);
+      if (items.length > 500) {
+        return res.status(400).json({ error: "Terlalu banyak data dalam satu kiriman (maks 500)" });
       }
 
+      const table = COLLECTION_TABLES[name];
+      const isMainAdmin = req.userRole === 'admin_utama';
+      const actor = req.user?.email || req.user?.id || req.userRole || 'pengguna';
+
+      // Kumpulkan item yang valid (kunci unik wajib ada)
+      const incomingByKey = new Map<string, any>();
+      for (const it of items) {
+        const key = getCollectionItemKey(it);
+        if (key) incomingByKey.set(key, it);
+      }
+      const keys = Array.from(incomingByKey.keys());
+
+      // Ambil versi server untuk item-item tersebut (termasuk yang sudah dihapus)
+      const existingMap = new Map<string, any>();
+      for (let i = 0; i < keys.length; i += 200) {
+        const chunk = keys.slice(i, i + 200);
+        const { data, error } = await supabaseAdmin
+          .from(table)
+          .select('id, data, created_at, updated_at, deleted_at')
+          .in('id', chunk);
+        if (error) {
+          console.error(`Supabase read error on ${table}:`, error);
+          return res.status(503).json({ error: "Database sedang tidak bisa dihubungi, data disimpan sementara di perangkat dan akan dikirim ulang" });
+        }
+        (data || []).forEach((r: any) => existingMap.set(r.id, r));
+      }
+
+      const conflicts: any[] = [];
+      const rejected: any[] = [];
+      const skippedDeleted: string[] = [];
+      const saved: any[] = [];
+      const serverTimestamp = new Date().toISOString();
+
+      for (const key of keys) {
+        const incoming = incomingByKey.get(key);
+        const oldRow = existingMap.get(key);
+
+        // Item yang sudah dihapus tidak boleh "hidup lagi" karena kiriman perangkat lama
+        if (oldRow && oldRow.deleted_at) {
+          skippedDeleted.push(key);
+          continue;
+        }
+
+        const oldItem = oldRow ? rowToItem(oldRow) : null;
+
+        // Deteksi konflik versi: perangkat wajib mengirim baseUpdatedAt = updatedAt terakhir dari server.
+        // Berlaku untuk SEMUA role (termasuk admin_utama) agar data perangkat yang ketinggalan
+        // tidak menimpa perubahan terbaru dari perangkat lain.
+        if (oldRow) {
+          const incomingBase = incoming.baseUpdatedAt ?? null;
+          if (!incomingBase || !sameTimestamp(incomingBase, oldRow.updated_at)) {
+            conflicts.push({
+              id: key,
+              incomingBaseUpdatedAt: incomingBase,
+              serverUpdatedAt: oldRow.updated_at,
+              serverItem: oldItem
+            });
+            continue;
+          }
+        }
+
+        const processedItem: any = { ...incoming };
+        delete processedItem.baseUpdatedAt;
+        delete processedItem.updatedAt;
+        if (!processedItem.id) processedItem.id = key;
+
+        // KUNCI AUDIT KEUANGAN: status audit hanya boleh diubah admin_utama
+        if (name === 'financialTransactions') {
+          const isOldAudited = oldItem && (oldItem.auditStatus === 'Lolos Audit' || oldItem.auditStatus === 'Tidak Lolos Audit');
+
+          if (isOldAudited && !isMainAdmin) {
+            rejected.push({ id: key, reason: "Transaksi sudah diaudit, hubungi Admin Utama", item: oldItem });
+            await logCollectionActivity(req, 'BLOCKED_EDIT_AUDITED_TRX', name, key, {
+              reason: "Transaksi sudah diaudit, hubungi Admin Utama",
+              oldAuditStatus: oldItem.auditStatus,
+              attemptedChanges: incoming
+            });
+            continue;
+          }
+
+          const oldStatus = oldItem?.auditStatus || 'Belum Diaudit';
+          if (!isMainAdmin) {
+            processedItem.auditStatus = oldItem ? oldStatus : 'Belum Diaudit';
+            processedItem.auditNotes = oldItem ? (oldItem.auditNotes || null) : null;
+            processedItem.auditorName = oldItem ? (oldItem.auditorName || null) : null;
+            processedItem.auditedAt = oldItem ? (oldItem.auditedAt || null) : null;
+          } else if (processedItem.auditStatus && processedItem.auditStatus !== oldStatus) {
+            processedItem.auditorName = req.user?.email || 'admin_utama';
+            processedItem.auditedAt = serverTimestamp;
+            await logCollectionActivity(req, oldItem ? 'UPDATE_AUDIT_STATUS' : 'SET_INITIAL_AUDIT_STATUS', name, key, {
+              oldStatus,
+              newStatus: processedItem.auditStatus,
+              auditNotes: processedItem.auditNotes || null,
+              auditedAt: serverTimestamp
+            });
+          }
+        }
+
+        saved.push({
+          id: key,
+          data: processedItem,
+          updated_at: serverTimestamp,
+          updated_by: actor,
+          created_at: oldRow?.created_at || serverTimestamp,
+          deleted_at: null,
+          deleted_by: null
+        });
+      }
+
+      for (let i = 0; i < saved.length; i += 200) {
+        const chunk = saved.slice(i, i + 200);
+        const { error: upErr } = await supabaseAdmin.from(table).upsert(chunk, { onConflict: 'id' });
+        if (upErr) {
+          console.error(`Supabase upsert error on ${table}:`, upErr);
+          return res.status(503).json({ error: "Gagal menyimpan ke database, data disimpan sementara di perangkat dan akan dikirim ulang" });
+        }
+      }
+
+      const allItems = await fetchActiveCollection(table);
+      const result = {
+        success: true,
+        count: allItems.length,
+        saved: saved.map(s => s.id),
+        items: allItems,
+        conflicts: conflicts.length > 0 ? conflicts : undefined,
+        rejected: rejected.length > 0 ? rejected : undefined,
+        skippedDeleted: skippedDeleted.length > 0 ? skippedDeleted : undefined
+      };
+
+      if (scopedIdempotencyKey) {
+        await saveIdempotencyRecord(scopedIdempotencyKey, 200, { ...result, items: undefined }, req.user?.id);
+      }
       return res.json(result);
     } catch (err: any) {
       console.error(`API error in POST /api/collections/${req.params.name}:`, err);
-      res.status(500).json({ error: err?.message || "Terjadi kesalahan sistem saat menyimpan data koleksi" });
+      res.status(500).json({ error: "Terjadi kesalahan sistem saat menyimpan data" });
     }
   });
 
-  // DELETE /api/collections/:name/:id (Delete individual item with Audit Lock & Mutex Queue)
+  // DELETE /api/collections/:name/:id -> hapus satu item (soft delete, berlaku di semua perangkat)
   app.delete("/api/collections/:name/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { name, id } = req.params;
-
-      // Whitelist validation
+      const { name } = req.params;
+      const id = String(req.params.id || '').trim();
       if (!VALID_COLLECTIONS.has(name)) {
         return res.status(400).json({ error: "Nama koleksi tidak valid" });
       }
-
-      // Role check for delete follows write permission
       if (!canWriteCollection(req.userRole, name)) {
         return res.status(403).json({ error: "Akun belum memiliki hak akses untuk menghapus item dari koleksi ini" });
       }
+      if (!id || id.length > 120) {
+        return res.status(400).json({ error: "ID data tidak valid" });
+      }
 
-      const result = await runInCollectionQueue(name, async () => {
-        const metaKey = `__aset_coll_${name}`;
-        const itemPrefix = `__item_${name}_`;
-        const tombstonePrefix = `__tombstone_${name}_`;
-        const sanitizeId = id.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-        const nowIso = new Date().toISOString();
+      const table = COLLECTION_TABLES[name];
+      const { data: row, error: findErr } = await supabaseAdmin
+        .from(table)
+        .select('id, data, updated_at, deleted_at')
+        .eq('id', id)
+        .maybeSingle();
 
-        // 1. Fetch current item to check financial audit lock
-        let currentItems: any[] = [];
-        try {
-          const { data: collRow } = await supabaseAdmin
-            .from('app_collections')
-            .select('data')
-            .eq('collection_name', name)
-            .maybeSingle();
-          if (collRow && Array.isArray(collRow.data)) {
-            currentItems = collRow.data;
-          }
-        } catch (_) {}
+      if (findErr) {
+        console.error(`Supabase read error on ${table}:`, findErr);
+        return res.status(503).json({ error: "Database sedang tidak bisa dihubungi, coba lagi" });
+      }
+      if (!row || row.deleted_at) {
+        // Sudah tidak ada / sudah dihapus: anggap berhasil (aman diulang)
+        return res.json({ success: true, alreadyDeleted: true });
+      }
 
-        const targetItem = currentItems.find((it: any) => 
-          isSameCollectionItem(it, { id, sphNumber: id, noLabel: id, workOrderNumber: id, bapNumber: id })
-        );
-
-        // Kunci audit: DELETE item transaksi yang sudah diaudit HANYA boleh admin_utama
-        if (name === 'financialTransactions' && targetItem) {
-          const isAudited = targetItem.auditStatus === 'Lolos Audit' || targetItem.auditStatus === 'Tidak Lolos Audit';
-          if (isAudited && req.userRole !== 'admin_utama') {
-            try {
-              await supabaseAdmin.from('activity_log').insert({
-                user_id: req.user?.id || null,
-                user_email: req.user?.email || null,
-                user_role: req.userRole || null,
-                action: 'BLOCKED_EDIT_AUDITED_TRX',
-                table_name: 'financialTransactions',
-                record_id: String(id),
-                payload: {
-                  reason: "Transaksi sudah diaudit, hubungi Admin Utama (Upaya Hapus Ditolak)",
-                  auditStatus: targetItem.auditStatus,
-                  item: targetItem
-                },
-                ip_address: req.ip || null,
-                created_at: nowIso
-              });
-            } catch (_) {}
-
-            const err: any = new Error("Akses ditolak: Transaksi yang sudah diaudit hanya dapat dihapus oleh Admin Utama");
-            err.statusCode = 403;
-            throw err;
-          }
+      if (name === 'financialTransactions') {
+        const item = rowToItem(row);
+        const isAudited = item.auditStatus === 'Lolos Audit' || item.auditStatus === 'Tidak Lolos Audit';
+        if (isAudited && req.userRole !== 'admin_utama') {
+          await logCollectionActivity(req, 'BLOCKED_EDIT_AUDITED_TRX', name, id, {
+            reason: "Transaksi sudah diaudit, hubungi Admin Utama (Upaya Hapus Ditolak)",
+            auditStatus: item.auditStatus
+          });
+          return res.status(403).json({ error: "Akses ditolak: Transaksi yang sudah diaudit hanya dapat dihapus oleh Admin Utama" });
         }
+      }
 
-        // 2. Delete item rows from labels
-        const { error: delItemErr } = await supabaseAdmin
-          .from('labels')
-          .delete()
-          .or(`no_label.eq.${itemPrefix}${sanitizeId},no_label.eq.${itemPrefix}${id}`);
+      const nowIso = new Date().toISOString();
+      const { error: delErr } = await supabaseAdmin
+        .from(table)
+        .update({ deleted_at: nowIso, deleted_by: req.user?.email || req.user?.id || req.userRole || null, updated_at: nowIso })
+        .eq('id', id);
+      if (delErr) {
+        console.error(`Supabase soft delete error on ${table}:`, delErr);
+        return res.status(503).json({ error: "Gagal menghapus data, coba lagi" });
+      }
 
-        if (delItemErr) {
-          console.error(`Supabase error deleting item row ${id}:`, delItemErr);
-        }
-
-        // 3. Record permanent tombstone in labels
-        const { error: tombErr } = await supabaseAdmin
-          .from('labels')
-          .upsert({
-            no_label: `${tombstonePrefix}${sanitizeId}`,
-            status: 'deleted_tombstone',
-            pdf_source: name,
-            pdf_name: id,
-            pdf_url: JSON.stringify({ id, deletedAt: nowIso }),
-            updated_at: nowIso
-          }, { onConflict: 'no_label' });
-
-        if (tombErr) {
-          console.error(`Supabase error recording tombstone for ${id}:`, tombErr);
-        }
-
-        // 4. Update dedicated app_collections table
-        const remainingItems = currentItems.filter((it: any) => 
-          !isSameCollectionItem(it, { id, sphNumber: id, noLabel: id, workOrderNumber: id, bapNumber: id })
-        );
-
-        await supabaseAdmin.from('app_collections').upsert({
-          collection_name: name,
-          data: remainingItems,
-          updated_at: nowIso
-        }, { onConflict: 'collection_name' });
-
-        // 5. Update legacy labels table metaKey
-        await supabaseAdmin.from('labels').upsert({
-          no_label: metaKey,
-          status: 'asset_data',
-          pdf_source: name,
-          pdf_name: `Collection: ${name} (${remainingItems.length} items)`,
-          pdf_url: JSON.stringify(remainingItems),
-          updated_at: nowIso
-        }, { onConflict: 'no_label' });
-
-        return { success: true, remaining: remainingItems.length, items: remainingItems };
-      });
-
-      res.json(result);
+      await logCollectionActivity(req, 'DELETE_ITEM', name, id, { ringkasan: row.data?.name || row.data?.sphNumber || row.data?.workOrderNumber || null });
+      res.json({ success: true });
     } catch (err: any) {
       console.error(`API error in DELETE /api/collections/${req.params.name}/${req.params.id}:`, err);
-      res.status(err.statusCode || 500).json({ error: err.message || "Terjadi kesalahan sistem saat menghapus data koleksi" });
+      res.status(500).json({ error: "Terjadi kesalahan sistem saat menghapus data" });
     }
   });
 
-  // DELETE /api/collections/:name (Clear entire collection - HANYA admin_utama)
+  // DELETE /api/collections/:name -> kosongkan satu koleksi (HANYA admin_utama, soft delete)
   app.delete("/api/collections/:name", requireAuth, requireRole(['admin_utama']), async (req: AuthRequest, res) => {
     try {
       const { name } = req.params;
-
-      // Whitelist validation
       if (!VALID_COLLECTIONS.has(name)) {
         return res.status(400).json({ error: "Nama koleksi tidak valid" });
       }
-
-      const result = await runInCollectionQueue(name, async () => {
-        const metaKey = `__aset_coll_${name}`;
-        const itemPrefix = `__item_${name}_`;
-        const nowIso = new Date().toISOString();
-
-        const { error: delErr } = await supabaseAdmin.from('labels').delete().like('no_label', `${itemPrefix}%`);
-        if (delErr) {
-          console.error(`Supabase error clearing items for ${name}:`, delErr);
-          throw new Error("Gagal mengosongkan data koleksi");
-        }
-
-        await supabaseAdmin.from('labels').upsert({
-          no_label: metaKey,
-          status: 'asset_data',
-          pdf_source: name,
-          pdf_name: `Collection: ${name} (0 items)`,
-          pdf_url: JSON.stringify([]),
-          updated_at: nowIso
-        }, { onConflict: 'no_label' });
-
-        // Clear dedicated app_collections table
-        await supabaseAdmin.from('app_collections').upsert({
-          collection_name: name,
-          data: [],
-          updated_at: nowIso
-        }, { onConflict: 'collection_name' });
-
-        return { success: true, remaining: 0 };
-      });
-
-      res.json(result);
+      const nowIso = new Date().toISOString();
+      const { error } = await supabaseAdmin
+        .from(COLLECTION_TABLES[name])
+        .update({ deleted_at: nowIso, deleted_by: req.user?.email || 'admin_utama', updated_at: nowIso })
+        .is('deleted_at', null);
+      if (error) {
+        console.error(`Supabase clear error on ${name}:`, error);
+        return res.status(500).json({ error: "Gagal mengosongkan data koleksi" });
+      }
+      await logCollectionActivity(req, 'CLEAR_COLLECTION', name, name, {});
+      res.json({ success: true, remaining: 0 });
     } catch (err: any) {
       console.error(`API error in DELETE /api/collections/${req.params.name}:`, err);
-      res.status(500).json({ error: err?.message || "Terjadi kesalahan sistem saat mengosongkan koleksi" });
+      res.status(500).json({ error: "Terjadi kesalahan sistem saat mengosongkan koleksi" });
     }
   });
 
@@ -2062,7 +1644,7 @@ export function createApp() {
 
       let targetPath = '';
 
-      // 3. Path dokumen dicari dari koleksi di server (app_collections):
+      // 3. Path dokumen dicari dari tabel koleksi di server:
       // documentType 'sph' -> sphDocuments, 'spk' -> schedules, 'bap' -> bapDocuments, 'financial' -> financialTransactions
       if (documentId && documentType) {
         let collName = '';
@@ -2071,43 +1653,35 @@ export function createApp() {
         else if (documentType === 'bap') collName = 'bapDocuments';
         else if (documentType === 'financial') collName = 'financialTransactions';
 
-        // Query app_collections first
+        // Cari dokumen di tabel koleksinya (hanya yang belum dihapus)
         let foundItem: any = null;
         try {
-          const { data: collRow } = await supabaseAdmin
-            .from('app_collections')
-            .select('data')
-            .eq('collection_name', collName)
+          const table = COLLECTION_TABLES[collName];
+          const docId = String(documentId).trim();
+          const { data: byId } = await supabaseAdmin
+            .from(table)
+            .select('id, data, updated_at')
+            .eq('id', docId)
+            .is('deleted_at', null)
             .maybeSingle();
-
-          if (collRow && Array.isArray(collRow.data)) {
-            foundItem = collRow.data.find((it: any) => 
-              isSameCollectionItem(it, { 
-                id: documentId, 
-                sphNumber: documentId, 
-                workOrderNumber: documentId, 
-                bapNumber: documentId, 
-                noLabel: documentId 
-              })
-            );
+          if (byId) {
+            foundItem = rowToItem(byId);
+          } else {
+            // Cadangan: cari berdasarkan nomor dokumen (SPH / SPK / BAP)
+            for (const field of ['sphNumber', 'workOrderNumber', 'bapNumber', 'bastpNumber']) {
+              const { data: byNo } = await supabaseAdmin
+                .from(table)
+                .select('id, data, updated_at')
+                .eq(`data->>${field}`, docId)
+                .is('deleted_at', null)
+                .limit(1);
+              if (byNo && byNo.length > 0) {
+                foundItem = rowToItem(byNo[0]);
+                break;
+              }
+            }
           }
         } catch (_) {}
-
-        // Fallback to labels individual item or meta
-        if (!foundItem) {
-          const sanitizeDocId = String(documentId).trim().replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-          const { data: itemRow } = await supabaseAdmin
-            .from('labels')
-            .select('pdf_url')
-            .eq('no_label', `__item_${collName}_${sanitizeDocId}`)
-            .maybeSingle();
-
-          if (itemRow?.pdf_url) {
-            try {
-              foundItem = JSON.parse(itemRow.pdf_url);
-            } catch (_) {}
-          }
-        }
 
         if (!foundItem) {
           return res.status(404).json({ error: "Dokumen tidak ditemukan dalam koleksi sistem" });
@@ -2301,13 +1875,13 @@ export function createApp() {
         return res.status(400).json({ success: false, error: 'Tabel labels belum siap di Supabase' });
       }
 
-      const { data, error: selectErr } = await supabaseAdmin.from('labels').select('no_label');
+      const { count, error: selectErr } = await supabaseAdmin.from('labels').select('no_label', { count: 'exact', head: true });
       if (selectErr) {
         console.error("Supabase sync select error:", selectErr);
         return res.status(500).json({ success: false, error: "Gagal membaca data label dari database" });
       }
 
-      res.json({ success: true, count: data ? data.length : 0 });
+      res.json({ success: true, count: count || 0 });
     } catch (err: any) {
       console.error("API error in POST /api/supabase/sync:", err);
       res.status(500).json({ success: false, error: "Terjadi kesalahan sistem saat sinkronisasi" });

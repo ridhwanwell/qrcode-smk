@@ -135,6 +135,17 @@ export async function getPendingQueue(): Promise<PendingQueueItem[]> {
 }
 
 /**
+ * Mengambil antrean yang masih menunggu untuk satu koleksi (dipakai agar perubahan
+ * yang belum terkirim tetap tampil di layar walaupun data server dimuat ulang).
+ */
+export async function getPendingEntries(collection: string): Promise<PendingQueueItem[]> {
+  const all = await getPendingQueue();
+  return all
+    .filter(e => e.collection === collection)
+    .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+}
+
+/**
  * Menghapus item dari antrean setelah sukses disinkronkan ke server.
  */
 export async function dequeueOfflineItem(id: number): Promise<void> {
@@ -202,6 +213,7 @@ export async function flushOfflineQueue(
   let successCount = 0;
   let errorCount = 0;
   const conflicts: any[] = [];
+  const touchedCollections = new Set<string>();
 
   try {
     const queue = await getPendingQueue();
@@ -214,6 +226,7 @@ export async function flushOfflineQueue(
 
     for (const entry of queue) {
       if (!entry.id) continue;
+      touchedCollections.add(entry.collection);
 
       try {
         if (entry.action === 'delete') {
@@ -277,6 +290,21 @@ export async function flushOfflineQueue(
   } finally {
     isFlushing = false;
     getPendingCount().then(notifyCountListeners).catch(() => {});
+    if (typeof window !== 'undefined' && touchedCollections.size > 0) {
+      // Beri tahu halaman agar memuat ulang data terbaru dari server
+      window.dispatchEvent(new CustomEvent('smk_offline_flushed', {
+        detail: { collections: Array.from(touchedCollections), successCount, errorCount }
+      }));
+      if (conflicts.length > 0) {
+        window.dispatchEvent(new CustomEvent('app_data_conflict', {
+          detail: {
+            collection: Array.from(touchedCollections).join(', '),
+            conflicts,
+            message: 'Sebagian perubahan offline tidak dikirim karena data yang sama sudah diubah di perangkat lain. Data terbaru dari server ditampilkan.'
+          }
+        }));
+      }
+    }
   }
 
   return { successCount, errorCount, conflicts };

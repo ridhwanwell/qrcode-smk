@@ -480,7 +480,7 @@ export default function AdminGenerate() {
       }
       setVerifyCodes(codesFromServer);
 
-      // 2. Update localStorage labels as local backup and un-tombstone
+      // 2. Update localStorage labels as local backup
       try {
         const localList = JSON.parse(localStorage.getItem('smk_labels') || '[]');
         const existingMap = new Map(localList.map((l: any) => [l.noLabel || l.no_label, l]));
@@ -496,17 +496,6 @@ export default function AdminGenerate() {
         });
         localStorage.setItem('smk_labels', JSON.stringify(Array.from(existingMap.values())));
 
-        // Un-tombstone if re-generated
-        const p = labelsToGenerate[0]?.split('.')[0];
-        if (p) {
-          const delF = JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]');
-          const updatedF = delF.filter((x: string) => x !== p);
-          localStorage.setItem('smk_deleted_folders', JSON.stringify(updatedF));
-        }
-        const delL = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
-        const genSet = new Set(labelsToGenerate);
-        const updatedL = delL.filter((x: string) => !genSet.has(x));
-        localStorage.setItem('smk_deleted_labels', JSON.stringify(updatedL));
       } catch (_) {}
 
       // Refresh folder summaries from server after save

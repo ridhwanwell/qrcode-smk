@@ -187,11 +187,6 @@ export async function deleteLabelCompletely(labelId: string): Promise<void> {
       localStorage.setItem('smk_labels', JSON.stringify(remaining));
     }
 
-    const deletedLabels = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
-    if (!deletedLabels.includes(labelId)) {
-      deletedLabels.push(labelId);
-      localStorage.setItem('smk_deleted_labels', JSON.stringify(deletedLabels));
-    }
   } catch (err) {
     console.warn('LocalStorage deleteLabelCompletely cleanup warning:', err);
   }
@@ -226,10 +221,6 @@ export async function deleteBatchLabels(labelIds: string[]): Promise<void> {
       localStorage.setItem('smk_labels', JSON.stringify(remaining));
     }
 
-    const deletedLabels = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
-    const labelSet = new Set(deletedLabels);
-    labelIds.forEach(id => labelSet.add(id));
-    localStorage.setItem('smk_deleted_labels', JSON.stringify(Array.from(labelSet)));
   } catch (err) {
     console.warn('LocalStorage deleteBatchLabels cleanup warning:', err);
   }
@@ -245,11 +236,12 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     const errJson = await res.json().catch(() => ({}));
     throw new Error(errJson.error || `Gagal menghapus folder (status ${res.status})`);
   }
-  await apiFetch(`/api/folders/prefix/${encodeURIComponent(prefix)}`, { method: 'DELETE' }).catch(() => {});
-  if (labelIds && labelIds.length > 0) {
+  // Label dengan nomor di luar pola "<prefix>.xxxx" (jika ada) ikut dihapus
+  const outside = (labelIds || []).filter(id => getPrefix(id) !== prefix);
+  if (outside.length > 0) {
     await apiFetch('/api/labels/batch-delete', {
       method: 'POST',
-      body: JSON.stringify({ noLabels: labelIds })
+      body: JSON.stringify({ noLabels: outside })
     }).catch(() => {});
   }
 
@@ -274,20 +266,6 @@ export async function deleteFolderCompletely(prefix: string, labelIds?: string[]
     delete map[prefix];
     localStorage.setItem('smk_folder_nama_rs_map', JSON.stringify(map));
 
-    // Register folder in tombstone
-    const deletedFolders = JSON.parse(localStorage.getItem('smk_deleted_folders') || '[]');
-    if (!deletedFolders.includes(prefix)) {
-      deletedFolders.push(prefix);
-      localStorage.setItem('smk_deleted_folders', JSON.stringify(deletedFolders));
-    }
-
-    // Register labelIds in tombstone
-    if (labelIds && labelIds.length > 0) {
-      const deletedLabels = JSON.parse(localStorage.getItem('smk_deleted_labels') || '[]');
-      const labelSet = new Set(deletedLabels);
-      labelIds.forEach(id => labelSet.add(id));
-      localStorage.setItem('smk_deleted_labels', JSON.stringify(Array.from(labelSet)));
-    }
   } catch (err) {
     console.warn('LocalStorage deleteFolderCompletely cleanup warning:', err);
   }
