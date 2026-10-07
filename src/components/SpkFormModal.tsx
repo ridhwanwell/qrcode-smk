@@ -469,7 +469,7 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                 >
                   {technicians.map(t => (
                     <option key={t.id} value={t.id}>
-                      {t.name} — {t.strNumber} ({t.specialization})
+                      {t.name}
                     </option>
                   ))}
                 </select>
@@ -497,7 +497,6 @@ export const SpkFormModal: React.FC<SpkFormModalProps> = ({
                       />
                       <div className="truncate">
                         <p className="truncate text-[11px] font-medium">{tech.name}</p>
-                        <p className="text-[9px] text-slate-400 font-mono">{tech.strNumber}</p>
                       </div>
                     </label>
                   ))}

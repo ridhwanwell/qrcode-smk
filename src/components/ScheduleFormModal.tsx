@@ -489,7 +489,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
               >
                 {technicians.map(t => (
                   <option key={t.id} value={t.id}>
-                    {t.name} — {t.strNumber} ({t.specialization}) [{t.status}]
+                    {t.name} [{t.status}]
                   </option>
                 ))}
               </select>
@@ -517,7 +517,6 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
                     />
                     <div className="truncate">
                       <p className="truncate text-[11px] font-medium">{tech.name}</p>
-                      <p className="text-[9px] text-slate-400 font-mono">{tech.strNumber}</p>
                     </div>
                   </label>
                 ))}
