@@ -324,6 +324,35 @@ export function registerSphTransisiRoutes(app: Express, deps: SphTransisiDeps) {
       };
       delete scheduleData.updatedAt;
       delete scheduleData.baseUpdatedAt;
+
+      // --- Nomor BO / FP / KWP mengikuti 3 angka depan NOMOR LABEL (bukan nomor SPH) ---
+      const labelStart = str(schIn.labelStart, 20);
+      const labelPrefix = /^\d{3}\.\d{4}$/.test(labelStart) ? labelStart.slice(0, 3) : null;
+      if (labelPrefix) {
+        const ROMAWI = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+        const tgl = new Date(`${sphData.date}T00:00:00`);
+        const tglOk = isNaN(tgl.getTime()) ? new Date() : tgl;
+        const akhiran = `${ROMAWI[tglOk.getMonth()]}-${tglOk.getFullYear()}`;
+        const dealNumbers = {
+          sequenceNumber: labelPrefix,
+          boNumber: `${labelPrefix}/SMK-BO/${akhiran}`,
+          fpNumber: `${labelPrefix}/SMK-FP/${akhiran}`,
+          kwpNumber: `${labelPrefix}/SMK-KWP/${akhiran}`
+        };
+        const dealLama = sphIn.dealData && typeof sphIn.dealData === 'object' ? sphIn.dealData : {};
+        sphData.dealData = {
+          recipientName: '',
+          paymentMethod: '',
+          ...dealLama,
+          ...dealNumbers,
+          dealDate: /^\d{4}-\d{2}-\d{2}$/.test(String(dealLama.dealDate || '')) ? dealLama.dealDate : sphData.date,
+          createdAt: nowIso
+        };
+        scheduleData.hospitalCode = labelPrefix;
+        scheduleData.boNumber = dealNumbers.boNumber;
+        scheduleData.fpNumber = dealNumbers.fpNumber;
+        scheduleData.kwpNumber = dealNumbers.kwpNumber;
+      }
       if (!Array.isArray(scheduleData.seliaItems)) delete scheduleData.seliaItems;
 
       // --- Simpan ---

@@ -406,6 +406,10 @@ _Pesan otomatis Sistem Manajemen Aset & Kalibrasi Medis PT Sarana Medika Kalibra
  * Selia Dashboard label numbers (e.g. 074.0001) must strictly match the 3 digits of BO, FP, KWP.
  */
 export function getScheduleDealPrefix(schedule: CalibrationSchedule, sphList: SphQuotation[] = []): string {
+  // 0. SPH TRANSISI: nomor label diketik admin -> BO/FP/KWP mengikuti 3 angka depan label
+  if (schedule.sumber === 'transisi' && /^\d{3}\.\d{4}$/.test(schedule.labelStart || '')) {
+    return (schedule.labelStart as string).slice(0, 3);
+  }
   // 1. Direct BO / FP / KWP numbers on schedule
   if (schedule.boNumber) {
     const m = schedule.boNumber.match(/^(\d{1,3})/);
