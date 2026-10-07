@@ -125,6 +125,76 @@ async function logActivity(req: AuthRequest | any, action: string, description: 
 }
 
 /**
+ * Simpan salinan lengkap label yang dihapus permanen ke activity_log,
+ * supaya bisa dipulihkan bila terhapus tidak sengaja. Dipecah per 500 baris.
+ */
+async function logDeletedLabelRows(req: AuthRequest | any, action: string, description: string, rows: any[], extra?: any) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) {
+    await logActivity(req, action, description, { ...(extra || {}), count: 0, deletedRows: [] });
+    return;
+  }
+  for (let i = 0; i < list.length; i += 500) {
+    const part = list.slice(i, i + 500);
+    await logActivity(req, action, description, {
+      ...(extra || {}),
+      noLabel: part.length === 1 ? part[0]?.no_label : undefined,
+      count: list.length,
+      bagian: `${Math.floor(i / 500) + 1}/${Math.ceil(list.length / 500)}`,
+      deletedRows: part
+    });
+  }
+}
+
+// --- Validasi link sertifikat ---
+// Hanya link https:// ke Google Drive / Google Docs / penyimpanan Supabase resmi yang boleh disimpan.
+// Mencegah link berbahaya (misal "javascript:...") tersimpan lalu dijalankan di halaman scan QR.
+const CERT_URL_ALLOWED_HOSTS = [
+  'drive.google.com',
+  'docs.google.com',
+  'auzpctxhltcdzdhcaetb.supabase.co'
+];
+
+class InvalidCertUrlError extends Error {}
+
+/**
+ * Mengembalikan link yang sudah dibersihkan, null bila kosong,
+ * atau melempar InvalidCertUrlError bila link tidak diizinkan.
+ */
+function sanitizeCertUrl(raw: any): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'string') throw new InvalidCertUrlError('Link sertifikat tidak valid');
+  let url = raw.trim();
+  if (!url) return null;
+  // Link tempelan tanpa awalan (misal "drive.google.com/file/d/...") dilengkapi https://
+  if (/^(drive|docs)\.google\.com\//i.test(url)) url = `https://${url}`;
+  // http:// ke Google dinaikkan ke https://
+  if (/^http:\/\/(drive|docs)\.google\.com\//i.test(url)) url = url.replace(/^http:/i, 'https:');
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new InvalidCertUrlError('Link sertifikat tidak valid');
+  }
+  const host = parsed.hostname.toLowerCase();
+  const hostOk = CERT_URL_ALLOWED_HOSTS.includes(host) || host.endsWith('.googleusercontent.com');
+  if (parsed.protocol !== 'https:' || !hostOk || url.length > 2000) {
+    throw new InvalidCertUrlError('Link sertifikat harus link Google Drive atau penyimpanan resmi');
+  }
+  return url;
+}
+
+/** Versi aman untuk ditampilkan: link yang tidak lolos dianggap tidak ada (tidak melempar error). */
+function safeCertUrlOrNull(raw: any): string | null {
+  try {
+    return sanitizeCertUrl(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Creates and configures the Express application with all /api/* routes,
  * authentication middlewares, role validations, and security controls.
  * Suitable for both local dev server and Vercel serverless function runtime.
@@ -286,8 +356,8 @@ export function createApp() {
 
       const isVoid = data.status === 'Void / Rusak';
       // Label void: sertifikat tidak ditampilkan
-      const safePdfUrl = !isVoid && !isInternalDoc(data.pdf_url) ? data.pdf_url : null;
-      const safePdfDriveUrl = !isVoid && !isInternalDoc(data.pdf_drive_url) ? data.pdf_drive_url : null;
+      const safePdfUrl = !isVoid && !isInternalDoc(data.pdf_url) ? safeCertUrlOrNull(data.pdf_url) : null;
+      const safePdfDriveUrl = !isVoid && !isInternalDoc(data.pdf_drive_url) ? safeCertUrlOrNull(data.pdf_drive_url) : null;
 
       // Kembalikan HANYA field aman (jangan kirim pdfOriginalUrl atau metadata sensitif)
       res.json({
@@ -547,9 +617,6 @@ export function createApp() {
         ruangan,
         status,
         pdfSource,
-        pdfUrl,
-        pdfDriveUrl,
-        pdfOriginalUrl,
         pdfName,
         calibratedAt,
         validUntil,
@@ -558,6 +625,21 @@ export function createApp() {
 
       if (!noLabel || typeof noLabel !== 'string' || !/^[A-Za-z0-9.\-_/]{1,64}$/.test(noLabel) || noLabel.startsWith('__')) {
         return res.status(400).json({ error: "Nomor label wajib diisi dengan format yang benar" });
+      }
+
+      // Validasi link sertifikat (hanya https Google Drive / penyimpanan resmi)
+      let pdfUrl: string | null;
+      let pdfDriveUrl: string | null;
+      let pdfOriginalUrl: string | null;
+      try {
+        pdfUrl = sanitizeCertUrl(req.body.pdfUrl);
+        pdfDriveUrl = sanitizeCertUrl(req.body.pdfDriveUrl);
+        pdfOriginalUrl = sanitizeCertUrl(req.body.pdfOriginalUrl);
+      } catch (e: any) {
+        if (e instanceof InvalidCertUrlError) {
+          return res.status(400).json({ error: e.message });
+        }
+        throw e;
       }
 
       // 1. Cek record lama untuk proteksi sertifikat
@@ -664,11 +746,29 @@ export function createApp() {
 
       const isUpdateMode = mode === 'update' && (req.userRole === 'admin_utama' || req.userRole === 'admin_teknik');
 
-      const incomingRecords = items
-        .filter((it: any) => {
-          const no = it && (it.noLabel || it.no_label || it.id);
-          return typeof no === 'string' && /^[A-Za-z0-9.\-_/]{1,64}$/.test(no) && !no.startsWith('__');
-        })
+      const validItems = items.filter((it: any) => {
+        const no = it && (it.noLabel || it.no_label || it.id);
+        return typeof no === 'string' && /^[A-Za-z0-9.\-_/]{1,64}$/.test(no) && !no.startsWith('__');
+      });
+
+      // Validasi link sertifikat di setiap item sebelum menyimpan apa pun
+      try {
+        for (const it of validItems) {
+          it.pdfUrl = sanitizeCertUrl(it.pdfUrl || it.pdf_url || null);
+          it.pdfDriveUrl = sanitizeCertUrl(it.pdfDriveUrl || it.pdf_drive_url || null);
+          it.pdfOriginalUrl = sanitizeCertUrl(it.pdfOriginalUrl || it.pdforiginal_url || null);
+          delete it.pdf_url;
+          delete it.pdf_drive_url;
+          delete it.pdforiginal_url;
+        }
+      } catch (e: any) {
+        if (e instanceof InvalidCertUrlError) {
+          return res.status(400).json({ error: e.message });
+        }
+        throw e;
+      }
+
+      const incomingRecords = validItems
         .map((it: any) => ({
           no_label: it.noLabel || it.no_label || it.id,
           nama_rs: it.namaRs || it.nama_rs || null,
@@ -785,6 +885,23 @@ export function createApp() {
           return res.status(500).json({ error: "Label tersimpan, tetapi kode QR gagal diambil. Muat ulang lalu coba lagi." });
         }
         (codeRows || []).forEach((r: any) => { if (r.verify_code) codes[r.no_label] = r.verify_code; });
+      }
+
+      if (recordsToSave.length > 0) {
+        const sortedNos = recordsToSave.map(r => r.no_label).sort();
+        const prefixes = Array.from(new Set(sortedNos.map(n => getLabelPrefix(n))));
+        await logActivity(
+          req,
+          isUpdateMode ? 'UPDATE_LABELS' : 'CREATE_LABELS',
+          `${recordsToSave.length} label ${isUpdateMode ? 'diperbarui' : 'dibuat'} (${sortedNos[0]} s/d ${sortedNos[sortedNos.length - 1]})`,
+          {
+            count: recordsToSave.length,
+            nomorPertama: sortedNos[0],
+            nomorTerakhir: sortedNos[sortedNos.length - 1],
+            prefix: prefixes,
+            dilewatiKarenaSudahAda: skippedExisting.length
+          }
+        );
       }
 
       await broadcastLabelsChanged();
@@ -991,22 +1108,24 @@ export function createApp() {
     }
   });
 
-  app.delete("/api/labels/:noLabel", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+  // Hapus PERMANEN hanya Admin Utama. Admin Teknik memakai fitur "Void" untuk stiker rusak/salah.
+  app.delete("/api/labels/:noLabel", requireAuth, requireRole(['admin_utama']), async (req: AuthRequest, res) => {
     try {
       const { noLabel } = req.params;
       if (!noLabel || noLabel.startsWith('__')) {
         return res.status(404).json({ error: "Label tidak ditemukan" });
       }
-      const { error } = await supabaseAdmin
+      const { data: deletedRows, error } = await supabaseAdmin
         .from('labels')
         .delete()
-        .eq('no_label', noLabel);
+        .eq('no_label', noLabel)
+        .select('*');
 
       if (error) {
         console.error("Supabase delete label error:", error);
         return res.status(500).json({ error: "Gagal menghapus label dari database" });
       }
-      await logActivity(req, 'DELETE_LABEL', `Label ${noLabel} dihapus`, { noLabel });
+      await logDeletedLabelRows(req, 'DELETE_LABEL', `Label ${noLabel} dihapus permanen`, deletedRows || [], { noLabel });
 
       await broadcastLabelsChanged();
       res.json({ success: true });
@@ -1017,7 +1136,7 @@ export function createApp() {
   });
 
   // Batch delete labels endpoint
-  app.post("/api/labels/batch-delete", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+  app.post("/api/labels/batch-delete", requireAuth, requireRole(['admin_utama']), async (req: AuthRequest, res) => {
     try {
       const rawNoLabels = req.body?.noLabels;
       const noLabels: string[] = Array.isArray(rawNoLabels)
@@ -1027,17 +1146,23 @@ export function createApp() {
         return res.json({ success: true, count: 0 });
       }
 
+      const allDeleted: any[] = [];
       for (let i = 0; i < noLabels.length; i += 500) {
-        const { error } = await supabaseAdmin
+        const { data: deletedRows, error } = await supabaseAdmin
           .from('labels')
           .delete()
-          .in('no_label', noLabels.slice(i, i + 500));
+          .in('no_label', noLabels.slice(i, i + 500))
+          .select('*');
         if (error) {
           console.error("Supabase batch delete error:", error);
+          if (allDeleted.length > 0) {
+            await logDeletedLabelRows(req, 'DELETE_LABELS', `${allDeleted.length} label dihapus permanen (sebagian, terhenti karena error)`, allDeleted);
+          }
           return res.status(500).json({ error: "Gagal menghapus data label secara kelompok" });
         }
+        allDeleted.push(...(deletedRows || []));
       }
-      await logActivity(req, 'DELETE_LABELS', `${noLabels.length} label dihapus`, { count: noLabels.length, contoh: noLabels.slice(0, 5) });
+      await logDeletedLabelRows(req, 'DELETE_LABELS', `${allDeleted.length} label dihapus permanen`, allDeleted);
 
       await broadcastLabelsChanged();
       res.json({ success: true, count: noLabels.length });
@@ -1116,7 +1241,7 @@ export function createApp() {
       const { data: updatedData, error: updateError } = await supabaseAdmin
         .from('labels')
         .update({ nama_rs: cleanNamaRs, updated_at: new Date().toISOString() })
-        .like('no_label', `${prefix}.%`)
+        .like('no_label', `${prefix.replace(/[%_\\]/g, '\\$&')}.%`)
         .select('no_label');
       if (updateError) {
         console.error("Gagal update nama_rs folder labels:", updateError);
@@ -1162,8 +1287,8 @@ export function createApp() {
     const { data: deleted, error } = await supabaseAdmin
       .from('labels')
       .delete()
-      .like('no_label', `${prefix}.%`)
-      .select('no_label');
+      .like('no_label', `${prefix.replace(/[%_\\]/g, '\\$&')}.%`)
+      .select('*');
     if (error) {
       console.error("Supabase delete folder labels error:", error);
       return res.status(500).json({ error: "Gagal menghapus label di folder ini" });
@@ -1173,12 +1298,12 @@ export function createApp() {
       console.error("Supabase delete folder_label error:", folderErr);
       return res.status(500).json({ error: "Label terhapus, tetapi data folder gagal dihapus. Coba lagi." });
     }
-    await logActivity(req, 'DELETE_FOLDER', `Folder ${prefix} dihapus (${deleted?.length || 0} label)`, { prefix, count: deleted?.length || 0 });
+    await logDeletedLabelRows(req, 'DELETE_FOLDER', `Folder ${prefix} dihapus permanen (${deleted?.length || 0} label)`, deleted || [], { prefix });
     await broadcastLabelsChanged();
     return res.json({ success: true, deletedCount: deleted?.length || 0 });
   }
 
-  app.delete("/api/folders/:id", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+  app.delete("/api/folders/:id", requireAuth, requireRole(['admin_utama']), async (req: AuthRequest, res) => {
     try {
       await deleteFolderByPrefix(req, res, req.params.id);
     } catch (err: any) {
@@ -1187,7 +1312,7 @@ export function createApp() {
     }
   });
 
-  app.delete("/api/folders/prefix/:prefix", requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+  app.delete("/api/folders/prefix/:prefix", requireAuth, requireRole(['admin_utama']), async (req: AuthRequest, res) => {
     try {
       await deleteFolderByPrefix(req, res, req.params.prefix);
     } catch (err: any) {
@@ -1476,24 +1601,75 @@ export function createApp() {
           updated_by: actor,
           created_at: oldRow?.created_at || serverTimestamp,
           deleted_at: null,
-          deleted_by: null
+          deleted_by: null,
+          // versi server yang dilihat perangkat (untuk update bersyarat), tidak ikut disimpan
+          _baseUpdatedAt: oldRow ? oldRow.updated_at : null,
+          _oldItem: oldItem
         });
       }
 
-      for (let i = 0; i < saved.length; i += 200) {
-        const chunk = saved.slice(i, i + 200);
-        const { error: upErr } = await supabaseAdmin.from(table).upsert(chunk, { onConflict: 'id' });
-        if (upErr) {
-          console.error(`Supabase upsert error on ${table}:`, upErr);
-          return res.status(503).json({ error: "Gagal menyimpan ke database, data disimpan sementara di perangkat dan akan dikirim ulang" });
+      // Simpan secara ATOMIK agar dua perangkat yang menyimpan bersamaan tidak saling timpa:
+      //  - Item lama: UPDATE hanya jika updated_at di database masih sama dengan versi yang dilihat perangkat.
+      //    Jika 0 baris berubah -> ada perangkat lain yang lebih dulu menyimpan -> masuk "conflicts".
+      //  - Item baru: INSERT. Jika id sudah dipakai perangkat lain (bentrok kunci) -> masuk "conflicts".
+      const savedOk: any[] = [];
+      for (const rec of saved) {
+        const { _baseUpdatedAt, _oldItem, ...row } = rec;
+        if (_baseUpdatedAt) {
+          const { data: upd, error: updErr } = await supabaseAdmin
+            .from(table)
+            .update({ data: row.data, updated_at: row.updated_at, updated_by: row.updated_by })
+            .eq('id', row.id)
+            .eq('updated_at', _baseUpdatedAt)
+            .is('deleted_at', null)
+            .select('id');
+          if (updErr) {
+            console.error(`Supabase update error on ${table}:`, updErr);
+            return res.status(503).json({ error: "Gagal menyimpan ke database, data disimpan sementara di perangkat dan akan dikirim ulang", saved: savedOk.map(s => s.id) });
+          }
+          if (!upd || upd.length === 0) {
+            const { data: latest } = await supabaseAdmin
+              .from(table)
+              .select('id, data, updated_at, deleted_at')
+              .eq('id', row.id)
+              .maybeSingle();
+            conflicts.push({
+              id: row.id,
+              incomingBaseUpdatedAt: _baseUpdatedAt,
+              serverUpdatedAt: latest?.updated_at || null,
+              serverItem: latest && !latest.deleted_at ? rowToItem(latest) : _oldItem
+            });
+            continue;
+          }
+        } else {
+          const { error: insErr } = await supabaseAdmin.from(table).insert(row);
+          if (insErr) {
+            if ((insErr as any).code === '23505') {
+              const { data: latest } = await supabaseAdmin
+                .from(table)
+                .select('id, data, updated_at, deleted_at')
+                .eq('id', row.id)
+                .maybeSingle();
+              conflicts.push({
+                id: row.id,
+                incomingBaseUpdatedAt: null,
+                serverUpdatedAt: latest?.updated_at || null,
+                serverItem: latest && !latest.deleted_at ? rowToItem(latest) : null
+              });
+              continue;
+            }
+            console.error(`Supabase insert error on ${table}:`, insErr);
+            return res.status(503).json({ error: "Gagal menyimpan ke database, data disimpan sementara di perangkat dan akan dikirim ulang", saved: savedOk.map(s => s.id) });
+          }
         }
+        savedOk.push(row);
       }
 
       const allItems = await fetchActiveCollection(table);
       const result = {
         success: true,
         count: allItems.length,
-        saved: saved.map(s => s.id),
+        saved: savedOk.map(s => s.id),
         items: allItems,
         conflicts: conflicts.length > 0 ? conflicts : undefined,
         rejected: rejected.length > 0 ? rejected : undefined,
@@ -1789,7 +1965,7 @@ export function createApp() {
   });
 
   // --- API: SETTINGS (Protected by requireAuth + Whitelist; POST restricted to admin_utama) ---
-  const ALLOWED_SETTINGS_KEY_REGEX = /^(appConfig|templates|general|official_templates|company_profile|theme|branding|company_logo|aset_[a-zA-Z0-9_\-]+)$/;
+  const ALLOWED_SETTINGS_KEY_REGEX = /^(appConfig|templates|document_templates_config|general|official_templates|company_profile|theme|branding|company_logo|aset_[a-zA-Z0-9_\-]+)$/;
 
   app.get("/api/settings/:key", requireAuth, async (req: AuthRequest, res) => {
     try {

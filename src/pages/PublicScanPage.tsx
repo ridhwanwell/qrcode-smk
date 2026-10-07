@@ -235,12 +235,20 @@ export default function PublicScanPage() {
   };
 
   // Determine if certificate source is Google Drive
+  // Pengaman: hanya link https:// atau blob: yang boleh dipakai di tombol/iframe.
+  // Mencegah link berbahaya (misal "javascript:...") yang tersimpan di database ikut dijalankan.
+  const safeUrl = (url: any): string | null => {
+    if (typeof url !== 'string') return null;
+    const u = url.trim();
+    return /^https:\/\//i.test(u) || /^blob:/i.test(u) ? u : null;
+  };
+
   const isDrive = labelData?.pdfSource === 'drive' || !!labelData?.pdfDriveUrl || !!labelData?.pdfOriginalUrl || (typeof labelData?.pdfUrl === 'string' && labelData.pdfUrl.includes('drive.google.com'));
-  const driveViewUrl = labelData?.pdfDriveUrl || labelData?.pdfOriginalUrl || (isDrive && labelData?.pdfUrl ? labelData.pdfUrl : null);
+  const driveViewUrl = safeUrl(labelData?.pdfDriveUrl || labelData?.pdfOriginalUrl || (isDrive && labelData?.pdfUrl ? labelData.pdfUrl : null));
   const rawDriveTarget = labelData?.pdfOriginalUrl || labelData?.pdfDriveUrl || labelData?.pdfUrl || '';
   const driveEmbedUrl = isDrive && rawDriveTarget ? getGoogleDriveEmbedUrl(rawDriveTarget) : null;
 
-  const activePdfUrl = driveEmbedUrl || pdfBlobUrl || labelData?.pdfUrl;
+  const activePdfUrl = safeUrl(driveEmbedUrl || pdfBlobUrl || labelData?.pdfUrl);
   const isReady = labelData && (
     labelData.status === 'Sertifikat Tertaut' || 
     labelData.hasPdf || 

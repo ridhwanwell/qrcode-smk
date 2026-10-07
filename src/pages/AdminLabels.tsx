@@ -13,6 +13,7 @@ import {
 } from '../lib/pdfStorage';
 import { fetchFolderRsFromSupabase, saveFolderRsToSupabase, upsertLabelsToSupabase } from '../lib/supabaseSync';
 import { apiFetch } from '../lib/apiClient';
+import { useAuth } from '../lib/AuthContext';
 import { INITIAL_HOSPITALS } from '../data/mockData';
 import { 
   Search, 
@@ -79,6 +80,10 @@ export function extractLabelPrefix(noLabel: string): string {
 }
 
 export default function AdminLabels() {
+  // Hapus PERMANEN label/folder hanya untuk Admin Utama (server juga menolak role lain).
+  // Admin Teknik memakai tombol "Void" untuk stiker rusak/salah.
+  const { role } = useAuth();
+  const canHardDelete = role === 'admin_utama';
   const [labels, setLabels] = useState<any[]>(() => {
     try {
       const raw = localStorage.getItem('smk_labels');
@@ -1076,7 +1081,7 @@ export default function AdminLabels() {
                           Buka Folder &rarr;
                         </span>
                         
-                        <button
+                        {canHardDelete && (<button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1091,7 +1096,7 @@ export default function AdminLabels() {
                           title={labelsLoadError ? "Muat ulang data dulu sebelum menghapus atau membuat label" : `Hapus Seluruh Folder ${folder.prefix}`}
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>)}
                       </div>
                     </div>
                   </div>
@@ -1166,7 +1171,7 @@ export default function AdminLabels() {
                 <FilePlus2 className="w-3.5 h-3.5" />
                 <span>Generate Label Baru</span>
               </Link>
-              <button
+              {canHardDelete && (<button
                 type="button"
                 onClick={() => {
                   if (labelsLoadError) return;
@@ -1181,7 +1186,7 @@ export default function AdminLabels() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Hapus Folder ({activeFolder.totalCount} File)
-              </button>
+              </button>)}
             </div>
           </div>
 
@@ -1415,7 +1420,7 @@ export default function AdminLabels() {
                                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                   : label.status === 'Void / Rusak' ? <Undo2 className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
                               </button>
-                              <button 
+                              {canHardDelete && (<button 
                                 type="button"
                                 onClick={() => {
                                   if (labelsLoadError) return;
@@ -1429,7 +1434,7 @@ export default function AdminLabels() {
                                 title={labelsLoadError ? "Muat ulang data dulu sebelum menghapus atau membuat label" : "Hapus Label Ini"}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              </button>)}
                             </div>
                           </td>
                         </tr>

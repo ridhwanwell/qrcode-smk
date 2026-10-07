@@ -3,7 +3,7 @@
  * Persisted in Supabase `settings` table under key 'document_templates_config'.
  */
 
-import { supabase } from './supabaseClient';
+import { apiFetch } from './apiClient';
 import { getAuthenticKopSuratBase64 } from './kopSuratService';
 
 export type TemplateDocType = 'kop_surat' | 'sph' | 'spk' | 'bap' | 'bastp';
@@ -187,34 +187,69 @@ export function getDefaultTemplatesConfig(): AllTemplatesConfig {
 }
 
 /**
- * Fetch full configuration for all templates from Supabase
+ * Baca konfigurasi template dari server (GET /api/settings/document_templates_config).
+ * Melempar error bila server gagal dihubungi, supaya proses SIMPAN tidak pernah
+ * menimpa template asli dengan template bawaan.
+ * Mengembalikan null bila memang belum pernah disimpan.
+ */
+async function fetchStoredTemplatesConfig(): Promise<Record<string, any> | null> {
+  const res = await apiFetch(`/api/settings/${TEMPLATES_DOC_ID}`);
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.error || `Gagal memuat template dokumen (status ${res.status})`);
+  }
+  const json = await res.json();
+  if (!json || json.value === null || json.value === undefined || json.value === '') return null;
+  return typeof json.value === 'string' ? JSON.parse(json.value) : json.value;
+}
+
+function buildConfigFromStored(parsed: Record<string, any> | null): AllTemplatesConfig {
+  const defaults = getDefaultTemplatesConfig();
+  if (!parsed) return defaults;
+  return {
+    kop_surat: parsed.config_kop_surat || defaults.kop_surat,
+    sph: parsed.config_sph || defaults.sph,
+    spk: parsed.config_spk || defaults.spk,
+    bap: parsed.config_bap || defaults.bap,
+    bastp: parsed.config_bastp || defaults.bastp
+  };
+}
+
+/** Versi ketat: melempar error bila server gagal (dipakai sebelum menyimpan). */
+async function getFullTemplatesConfigStrict(): Promise<AllTemplatesConfig> {
+  return buildConfigFromStored(await fetchStoredTemplatesConfig());
+}
+
+/** Simpan seluruh konfigurasi template lewat server (hanya Admin Utama). */
+async function persistTemplatesConfig(currentConfig: AllTemplatesConfig): Promise<void> {
+  const payload: Record<string, any> = {};
+  const types: TemplateDocType[] = ['kop_surat', 'sph', 'spk', 'bap', 'bastp'];
+  types.forEach(t => {
+    payload[`config_${t}`] = currentConfig[t];
+  });
+
+  const res = await apiFetch(`/api/settings/${TEMPLATES_DOC_ID}`, {
+    method: 'POST',
+    body: JSON.stringify({ value: JSON.stringify(payload) })
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    if (res.status === 413) {
+      throw new Error('File template terlalu besar untuk disimpan. Gunakan file yang lebih kecil atau simpan di Google Drive.');
+    }
+    throw new Error(errJson.error || `Gagal menyimpan template dokumen (status ${res.status})`);
+  }
+}
+
+/**
+ * Fetch full configuration for all templates (untuk tampilan/cetak).
+ * Bila server gagal, memakai template bawaan agar dokumen tetap bisa dicetak.
  */
 export const getFullTemplatesConfig = async (): Promise<AllTemplatesConfig> => {
   try {
-    const { data } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', TEMPLATES_DOC_ID)
-      .maybeSingle();
-
-    if (!data || !data.value) {
-      return getDefaultTemplatesConfig();
-    }
-
-    const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-    const defaults = getDefaultTemplatesConfig();
-
-    const config: AllTemplatesConfig = {
-      kop_surat: parsed.config_kop_surat || defaults.kop_surat,
-      sph: parsed.config_sph || defaults.sph,
-      spk: parsed.config_spk || defaults.spk,
-      bap: parsed.config_bap || defaults.bap,
-      bastp: parsed.config_bastp || defaults.bastp
-    };
-
-    return config;
+    return await getFullTemplatesConfigStrict();
   } catch (error) {
-    console.warn('Error reading templates config from Supabase:', error);
+    console.warn('Gagal memuat konfigurasi template dari server, memakai template bawaan:', error);
     return getDefaultTemplatesConfig();
   }
 };
@@ -232,7 +267,7 @@ export const saveTemplateVersion = async (
   arg7?: any
 ): Promise<TemplateVersion> => {
   try {
-    const currentConfig = await getFullTemplatesConfig();
+    const currentConfig = await getFullTemplatesConfigStrict();
     const typeConfig = currentConfig[type];
 
     let fileType: 'pdf' | 'docx' | 'xlsx' = 'pdf';
@@ -291,19 +326,7 @@ export const saveTemplateVersion = async (
 
     currentConfig[type] = updatedTypeConfig;
 
-    const payload: Record<string, any> = {};
-    const types: TemplateDocType[] = ['kop_surat', 'sph', 'spk', 'bap', 'bastp'];
-    types.forEach(t => {
-      payload[`config_${t}`] = currentConfig[t];
-    });
-
-    await supabase
-      .from('settings')
-      .upsert({
-        key: TEMPLATES_DOC_ID,
-        value: JSON.stringify(payload),
-        updated_at: new Date().toISOString()
-      });
+    await persistTemplatesConfig(currentConfig);
 
     return newVersion;
   } catch (error) {
@@ -322,7 +345,7 @@ export const setActiveTemplateVersion = async (
   versionId: string
 ): Promise<void> => {
   try {
-    const currentConfig = await getFullTemplatesConfig();
+    const currentConfig = await getFullTemplatesConfigStrict();
     const typeConfig = currentConfig[type];
     const targetVersion = typeConfig.versions.find(v => v.id === versionId);
     
@@ -339,19 +362,7 @@ export const setActiveTemplateVersion = async (
 
     currentConfig[type] = updatedTypeConfig;
 
-    const payload: Record<string, any> = {};
-    const types: TemplateDocType[] = ['kop_surat', 'sph', 'spk', 'bap', 'bastp'];
-    types.forEach(t => {
-      payload[`config_${t}`] = currentConfig[t];
-    });
-
-    await supabase
-      .from('settings')
-      .upsert({
-        key: TEMPLATES_DOC_ID,
-        value: JSON.stringify(payload),
-        updated_at: new Date().toISOString()
-      });
+    await persistTemplatesConfig(currentConfig);
   } catch (error) {
     console.error(`Error activating template version:`, error);
     throw error;
@@ -366,7 +377,7 @@ export const deleteTemplateVersion = async (
   versionId: string
 ): Promise<void> => {
   try {
-    const currentConfig = await getFullTemplatesConfig();
+    const currentConfig = await getFullTemplatesConfigStrict();
     const typeConfig = currentConfig[type];
     const updatedVersions = typeConfig.versions.filter(v => v.id !== versionId);
 
@@ -405,19 +416,7 @@ export const deleteTemplateVersion = async (
 
     currentConfig[type] = updatedTypeConfig;
 
-    const payload: Record<string, any> = {};
-    const types: TemplateDocType[] = ['kop_surat', 'sph', 'spk', 'bap', 'bastp'];
-    types.forEach(t => {
-      payload[`config_${t}`] = currentConfig[t];
-    });
-
-    await supabase
-      .from('settings')
-      .upsert({
-        key: TEMPLATES_DOC_ID,
-        value: JSON.stringify(payload),
-        updated_at: new Date().toISOString()
-      });
+    await persistTemplatesConfig(currentConfig);
   } catch (error) {
     console.error(`Error deleting template version:`, error);
     throw error;
@@ -432,7 +431,7 @@ export const saveTemplateMappings = async (
   mappings: Record<string, string>
 ): Promise<void> => {
   try {
-    const currentConfig = await getFullTemplatesConfig();
+    const currentConfig = await getFullTemplatesConfigStrict();
     const typeConfig = currentConfig[type];
 
     const updatedVersions = typeConfig.versions.map(v => {
@@ -450,19 +449,7 @@ export const saveTemplateMappings = async (
 
     currentConfig[type] = updatedTypeConfig;
 
-    const payload: Record<string, any> = {};
-    const types: TemplateDocType[] = ['kop_surat', 'sph', 'spk', 'bap', 'bastp'];
-    types.forEach(t => {
-      payload[`config_${t}`] = currentConfig[t];
-    });
-
-    await supabase
-      .from('settings')
-      .upsert({
-        key: TEMPLATES_DOC_ID,
-        value: JSON.stringify(payload),
-        updated_at: new Date().toISOString()
-      });
+    await persistTemplatesConfig(currentConfig);
   } catch (error) {
     console.error(`Error saving mappings for ${type}:`, error);
     throw error;
