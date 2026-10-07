@@ -416,15 +416,22 @@ function AsetPortalMain() {
   };
 
   // Helper to remove schedule associated with an SPH when status is no longer Deal
-  const removeScheduleForSph = (sph: SphQuotation) => {
+  // Jadwal SPH TRANSISI (upload SPH lama) TIDAK ikut terhapus saat status SPH berubah,
+  // karena berisi realisasi lapangan & progres selia. Hanya ikut terhapus bila SPH-nya dihapus (includeTransisi).
+  const removeScheduleForSph = (sph: SphQuotation, includeTransisi: boolean = false) => {
     const spkNum = generateSpkNumberFromSph(sph.sphNumber);
     const bapNum = generateBapNumberFromSph(sph.sphNumber);
 
-    const matchingSchedules = schedules.filter(s => 
-      (sph.sphNumber && s.notes?.includes(sph.sphNumber)) ||
-      (spkNum && s.workOrderNumber === spkNum) ||
-      (bapNum && s.bapNumber === bapNum)
-    );
+    const matchingSchedules = schedules.filter(s => {
+      if (s.sumber === 'transisi' && !includeTransisi) return false;
+      if (s.sumber === 'transisi') return s.sphId === sph.id;
+      return (
+        (sph.id && s.sphId === sph.id) ||
+        (sph.sphNumber && s.notes?.includes(sph.sphNumber)) ||
+        (spkNum && s.workOrderNumber === spkNum) ||
+        (bapNum && s.bapNumber === bapNum)
+      );
+    });
 
     matchingSchedules.forEach(sch => {
       removeSchedule(sch.id);
@@ -441,15 +448,36 @@ function AsetPortalMain() {
     const totalUnits = sph.items.reduce((sum, it) => sum + (it.quantity || 1), 0);
     const labelRange = calculateLabelRange(sphPrefix, 1, Math.max(1, totalUnits));
 
-    // Check if schedule for this SPH already exists
-    const existingSch = schedules.find(s => 
-      (s.sphId && s.sphId === sph.id) ||
-      (sph.sphNumber && s.sphNumber === sph.sphNumber) ||
-      (sph.sphNumber && s.notes?.includes(sph.sphNumber)) ||
-      (spkNum && s.workOrderNumber === spkNum) ||
-      (bapNum && s.bapNumber === bapNum) ||
-      (s.hospitalName && sph.hospitalName && s.hospitalName.toLowerCase() === sph.hospitalName.toLowerCase())
-    );
+    // Cari jadwal milik SPH ini: utamakan ID & nomor SPH. Nama RS hanya cadangan untuk jadwal lama
+    // yang belum punya nomor SPH sama sekali (agar SPH tahun berikutnya tidak menimpa jadwal lama).
+    const normNo = (v?: string) => (v || '').replace(/\s+/g, '').toUpperCase();
+    const existingSch =
+      schedules.find(s => s.sphId && s.sphId === sph.id) ||
+      schedules.find(s => sph.sphNumber && normNo(s.sphNumber) === normNo(sph.sphNumber)) ||
+      schedules.find(s => s.sumber !== 'transisi' && (
+        (sph.sphNumber && s.notes?.includes(sph.sphNumber)) ||
+        (spkNum && s.workOrderNumber === spkNum) ||
+        (bapNum && s.bapNumber === bapNum)
+      )) ||
+      schedules.find(s =>
+        s.sumber !== 'transisi' && !s.sphId && !s.sphNumber &&
+        s.hospitalName && sph.hospitalName && s.hospitalName.toLowerCase() === sph.hospitalName.toLowerCase()
+      );
+
+    // SPH TRANSISI: daftar alat, realisasi, label & selia di jadwal TIDAK diganti.
+    // Hanya nomor BO / FP / KWP yang diperbarui.
+    if (existingSch && (existingSch.sumber === 'transisi' || sph.sumber === 'transisi')) {
+      const updatedTransisi: CalibrationSchedule = {
+        ...existingSch,
+        sphId: existingSch.sphId || sph.id,
+        sphNumber: existingSch.sphNumber || sph.sphNumber,
+        boNumber: sph.dealData?.boNumber || existingSch.boNumber,
+        fpNumber: sph.dealData?.fpNumber || existingSch.fpNumber,
+        kwpNumber: sph.dealData?.kwpNumber || existingSch.kwpNumber
+      };
+      updateSchedule(updatedTransisi);
+      return updatedTransisi;
+    }
 
     const targetDevicesWithLabels = assignDeviceLabels(
       sph.items.map((it, idx) => ({
@@ -572,7 +600,9 @@ function AsetPortalMain() {
       confetti({ particleCount: 75, spread: 65 });
     } else {
       removeScheduleForSph(targetSph);
-      showToast(`Status SPH ${targetSph.sphNumber} diubah menjadi "${newStatus}". Penjadwalan RS telah dihapus.`);
+      showToast(targetSph.sumber === 'transisi'
+        ? `Status SPH ${targetSph.sphNumber} diubah menjadi "${newStatus}". Jadwal SPH transisi tetap disimpan.`
+        : `Status SPH ${targetSph.sphNumber} diubah menjadi "${newStatus}". Penjadwalan RS telah dihapus.`);
     }
   };
 
@@ -625,7 +655,7 @@ function AsetPortalMain() {
   const handleDeleteSph = (sphId: string) => {
     const targetSph = sphList.find(s => s.id === sphId);
     if (targetSph) {
-      removeScheduleForSph(targetSph);
+      removeScheduleForSph(targetSph, true);
     }
     removeSph(sphId);
     if (editingSph?.id === sphId) setEditingSph(null);
@@ -696,9 +726,27 @@ function AsetPortalMain() {
 
   // Schedule & SPK Handlers
   const handleSaveSchedule = (scheduleToSave: CalibrationSchedule) => {
-    const exists = schedules.some(s => s.id === scheduleToSave.id);
+    const existing = schedules.find(s => s.id === scheduleToSave.id);
+    const exists = !!existing;
     if (exists) {
-      updateSchedule(scheduleToSave);
+      // Pertahankan data yang tidak ada di form (unit selia, nomor SPH/BO, sumber transisi, sertifikat, dll.)
+      const merged: CalibrationSchedule = { ...existing, ...scheduleToSave };
+      if (existing.sumber === 'transisi') {
+        merged.sumber = 'transisi';
+        // Qty SPH per alat tetap (juga dikunci di database)
+        merged.targetDevices = (merged.targetDevices || []).map(d => {
+          const old = existing.targetDevices?.find(o => o.id === d.id);
+          return old && old.sphQuantity !== undefined ? { ...d, sphQuantity: old.sphQuantity, sphItemId: old.sphItemId, tanda: old.tanda } : d;
+        });
+        // Label transisi diketik admin: jangan diganti hitungan form
+        merged.labelStart = existing.labelStart;
+        merged.labelEnd = existing.labelEnd;
+        merged.labelRange = existing.labelRange;
+      }
+      if (existing.seliaItems && existing.seliaItems.length > 0) {
+        merged.seliaItems = ensureDeviceSeliaItems(merged, sphList);
+      }
+      updateSchedule(merged);
       showToast(`Jadwal kalibrasi ${scheduleToSave.hospitalName} berhasil diperbarui!`);
     } else {
       addSchedule(scheduleToSave);
@@ -1037,6 +1085,12 @@ function AsetPortalMain() {
                 bapDocuments={bapDocuments}
                 schedules={schedules}
                 onOpenBap={handleOpenBap}
+                onSphTransisiCreated={(created) => {
+                  forcePullSph();
+                  forcePullSchedules();
+                  showToast(`SPH ${created.sph.sphNumber} (${created.sph.hospitalName}) tersimpan & otomatis masuk Penjadwalan RS.`);
+                  confetti({ particleCount: 70, spread: 60 });
+                }}
               />
             </motion.div>
           )}

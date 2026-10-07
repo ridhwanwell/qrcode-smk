@@ -52,6 +52,10 @@ import { exportSpkToWord, exportBapToWord } from '../utils/spkWordExport';
 import { exportBapToExcel } from '../utils/bapExcelExport';
 import { createBapFromSchedule, createBapFromSph, getBapPoOptionsFromSph, formatIndonesianPoDate } from '../utils/bapHelpers';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { RealisasiTransisiModal, hitungSelisihTransisi } from './RealisasiTransisiModal';
+import { useAuth } from '../lib/AuthContext';
+import { deviceUnitCount } from '../utils/helpers';
+import { ClipboardCheck } from 'lucide-react';
 
 interface ScheduleManagerProps {
   schedules: CalibrationSchedule[];
@@ -96,6 +100,9 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   const [technicianFilter, setTechnicianFilter] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [deleteTargetSchedule, setDeleteTargetSchedule] = useState<CalibrationSchedule | null>(null);
+  const [realisasiTarget, setRealisasiTarget] = useState<CalibrationSchedule | null>(null);
+  const { role } = useAuth();
+  const canEditRealisasi = role === 'admin_utama' || role === 'admin_teknik' || role === 'admin_keuangan';
 
   // BAP Excel Download Modal State in Penjadwalan RS
   const [bapTargetSchedule, setBapTargetSchedule] = useState<CalibrationSchedule | null>(null);
@@ -480,7 +487,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
           {filteredSchedules.map((schedule) => {
             const urgency = getUrgencyInfo(schedule, TODAY_STR);
             const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
-            const totalQty = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
+            const totalQty = targetDevices.reduce((sum, d) => sum + deviceUnitCount(d), 0);
             const supportTechNames = Array.isArray(schedule.supportTechnicianNames) ? schedule.supportTechnicianNames : [];
             const calibratorNames = Array.isArray(schedule.assignedCalibratorNames) ? schedule.assignedCalibratorNames : [];
 
@@ -510,6 +517,26 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
                     {schedule.hospitalCity}
                   </p>
+                  {schedule.sumber === 'transisi' && (() => {
+                    const sel = hitungSelisihTransisi(schedule);
+                    return (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-300">
+                          SPH Transisi • {schedule.sphNumber}
+                        </span>
+                        {sel.selisih > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300" title="Realisasi lebih dari SPH — perbarui BO">
+                            +{sel.selisih} unit di luar SPH
+                          </span>
+                        )}
+                        {sel.selisih < 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-300">
+                            {sel.selisih} unit dari SPH
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Card Body */}
@@ -618,6 +645,17 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                     <span>BAP Excel</span>
                   </button>
 
+                  {schedule.sumber === 'transisi' && (
+                    <button
+                      onClick={() => setRealisasiTarget(schedule)}
+                      className="bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-300 py-2 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                      title="Qty SPH vs realisasi lapangan + riwayat perubahan"
+                    >
+                      <ClipboardCheck className="w-3.5 h-3.5" />
+                      <span>Realisasi</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => onOpenEditScheduleModal(schedule)}
                     className="bg-white hover:bg-[#EEEEEE] text-slate-700 border border-[#DCDFE3] p-2 rounded-lg text-xs transition-colors shadow-xs cursor-pointer"
@@ -661,7 +699,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                 {filteredSchedules.map((sch) => {
                   const urgency = getUrgencyInfo(sch, TODAY_STR);
                   const targetDevices = Array.isArray(sch.targetDevices) ? sch.targetDevices : [];
-                  const totalQty = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
+                  const totalQty = targetDevices.reduce((sum, d) => sum + deviceUnitCount(d), 0);
 
                   return (
                     <tr key={sch.id} className="hover:bg-[#EEEEEE]/40 transition-colors">
@@ -747,6 +785,15 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         </div>
       )}
 
+      {realisasiTarget && (
+        <RealisasiTransisiModal
+          schedule={schedules.find(x => x.id === realisasiTarget.id) || realisasiTarget}
+          canEdit={canEditRealisasi && !!onUpdateSchedule}
+          onClose={() => setRealisasiTarget(null)}
+          onSave={(updated) => onUpdateSchedule?.(updated)}
+        />
+      )}
+
       {/* Confirmation Modal for Deleting Schedule */}
       <ConfirmDeleteModal
         isOpen={deleteTargetSchedule !== null}
@@ -773,7 +820,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         );
         const options = getBapPoOptionsFromSph(matchingSph, bapTargetSchedule.workOrderNumber);
         const targetDevices = Array.isArray(bapTargetSchedule.targetDevices) ? bapTargetSchedule.targetDevices : [];
-        const totalUnits = targetDevices.reduce((sum, d) => sum + (d?.quantity || 1), 0);
+        const totalUnits = targetDevices.reduce((sum, d) => sum + deviceUnitCount(d), 0);
 
         return (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">

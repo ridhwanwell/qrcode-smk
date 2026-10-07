@@ -514,8 +514,186 @@ export function getScheduleDealNumbers(schedule: CalibrationSchedule, sphList: S
   };
 }
 
+/** Jumlah unit alat. Kosong/tidak diisi = 1 (perilaku lama); 0 = alat tidak ada di lapangan. */
+export function deviceUnitCount(d: { quantity?: any }): number {
+  const raw = d?.quantity;
+  if (raw === undefined || raw === null || raw === '') return 1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
+ * Label untuk jadwal SPH TRANSISI: admin mengetik nomor label pertama (mis. "257.0001"),
+ * label berikutnya berurutan. Alat dengan qty 0 tidak mendapat label.
+ */
+export function assignDeviceLabelsFromStart(
+  devices: MedicalDeviceToCalibrate[],
+  labelStart: string
+): MedicalDeviceToCalibrate[] {
+  const { hospitalCode, sequence } = parseLabelNumber(labelStart);
+  let currentSeq = Math.max(1, sequence);
+  return devices.map(dev => {
+    const qty = deviceUnitCount(dev);
+    if (qty === 0) {
+      return { ...dev, labelNumber: '-', labelSequenceStart: undefined, labelSequenceEnd: undefined };
+    }
+    const seqStart = currentSeq;
+    const seqEnd = currentSeq + qty - 1;
+    currentSeq += qty;
+    const a = formatLabelNumber(hospitalCode, seqStart);
+    const b = formatLabelNumber(hospitalCode, seqEnd);
+    return { ...dev, labelNumber: qty === 1 ? a : `${a} s/d ${b}`, labelSequenceStart: seqStart, labelSequenceEnd: seqEnd };
+  });
+}
+
+function normDeviceName(s: string): string {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * GABUNGKAN daftar unit Selia dengan daftar alat terbaru TANPA menghapus progres selia yang sudah ada:
+ *  - Unit lama dicocokkan ke alat lewat id alat, atau nama alat bila id berubah.
+ *  - Alat yang qty-nya bertambah / alat baru -> unit baru dengan nomor label melanjutkan urutan terakhir.
+ *  - Qty berkurang -> unit "Belum Diselia" paling akhir dilepas; unit yang sudah diproses tidak pernah dihapus.
+ * Hasil berurutan sesuai urutan alat, lalu unit lama yang alatnya sudah tidak ada.
+ */
+function mergeSeliaItems(
+  schedule: CalibrationSchedule,
+  existing: DeviceSeliaItem[],
+  prefixForNew: string,
+  dropUnusedOrphans: boolean = false
+): DeviceSeliaItem[] {
+  const targetDevices = Array.isArray(schedule.targetDevices) ? schedule.targetDevices : [];
+  const deviceIds = new Set(targetDevices.map(d => d.id));
+  const pool = existing.map(it => ({ it, used: false }));
+
+  // nomor urut label terbesar per prefix (agar unit baru melanjutkan)
+  let maxSeq = 0;
+  existing.forEach(it => {
+    const p = parseLabelNumber(it.labelNumber || '');
+    if ((it.labelNumber || '').startsWith(`${prefixForNew}.`) && p.sequence > maxSeq) maxSeq = p.sequence;
+  });
+
+  const result: DeviceSeliaItem[] = [];
+  const today = getCurrentDateStr();
+
+  targetDevices.forEach(d => {
+    const want = deviceUnitCount(d);
+    // unit milik alat ini: id sama; bila kurang, ambil unit "yatim" (id alat lama sudah tidak ada) bernama sama
+    const mine = pool.filter(p => !p.used && p.it.parentDeviceId === d.id);
+    if (mine.length < want) {
+      const byName = pool.filter(p => !p.used && !mine.includes(p) &&
+        !deviceIds.has(p.it.parentDeviceId) && normDeviceName(p.it.deviceName) === normDeviceName(d.name));
+      mine.push(...byName.slice(0, want - mine.length));
+    }
+    mine.forEach(p => { p.used = true; });
+
+    let kept = mine.map(p => p.it);
+    if (kept.length > want) {
+      // lepas unit belum diproses dari belakang
+      const keep: DeviceSeliaItem[] = [];
+      let toDrop = kept.length - want;
+      for (let i = kept.length - 1; i >= 0; i--) {
+        if (toDrop > 0 && kept[i].seliaStatus === 'Belum Diselia' && !(kept[i].keterangan || '').trim()) {
+          toDrop--;
+          continue;
+        }
+        keep.unshift(kept[i]);
+      }
+      kept = keep;
+    }
+
+    const units = kept.map(u => ({ ...u, parentDeviceId: d.id, deviceName: d.name }));
+    for (let i = units.length; i < want; i++) {
+      maxSeq += 1;
+      units.push({
+        id: `selia-${schedule.id || 'sch'}-${d.id}-${i + 1}-${maxSeq}`,
+        unitNo: 0,
+        parentDeviceId: d.id,
+        deviceName: d.name,
+        unitTitle: d.name,
+        brandModel: d.brandModel || '-',
+        serialNumber: d.serialNumber || '-',
+        labelNumber: formatLabelNumber(prefixForNew, maxSeq),
+        room: d.room || '-',
+        testStatus: 'Laik Pakai / Sudah Lulus Kalibrasi',
+        seliaStatus: 'Belum Diselia',
+        keterangan: '',
+        updatedAt: today
+      });
+    }
+    const total = units.length;
+    units.forEach((u, idx) => {
+      u.unitTitle = total > 1 ? `${d.name} (Unit #${idx + 1})` : d.name;
+    });
+    result.push(...units);
+  });
+
+  // unit lama yang alatnya sudah tidak ada: tetap disimpan bila sudah diproses (progres tidak hilang).
+  // Untuk jadwal transisi, unit yang belum diproses ikut dilepas.
+  pool.filter(p => !p.used).forEach(p => {
+    const belumDiproses = p.it.seliaStatus === 'Belum Diselia' && !(p.it.keterangan || '').trim();
+    if (dropUnusedOrphans && belumDiproses) return;
+    result.push(p.it);
+  });
+
+  return result.map((u, idx) => ({ ...u, unitNo: idx + 1 }));
+}
+
+function seliaItemsSama(a: DeviceSeliaItem[], b: DeviceSeliaItem[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b[i];
+    if (x.id !== y.id || x.parentDeviceId !== y.parentDeviceId || x.labelNumber !== y.labelNumber ||
+        x.unitNo !== y.unitNo || x.unitTitle !== y.unitTitle || x.deviceName !== y.deviceName) return false;
+  }
+  return true;
+}
+
 export function ensureDeviceSeliaItems(schedule: CalibrationSchedule, sphList: SphQuotation[] = []): DeviceSeliaItem[] {
+  // --- Jadwal SPH TRANSISI: label diketik admin, tidak pernah disinkronkan ke prefix BO ---
+  if (schedule.sumber === 'transisi') {
+    const startLabel = schedule.labelStart || '';
+    const prefix = parseLabelNumber(startLabel).hospitalCode;
+    if (!schedule.seliaItems || schedule.seliaItems.length === 0) {
+      const labeled = assignDeviceLabelsFromStart(schedule.targetDevices || [], startLabel || `${prefix}.0001`);
+      const items: DeviceSeliaItem[] = [];
+      let unitNo = 1;
+      labeled.forEach(d => {
+        const qty = deviceUnitCount(d);
+        for (let i = 0; i < qty; i++) {
+          items.push({
+            id: `selia-${schedule.id || 'sch'}-${d.id}-${i + 1}`,
+            unitNo: unitNo++,
+            parentDeviceId: d.id,
+            deviceName: d.name,
+            unitTitle: qty > 1 ? `${d.name} (Unit #${i + 1})` : d.name,
+            brandModel: d.brandModel || '-',
+            serialNumber: d.serialNumber || '-',
+            labelNumber: formatLabelNumber(prefix, (d.labelSequenceStart || 1) + i),
+            room: d.room || '-',
+            testStatus: 'Laik Pakai / Sudah Lulus Kalibrasi',
+            seliaStatus: 'Belum Diselia',
+            keterangan: '',
+            updatedAt: getCurrentDateStr()
+          });
+        }
+      });
+      return items;
+    }
+    const merged = mergeSeliaItems(schedule, schedule.seliaItems, prefix, true);
+    return seliaItemsSama(merged, schedule.seliaItems) ? schedule.seliaItems : merged;
+  }
+
   const expectedPrefix = getScheduleDealPrefix(schedule, sphList);
+
+  if (schedule.seliaItems && schedule.seliaItems.length > 0) {
+    // Gabungkan dengan daftar alat terbaru (alat tambahan masuk, progres lama tetap)
+    const merged = mergeSeliaItems(schedule, schedule.seliaItems, expectedPrefix);
+    if (!seliaItemsSama(merged, schedule.seliaItems)) {
+      schedule = { ...schedule, seliaItems: merged };
+    }
+  }
 
   if (schedule.seliaItems && schedule.seliaItems.length > 0) {
     // Check if any existing item has a mismatched prefix (e.g. old "100.xxxx" when BO/FP is "045" or "074")

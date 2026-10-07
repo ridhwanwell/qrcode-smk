@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { supabaseAdmin } from "./supabaseAdmin.js";
 import { requireAuth, requireRole, OFFICIAL_ROLES } from "../middleware/auth.js";
 import type { AuthRequest, UserRole } from "../middleware/auth.js";
+import { registerSphTransisiRoutes } from "./sphTransisiRoutes.js";
 
 export interface IdempotencyRecord {
   statusCode: number;
@@ -1769,6 +1770,14 @@ export function createApp() {
       console.error(`API error in DELETE /api/collections/${req.params.name}:`, err);
       res.status(500).json({ error: "Terjadi kesalahan sistem saat mengosongkan koleksi" });
     }
+  });
+
+  // --- API: SPH TRANSISI (Tambah Manual + Upload SPH lama) ---
+  registerSphTransisiRoutes(app, {
+    getIdempotencyRecord,
+    saveIdempotencyRecord,
+    rowToItem,
+    logCollectionActivity
   });
 
   // --- API: SIGNED URL GENERATION FOR PRIVATE DOCUMENTS (SPH, SPK, BAP, ETC.) ---

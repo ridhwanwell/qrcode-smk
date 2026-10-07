@@ -64,6 +64,35 @@ export interface MedicalDeviceToCalibrate {
   status: 'Pending' | 'In Progress' | 'Pass' | 'Fail' | 'Needs Adjustment';
   measuredErrorPercent?: number;
   notes?: string;
+  // --- SPH Transisi ---
+  sphQuantity?: number | null;  // Qty menurut SPH (terkunci di database). Kosong = alat di luar SPH
+  sphItemId?: string;           // id item SPH asal
+  tanda?: TandaKeteranganSph | null; // *, **, ***, ****
+}
+
+/** Tanda bintang keterangan di bawah tabel SPH */
+export type TandaKeteranganSph = '*' | '**' | '***' | '****';
+
+export interface SphTransisiInfo {
+  pathFile: string;            // sph/transisi/<acak>.pdf|xlsx (bucket privat internal-documents)
+  namaFile: string;
+  jenisFile: 'pdf' | 'xlsx';
+  hashFile?: string;           // sha256
+  ringkasanFile: {             // angka TERTULIS di file SPH
+    jumlahUnit: number | null;
+    total1: number | null;
+    akomodasi: number | null;
+    total2: number | null;
+    ppn: number | null;
+    grandTotal: number | null;
+  };
+  ringkasanBaca: {             // hasil penjumlahan baris yang terbaca
+    jumlahUnit: number;
+    total1: number;
+  };
+  totalCocok: boolean;
+  diuploadOleh?: string;
+  diuploadPada?: string;
 }
 
 export interface CalibrationSchedule {
@@ -118,6 +147,7 @@ export interface CalibrationSchedule {
   approvedByRole?: string;     // Manajer Teknik PT. Sarana Multi Kalibrasi
   mtSignatureUrl?: string;     // TTD Manajer Teknik
   seliaItems?: DeviceSeliaItem[]; // Itemized 1-by-1 unit tracking for review & certificates
+  sumber?: 'web' | 'transisi'; // 'transisi' = dibuat dari upload SPH lama (Excel/PDF)
 }
 
 export interface CalibratorAsset {
@@ -285,6 +315,9 @@ export interface SphItem {
   notes?: string;           // e.g. *Hanya dilakukan Uji Keselamatan Listrik...
   category?: string;
   eCatalogueUrl?: string;   // Link produk di E-Catalogue LKPP/Inaproc
+  // --- SPH Transisi ---
+  tanda?: TandaKeteranganSph | null;
+  namaAsliFile?: string;    // nama alat persis seperti tertulis di file SPH lama
 }
 
 export interface SphQuotation {
@@ -333,6 +366,8 @@ export interface SphQuotation {
   createdAt: string;
   validUntilDate: string;
   dealData?: SphDealData;
+  sumber?: 'web' | 'transisi';
+  transisi?: SphTransisiInfo;
 }
 
 export type DealRecipient = 'Fitri Nur Aini' | 'Sheva Maresca' | 'Junior Yudha Pamungkas';

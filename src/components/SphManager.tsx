@@ -39,6 +39,8 @@ import { downloadSphPdf } from '../utils/sphPdfExport';
 import { downloadSphECatExcel, isECatalogueSph, getSphExcelSheetLabel } from '../utils/sphECatExcelExport';
 import { SphDealModal } from './SphDealModal';
 import { useAuth } from '../lib/AuthContext';
+import { SphTransisiUploadModal } from './SphTransisiUploadModal';
+import { FileUp } from 'lucide-react';
 
 interface SphManagerProps {
   sphList: SphQuotation[];
@@ -55,6 +57,7 @@ interface SphManagerProps {
   bapDocuments?: BapDocument[];
   schedules?: CalibrationSchedule[];
   onOpenBap?: (sph: SphQuotation) => void;
+  onSphTransisiCreated?: (result: { sph: SphQuotation; schedule: CalibrationSchedule }) => void;
 }
 
 export const SphManager: React.FC<SphManagerProps> = ({
@@ -71,10 +74,14 @@ export const SphManager: React.FC<SphManagerProps> = ({
   hospitals,
   bapDocuments = [],
   schedules = [],
-  onOpenBap
+  onOpenBap,
+  onSphTransisiCreated
 }) => {
   const { role } = useAuth();
   const canMarkDeal = role === 'admin_utama' || role === 'admin_keuangan';
+  // Upload SPH lama (masa transisi) — juga membuat jadwal RS, jadi dibatasi admin utama & keuangan
+  const canUploadTransisi = role === 'admin_utama' || role === 'admin_keuangan';
+  const [showTransisiModal, setShowTransisiModal] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -136,6 +143,17 @@ export const SphManager: React.FC<SphManagerProps> = ({
               <BookOpen className="w-4 h-4 text-[#398AB9]" />
               <span>Katalog Tarif Brosur ({SPH_TARIFF_CATALOG.length} Alat)</span>
             </button>
+
+            {canUploadTransisi && (
+              <button
+                onClick={() => setShowTransisiModal(true)}
+                className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl border border-teal-300/50 transition-all flex items-center gap-2 shadow-sm"
+                title="SPH lama dari Excel/PDF yang belum ada di website (masa transisi)"
+              >
+                <FileUp className="w-4 h-4" />
+                <span>Upload SPH Lama (Excel/PDF)</span>
+              </button>
+            )}
 
             <button
               onClick={onOpenNewSph}
@@ -280,6 +298,14 @@ export const SphManager: React.FC<SphManagerProps> = ({
                         <span className="font-mono font-bold text-[#1C658C] text-sm">
                           {sph.sphNumber}
                         </span>
+                        {sph.sumber === 'transisi' && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-300"
+                            title={`Diupload dari file ${sph.transisi?.namaFile || ''}${sph.transisi?.totalCocok === false ? ' — total dikonfirmasi admin walau beda dengan file' : ''}`}
+                          >
+                            SPH Transisi{sph.transisi?.totalCocok === false ? ' ⚠' : ''}
+                          </span>
+                        )}
 
                         {/* Status Changer for Admin */}
                         <div className="flex items-center gap-1.5 bg-[#EEEEEE] border border-[#DCDFE3] rounded-lg px-2.5 py-1">
@@ -410,9 +436,16 @@ export const SphManager: React.FC<SphManagerProps> = ({
                       </span>
                     </div>
 
-                    <p className="text-[10px] text-slate-500 italic truncate pt-0.5">
-                      "{sph.terbilang}"
-                    </p>
+                    {sph.terbilang && (
+                      <p className="text-[10px] text-slate-500 italic truncate pt-0.5">
+                        "{sph.terbilang}"
+                      </p>
+                    )}
+                    {sph.sumber === 'transisi' && (
+                      <p className="text-[10px] text-teal-700 pt-0.5">
+                        Nilai penawaran dari file SPH lama. Nilai tagihan akhir mengikuti Penagihan RS setelah upload BAP.
+                      </p>
+                    )}
                   </div>
 
                 </div>
@@ -606,6 +639,13 @@ export const SphManager: React.FC<SphManagerProps> = ({
         />
       )}
 
+      {showTransisiModal && (
+        <SphTransisiUploadModal
+          hospitals={hospitals}
+          onClose={() => setShowTransisiModal(false)}
+          onCreated={(result) => onSphTransisiCreated?.(result)}
+        />
+      )}
     </div>
   );
 };
