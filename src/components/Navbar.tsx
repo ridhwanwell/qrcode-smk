@@ -372,7 +372,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             {syncState === 'pending' && <span className="sm:hidden font-bold">{pendingSyncCount}</span>}
           </span>
 
-          {onForceSyncAll && (
+          {/* Tombol sinkron manual: cadangan, hanya untuk Admin Utama (sinkron sudah otomatis) */}
+          {onForceSyncAll && role === 'admin_utama' && (
             <button
               id="btn-sync-laptop-supabase"
               onClick={onForceSyncAll}
@@ -383,7 +384,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden xl:inline">Kirim Data</span>
             </button>
           )}
-          {onForcePullAll && (
+          {onForcePullAll && role === 'admin_utama' && (
             <button
               id="btn-pull-device-supabase"
               onClick={onForcePullAll}
