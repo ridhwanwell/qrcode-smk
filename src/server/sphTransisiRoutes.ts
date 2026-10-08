@@ -352,6 +352,11 @@ export function registerSphTransisiRoutes(app: Express, deps: SphTransisiDeps) {
         scheduleData.boNumber = dealNumbers.boNumber;
         scheduleData.fpNumber = dealNumbers.fpNumber;
         scheduleData.kwpNumber = dealNumbers.kwpNumber;
+        // SPK, BAP & BASTP juga mengikuti 3 angka depan nomor label
+        const bulanTahun = `${ROMAWI[tglOk.getMonth()]}/${tglOk.getFullYear()}`;
+        scheduleData.workOrderNumber = `${labelPrefix}/SMK-SPK/${bulanTahun}`;
+        scheduleData.bapNumber = `${labelPrefix}/SMK/BAP/${bulanTahun}`;
+        scheduleData.bastpNumber = `${labelPrefix}/SMK/BASTP/${bulanTahun}`;
       }
       if (!Array.isArray(scheduleData.seliaItems)) delete scheduleData.seliaItems;
 
