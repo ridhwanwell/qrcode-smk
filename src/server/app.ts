@@ -922,58 +922,188 @@ export function createApp() {
   // --- API: AMBIL PDF SERTIFIKAT DARI GOOGLE DRIVE (untuk isi otomatis Nama Alat, Ruangan, Tanggal) ---
   // Browser tidak bisa mengunduh langsung dari Google Drive (diblokir CORS), jadi server
   // mengambilkan file-nya. Hanya ke drive.google.com dengan ID file yang tervalidasi.
-  app.get("/api/drive-certificate/:fileId", certificateReadLimiter, requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
-    const MAX_BYTES = 4 * 1024 * 1024; // batas respons serverless ±4,5 MB
+  // --- Helper: unduh PDF sertifikat dari Google Drive (dipakai baca teks & baca scan) ---
+  class DriveFetchError extends Error {
+    status: number;
+    constructor(status: number, message: string) { super(message); this.status = status; }
+  }
+  const DRIVE_PDF_MAX_BYTES = 4 * 1024 * 1024; // batas respons serverless ±4,5 MB
+
+  async function downloadDrivePdf(fileId: string, timeoutMs = 20000): Promise<{ buf: Buffer; fileName: string }> {
+    if (!/^[A-Za-z0-9_-]{20,100}$/.test(fileId)) {
+      throw new DriveFetchError(400, "ID file Google Drive tidak valid");
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let driveRes: Response;
     try {
-      const fileId = String(req.params.fileId || '');
-      if (!/^[A-Za-z0-9_-]{20,100}$/.test(fileId)) {
-        return res.status(400).json({ error: "ID file Google Drive tidak valid" });
+      driveRes = await fetch(`https://drive.google.com/uc?export=download&id=${fileId}`, {
+        redirect: 'follow',
+        signal: controller.signal
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw new DriveFetchError(504, "Google Drive terlalu lama merespons. Coba lagi, atau isi data secara manual.");
       }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    // Pastikan redirect hanya berakhir di domain Google
+    const finalHost = (() => { try { return new URL(driveRes.url).hostname; } catch { return ''; } })();
+    if (!/(^|\.)google(usercontent)?\.com$/.test(finalHost)) {
+      throw new DriveFetchError(502, "Respons Google Drive tidak dikenali");
+    }
+    if (!driveRes.ok) {
+      throw new DriveFetchError(422, "File tidak bisa diambil. Pastikan akses file diatur 'Siapa saja yang memiliki link'.");
+    }
+    const declared = Number(driveRes.headers.get('content-length') || 0);
+    if (declared > DRIVE_PDF_MAX_BYTES) {
+      throw new DriveFetchError(413, "PDF sertifikat terlalu besar untuk dibaca otomatis (maks 4 MB). Isi data secara manual.");
+    }
+    const buf = Buffer.from(await driveRes.arrayBuffer());
+    if (buf.length > DRIVE_PDF_MAX_BYTES) {
+      throw new DriveFetchError(413, "PDF sertifikat terlalu besar untuk dibaca otomatis (maks 4 MB). Isi data secara manual.");
+    }
+    if (buf.subarray(0, 5).toString('latin1') !== '%PDF-') {
+      // Biasanya halaman login Google = file belum dibagikan publik
+      throw new DriveFetchError(422, "File bukan PDF atau belum dibagikan. Atur akses Google Drive ke 'Siapa saja yang memiliki link' lalu coba lagi.");
+    }
+
+    // Nama file asli (dipakai untuk PDF hasil scan: nomor label dicocokkan dengan nama file)
+    const disposition = driveRes.headers.get('content-disposition') || '';
+    let fileName = '';
+    const star = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    const plain = disposition.match(/filename="?([^";]+)"?/i);
+    try { fileName = star ? decodeURIComponent(star[1]) : (plain ? plain[1] : ''); } catch { fileName = plain ? plain[1] : ''; }
+    fileName = fileName.replace(/[\r\n]/g, '').slice(0, 200);
+    return { buf, fileName };
+  }
+
+  // --- API: AMBIL PDF SERTIFIKAT DARI GOOGLE DRIVE (dibaca teksnya di browser) ---
+  app.get("/api/drive-certificate/:fileId", certificateReadLimiter, requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+    try {
+      const { buf, fileName } = await downloadDrivePdf(String(req.params.fileId || ''));
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Cache-Control', 'private, no-store');
+      if (fileName) res.setHeader('X-File-Name', encodeURIComponent(fileName));
+      res.send(buf);
+    } catch (err: any) {
+      if (err instanceof DriveFetchError) return res.status(err.status).json({ error: err.message });
+      console.error("API error in GET /api/drive-certificate/:fileId:", err);
+      res.status(500).json({ error: "Gagal mengambil PDF sertifikat dari Google Drive" });
+    }
+  });
+
+  // --- API: BACA SERTIFIKAT HASIL SCAN DENGAN GEMINI (OCR) ---
+  // Dipakai bila PDF tidak berisi teks. Server mengunduh PDF langsung dari Google Drive
+  // (browser tidak perlu mengunggah ulang file → hemat kuota internet RS), lalu meminta
+  // Gemini membaca isian sertifikat dan mengembalikan JSON terstruktur.
+  // Butuh env GEMINI_API_KEY. Model bisa diganti lewat env GEMINI_MODEL.
+  const CERT_OCR_PROMPT = `Dokumen ini adalah Sertifikat Kalibrasi alat kesehatan dari PT Sarana Multi Kalibrasi (PT SMK), hasil scan.
+Halaman 1 berisi isian: "Nomor Sertifikat", "Nama Alat", "Merek Pabrik", "Type", "Nomor Seri", "Nama Pelanggan",
+"Diterbitkan Tanggal", dan "Kalibrasi Ulang". Halaman 2 berisi "Ruangan" dan "Tanggal" (tanggal pelaksanaan kalibrasi).
+Salin nilai setiap isian PERSIS seperti tertulis. Aturan:
+- nomorSertifikat: nomor di samping "Nomor Sertifikat" saja (contoh 087.0001), tanpa teks lain.
+- Semua tanggal dalam format YYYY-MM-DD (contoh "18 Agustus 2026" -> 2026-08-18).
+- tanggalPelaksanaan: tanggal pelaksanaan kalibrasi di halaman 2; diterbitkan: "Diterbitkan Tanggal" di halaman 1.
+- Jika suatu isian tidak ada, tidak terbaca, atau berisi "-", isi dengan string kosong. JANGAN menebak.`;
+
+  const CERT_OCR_FIELDS = ['nomorSertifikat', 'namaAlat', 'ruangan', 'namaPelanggan', 'merek', 'tipe', 'nomorSeri', 'diterbitkan', 'tanggalPelaksanaan', 'kalibrasiUlang'];
+
+  app.get("/api/drive-certificate/:fileId/ocr", certificateReadLimiter, requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(501).json({ code: 'NO_GEMINI_KEY', error: "GEMINI_API_KEY belum diatur di server. PDF scan tidak bisa dibaca otomatis." });
+    }
+    const model = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').replace(/[^A-Za-z0-9.\-_]/g, '');
+
+    try {
+      const { buf } = await downloadDrivePdf(String(req.params.fileId || ''), 15000);
 
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
-      let driveRes: Response;
+      const timer = setTimeout(() => controller.abort(), 40000);
+      let gRes: Response;
       try {
-        driveRes = await fetch(`https://drive.google.com/uc?export=download&id=${fileId}`, {
-          redirect: 'follow',
-          signal: controller.signal
+        gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{
+              role: 'user',
+              parts: [
+                { inline_data: { mime_type: 'application/pdf', data: buf.toString('base64') } },
+                { text: CERT_OCR_PROMPT }
+              ]
+            }],
+            generationConfig: {
+              temperature: 0,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'OBJECT',
+                properties: Object.fromEntries(CERT_OCR_FIELDS.map(k => [k, { type: 'STRING' }])),
+                required: CERT_OCR_FIELDS
+              }
+            }
+          })
         });
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return res.status(504).json({ error: "Gemini terlalu lama membaca sertifikat. Coba lagi." });
+        }
+        throw err;
       } finally {
         clearTimeout(timer);
       }
 
-      // Pastikan redirect hanya berakhir di domain Google
-      const finalHost = (() => { try { return new URL(driveRes.url).hostname; } catch { return ''; } })();
-      if (!/(^|\.)google(usercontent)?\.com$/.test(finalHost)) {
-        return res.status(502).json({ error: "Respons Google Drive tidak dikenali" });
-      }
-      if (!driveRes.ok) {
-        return res.status(422).json({ error: "File tidak bisa diambil. Pastikan akses file diatur 'Siapa saja yang memiliki link'." });
-      }
-
-      const declared = Number(driveRes.headers.get('content-length') || 0);
-      if (declared > MAX_BYTES) {
-        return res.status(413).json({ error: "PDF sertifikat terlalu besar untuk dibaca otomatis (maks 4 MB). Isi data secara manual." });
-      }
-
-      const buf = Buffer.from(await driveRes.arrayBuffer());
-      if (buf.length > MAX_BYTES) {
-        return res.status(413).json({ error: "PDF sertifikat terlalu besar untuk dibaca otomatis (maks 4 MB). Isi data secara manual." });
-      }
-      if (buf.subarray(0, 5).toString('latin1') !== '%PDF-') {
-        // Biasanya halaman login Google = file belum dibagikan publik
-        return res.status(422).json({ error: "File bukan PDF atau belum dibagikan. Atur akses Google Drive ke 'Siapa saja yang memiliki link' lalu coba lagi." });
+      const body: any = await gRes.json().catch(() => ({}));
+      if (!gRes.ok) {
+        const gMsg = String(body?.error?.message || '').slice(0, 200);
+        console.error("[Gemini OCR] error:", gRes.status, gMsg);
+        if (gRes.status === 429) {
+          res.setHeader('Retry-After', '20');
+          return res.status(429).json({ code: 'GEMINI_BUSY', error: "Kuota Gemini per menit sedang penuh. Pembacaan dilanjutkan otomatis." });
+        }
+        if ((gRes.status === 400 && /api key/i.test(gMsg)) || gRes.status === 401 || gRes.status === 403) {
+          return res.status(502).json({ code: 'GEMINI_KEY', error: "GEMINI_API_KEY di Vercel tidak valid atau tidak punya akses. Periksa key di Google AI Studio lalu Redeploy." });
+        }
+        if (gRes.status === 404) {
+          return res.status(502).json({ code: 'GEMINI_MODEL', error: `Model Gemini "${model}" tidak ditemukan. Atur env GEMINI_MODEL ke model yang tersedia.` });
+        }
+        return res.status(502).json({ error: `Gemini gagal membaca sertifikat (HTTP ${gRes.status}).` });
       }
 
-      res.setHeader('Content-Type', 'application/pdf');
+      const text = (body?.candidates?.[0]?.content?.parts || [])
+        .map((p: any) => (typeof p?.text === 'string' && !p.thought ? p.text : ''))
+        .join('')
+        .trim();
+      let parsed: any = {};
+      try { parsed = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { parsed = {}; }
+
+      // Bersihkan hasil AI sebelum dikirim ke browser
+      const clean = (v: any, max = 120) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '');
+      const cleanDate = (v: any) => { const t = clean(v, 10); return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : ''; };
+      const dash = (v: string) => (v === '-' ? '' : v);
+      const nomor = clean(parsed.nomorSertifikat, 64).split(' ')[0];
+
       res.setHeader('Cache-Control', 'private, no-store');
-      res.send(buf);
+      res.json({
+        nomorSertifikat: /^[A-Za-z0-9.\-_/]{1,64}$/.test(nomor) ? nomor : '',
+        namaAlat: dash(clean(parsed.namaAlat)),
+        ruangan: dash(clean(parsed.ruangan)),
+        namaPelanggan: dash(clean(parsed.namaPelanggan, 200)),
+        merek: dash(clean(parsed.merek)),
+        tipe: dash(clean(parsed.tipe)),
+        nomorSeri: dash(clean(parsed.nomorSeri)),
+        tanggalKalibrasi: cleanDate(parsed.tanggalPelaksanaan) || cleanDate(parsed.diterbitkan),
+        kalibrasiUlang: cleanDate(parsed.kalibrasiUlang)
+      });
     } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        return res.status(504).json({ error: "Google Drive terlalu lama merespons. Coba lagi, atau isi data secara manual." });
-      }
-      console.error("API error in GET /api/drive-certificate/:fileId:", err);
-      res.status(500).json({ error: "Gagal mengambil PDF sertifikat dari Google Drive" });
+      if (err instanceof DriveFetchError) return res.status(err.status).json({ error: err.message });
+      console.error("API error in GET /api/drive-certificate/:fileId/ocr:", err);
+      res.status(500).json({ error: "Gagal membaca sertifikat scan dengan Gemini" });
     }
   });
 

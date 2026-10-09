@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { X, FolderOpen, Loader2, CheckCircle2, AlertCircle, Sparkles, Link2, Ban } from 'lucide-react';
+import { X, FolderOpen, Loader2, CheckCircle2, AlertCircle, Sparkles, Link2, Ban, ScanLine, CalendarCheck } from 'lucide-react';
 import { apiFetch } from '../lib/apiClient';
 import { extractGoogleDriveFileId, getGoogleDriveEmbedUrl, getGoogleDriveViewUrl } from '../lib/pdfStorage';
-import { readCertificateFromDrive, CertificateInfo } from '../utils/certificatePdfReader';
+import { readCertificateFromDriveDetailed, CertificateInfo } from '../utils/certificatePdfReader';
 
 /**
  * TAUTKAN SERTIFIKAT MASSAL
@@ -40,6 +40,21 @@ interface Row {
   status: RowStatus;
   otherFolder?: boolean;
   rsMismatch?: boolean;
+  /** 'ocr' = PDF scan dibaca Gemini; 'filename' = PDF scan, nomor & nama alat dari nama file */
+  source?: 'pdf' | 'ocr' | 'filename';
+  /** Nomor di isi PDF berbeda dengan nomor di nama file */
+  nameMismatch?: string;
+  ocrError?: string;
+}
+
+/** "2026-10-09" -> "2027-10-09" (masa berlaku kalibrasi umumnya 1 tahun). */
+function addOneYear(date: string): string {
+  const m = (date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const y = Number(m[1]) + 1;
+  // 29 Feb -> 28 Feb pada tahun bukan kabisat
+  const lastDay = new Date(y, Number(m[2]), 0).getDate();
+  return `${y}-${m[2]}-${String(Math.min(Number(m[3]), lastDay)).padStart(2, '0')}`;
 }
 
 const STATUS_INFO: Record<RowStatus, { text: string; cls: string }> = {
@@ -75,6 +90,8 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [saveResult, setSaveResult] = useState<{ ok: number; failed: number } | null>(null);
+  const [bulkCal, setBulkCal] = useState('');
+  const [bulkValid, setBulkValid] = useState('');
   const cancelRef = useRef(false);
 
   const labelByNo = useMemo(() => {
@@ -168,7 +185,16 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
         let row: Row = { fileId: f.id, fileName: f.name, modifiedTime: f.modifiedTime, status: 'error' };
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            row = { ...row, info: await readCertificateFromDrive(f.id), error: undefined };
+            const result = await readCertificateFromDriveDetailed(f.id, f.name);
+            row = {
+              ...row,
+              info: result.info,
+              fileName: result.fileName || row.fileName,
+              source: result.source,
+              nameMismatch: result.nameMismatch,
+              ocrError: result.ocrError,
+              error: undefined
+            };
             break;
           } catch (err: any) {
             row = { ...row, error: err?.message || 'Gagal membaca' };
@@ -183,7 +209,8 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
 
     const built = buildRows(results.filter(Boolean));
     setRows(built);
-    setSelected(new Set(built.filter(r => r.status === 'ready').map(r => r.fileId)));
+    // Baris yang nomor di PDF-nya beda dengan nama file tidak dicentang otomatis — periksa dulu
+    setSelected(new Set(built.filter(r => r.status === 'ready' && !r.nameMismatch).map(r => r.fileId)));
     setPhase('review');
   };
 
@@ -196,6 +223,26 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
   };
 
   const selectable = (r: Row) => r.status === 'ready' || r.status === 'replace';
+
+  /** Ubah isian satu baris (dipakai untuk PDF scan yang datanya diisi manual). */
+  const updateRowInfo = (fileId: string, patch: Partial<CertificateInfo>) => {
+    setRows(prev => prev.map(r => r.fileId === fileId && r.info ? { ...r, info: { ...r.info, ...patch } } : r));
+  };
+
+  /** Isi tanggal ke semua baris terpilih yang tanggalnya masih kosong. */
+  const applyBulkDates = () => {
+    setRows(prev => prev.map(r => {
+      if (!r.info || !selected.has(r.fileId) || !selectable(r)) return r;
+      return {
+        ...r,
+        info: {
+          ...r.info,
+          tanggalKalibrasi: r.info.tanggalKalibrasi || bulkCal,
+          kalibrasiUlang: r.info.kalibrasiUlang || bulkValid
+        }
+      };
+    }));
+  };
   const chosen = rows.filter(r => selected.has(r.fileId) && selectable(r));
 
   const handleSave = async () => {
@@ -236,6 +283,11 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
     setPhase('done');
     onDone();
   };
+
+  const ocrCount = rows.filter(r => r.source === 'ocr' && selectable(r)).length;
+  const scannedCount = rows.filter(r => r.source === 'filename' && selectable(r)).length;
+  const ocrFailReason = rows.find(r => r.source === 'filename' && r.ocrError)?.ocrError;
+  const missingDates = chosen.filter(r => !r.info?.tanggalKalibrasi || !r.info?.kalibrasiUlang).length;
 
   const counts = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {} as Record<string, number>);
 
@@ -289,7 +341,8 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
                 <p className="font-bold text-blue-800">Syarat:</p>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>Folder / file dibagikan <strong>"Siapa saja yang memiliki link"</strong>.</li>
-                  <li>Nama file bebas — yang dicocokkan adalah <strong>Nomor Sertifikat</strong> di halaman 1 PDF.</li>
+                  <li>Yang dicocokkan adalah <strong>Nomor Sertifikat</strong> di halaman 1 PDF.</li>
+                  <li><strong>PDF hasil scan</strong> tetap bisa: isinya dibaca otomatis oleh <strong>Gemini</strong>. Bila Gemini gagal, nomor label diambil dari nama file (contoh <span className="font-mono">087.0001 ECG Recorder.pdf</span>).</li>
                   <li>Bila ada 2 file dengan nomor yang sama (mis. versi "timpa"), yang <strong>terakhir diubah</strong> yang dipakai.</li>
                 </ul>
               </div>
@@ -303,7 +356,7 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
               <div className="w-full max-w-md mx-auto h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-blue-600 transition-all" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
               </div>
-              <p className="text-xs text-slate-500">Jangan tutup halaman ini. Sekitar 2–3 detik per sertifikat.</p>
+              <p className="text-xs text-slate-500">Jangan tutup halaman ini. Sekitar 2–3 detik per sertifikat; PDF hasil scan ±10–20 detik (dibaca Gemini).</p>
             </div>
           )}
 
@@ -316,6 +369,63 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
                   </span>
                 ))}
               </div>
+              {ocrCount > 0 && phase === 'review' && (
+                <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-[11px] text-sky-900 flex items-start gap-1.5">
+                  <Sparkles className="w-4 h-4 shrink-0" />
+                  <span>
+                    <strong>{ocrCount} PDF hasil scan dibaca oleh Gemini.</strong> Hasil bacaan AI bisa keliru — cek sekilas
+                    Ruangan & tanggal di tabel (bisa langsung diubah) sebelum menautkan.
+                  </span>
+                </div>
+              )}
+              {scannedCount > 0 && ocrFailReason && phase === 'review' && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 flex items-start gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span><strong>Gemini gagal</strong> untuk {scannedCount} PDF scan, jadi dicocokkan dari nama file: {ocrFailReason}</span>
+                </div>
+              )}
+              {missingDates > 0 && phase === 'review' && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2.5">
+                  <p className="text-[11px] text-amber-900 flex items-start gap-1.5">
+                    <ScanLine className="w-4 h-4 shrink-0" />
+                    <span>
+                      <strong>{missingDates} sertifikat terpilih</strong> belum punya tanggal. Isi sekaligus di sini, atau per baris di tabel.
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="text-[10px] font-bold text-slate-600">
+                      Tanggal Kalibrasi
+                      <input
+                        type="date"
+                        value={bulkCal}
+                        onChange={e => {
+                          setBulkCal(e.target.value);
+                          if (!bulkValid || bulkValid === addOneYear(bulkCal)) setBulkValid(addOneYear(e.target.value));
+                        }}
+                        className="block mt-0.5 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                      />
+                    </label>
+                    <label className="text-[10px] font-bold text-slate-600">
+                      Berlaku s/d
+                      <input
+                        type="date"
+                        value={bulkValid}
+                        onChange={e => setBulkValid(e.target.value)}
+                        className="block mt-0.5 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={applyBulkDates}
+                      disabled={!bulkCal && !bulkValid}
+                      className="px-3 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <CalendarCheck className="w-3.5 h-3.5" /> Isi ke {missingDates} baris kosong
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">Boleh juga dikosongkan — sertifikat tetap tertaut, tanggal bisa dilengkapi nanti lewat tombol "Ubah Link".</p>
+                </div>
+              )}
               <div className="border border-slate-200 rounded-xl overflow-x-auto">
                 <table className="w-full text-[11px]">
                   <thead className="bg-slate-800 text-white">
@@ -345,13 +455,68 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
                           {r.info?.namaAlat || '-'}
                           {r.fileName && <div className="text-[10px] text-slate-400 truncate max-w-[220px]" title={r.fileName}>{r.fileName}</div>}
                         </td>
-                        <td className="px-2 py-1.5">{r.info?.ruangan || '-'}</td>
-                        <td className="px-2 py-1.5 font-mono whitespace-nowrap">{r.info?.tanggalKalibrasi || '-'}</td>
-                        <td className="px-2 py-1.5 font-mono whitespace-nowrap">{r.info?.kalibrasiUlang || '-'}</td>
+                        {(r.source === 'filename' || r.source === 'ocr') && selectable(r) && r.info ? (
+                          <>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                value={r.info.ruangan}
+                                onChange={e => updateRowInfo(r.fileId, { ruangan: e.target.value })}
+                                placeholder="Ruangan"
+                                disabled={phase === 'saving'}
+                                className="w-28 px-1.5 py-1 bg-white border border-slate-300 rounded text-[11px]"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="date"
+                                value={r.info.tanggalKalibrasi}
+                                onChange={e => {
+                                  const v = e.target.value;
+                                  const patch: Partial<CertificateInfo> = { tanggalKalibrasi: v };
+                                  if (!r.info!.kalibrasiUlang || r.info!.kalibrasiUlang === addOneYear(r.info!.tanggalKalibrasi)) patch.kalibrasiUlang = addOneYear(v);
+                                  updateRowInfo(r.fileId, patch);
+                                }}
+                                disabled={phase === 'saving'}
+                                className="px-1.5 py-1 bg-white border border-slate-300 rounded text-[11px] font-mono"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="date"
+                                value={r.info.kalibrasiUlang}
+                                onChange={e => updateRowInfo(r.fileId, { kalibrasiUlang: e.target.value })}
+                                disabled={phase === 'saving'}
+                                className="px-1.5 py-1 bg-white border border-slate-300 rounded text-[11px] font-mono"
+                              />
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-2 py-1.5">{r.info?.ruangan || '-'}</td>
+                            <td className="px-2 py-1.5 font-mono whitespace-nowrap">{r.info?.tanggalKalibrasi || '-'}</td>
+                            <td className="px-2 py-1.5 font-mono whitespace-nowrap">{r.info?.kalibrasiUlang || '-'}</td>
+                          </>
+                        )}
                         <td className="px-2 py-1.5">
                           <span className={`inline-block px-1.5 py-0.5 rounded border font-semibold ${STATUS_INFO[r.status].cls}`}>
                             {STATUS_INFO[r.status].text}
                           </span>
+                          {r.source === 'ocr' && (
+                            <div className="text-[10px] text-sky-700 mt-0.5 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3" /> PDF scan — dibaca Gemini, cek ulang
+                            </div>
+                          )}
+                          {r.source === 'filename' && (
+                            <div className="text-[10px] text-sky-700 mt-0.5 flex items-center gap-1">
+                              <ScanLine className="w-3 h-3" /> PDF scan — dicocokkan dari nama file
+                            </div>
+                          )}
+                          {r.nameMismatch && (
+                            <div className="text-[10px] text-rose-700 font-semibold mt-0.5">
+                              Nama file menyebut {r.nameMismatch} — periksa sebelum mencentang
+                            </div>
+                          )}
                           {r.status === 'replace' && <div className="text-[10px] text-amber-700 mt-0.5">Centang untuk menimpa</div>}
                           {r.otherFolder && <div className="text-[10px] text-amber-700 mt-0.5">Beda folder dari yang dibuka</div>}
                           {r.rsMismatch && <div className="text-[10px] text-amber-700 mt-0.5">RS di PDF: {r.info?.namaPelanggan}</div>}
@@ -383,7 +548,7 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
         <div className="px-6 py-4 border-t border-slate-100 bg-white flex items-center justify-between gap-3">
           <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-            {phase === 'review' ? `${chosen.length} sertifikat dipilih` : 'Data dibaca dari isi PDF, bukan dari nama file'}
+            {phase === 'review' ? `${chosen.length} sertifikat dipilih` : 'Data dibaca dari isi PDF; PDF scan dibaca Gemini'}
           </p>
           <div className="flex items-center gap-2">
             {phase === 'input' && (

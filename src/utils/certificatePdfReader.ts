@@ -156,17 +156,141 @@ export function parseCertificateItems(items: PdfTextItem[]): CertificateInfo {
   };
 }
 
-/** Ambil PDF sertifikat dari Google Drive (lewat server) lalu baca isinya. */
-export async function readCertificateFromDrive(fileId: string): Promise<CertificateInfo> {
+/** Ambil file PDF dari Google Drive lewat server (+ nama file aslinya bila diketahui). */
+async function fetchDrivePdf(fileId: string): Promise<{ bytes: Uint8Array; fileName: string }> {
   const res = await apiFetch(`/api/drive-certificate/${encodeURIComponent(fileId)}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Gagal mengambil PDF sertifikat dari Google Drive.');
   }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const items = await extractPdfTextItems(bytes);
-  if (items.length === 0) {
-    throw new Error('PDF sertifikat tidak berisi teks (kemungkinan hasil scan). Isi data secara manual.');
+  let fileName = '';
+  try { fileName = decodeURIComponent(res.headers.get('X-File-Name') || ''); } catch { /* abaikan */ }
+  return { bytes: new Uint8Array(await res.arrayBuffer()), fileName };
+}
+
+/**
+ * Baca nomor label & nama alat dari NAMA FILE, untuk PDF hasil scan.
+ * Contoh: "087.0001 ECG Recorder.pdf" -> { noLabel: "087.0001", namaAlat: "ECG Recorder" }
+ *         "087.0012_Suction Pump (2).pdf" -> { noLabel: "087.0012", namaAlat: "Suction Pump" }
+ */
+export function parseCertificateFileName(fileName: string): { noLabel: string; namaAlat: string } | null {
+  const base = (fileName || '').replace(/\.pdf$/i, '').trim();
+  const m = base.match(/(?:^|[^0-9.])(\d{2,4}\.\d{3,5})(?![0-9])/) || base.match(/^(\d{2,4}\.\d{3,5})(?![0-9])/);
+  if (!m) return null;
+  const noLabel = m[1];
+  const namaAlat = base
+    .slice(base.indexOf(noLabel) + noLabel.length)
+    .replace(/\(\d+\)\s*$/, '')        // "(2)" salinan Drive
+    .replace(/^[\s_\-–.:]+/, '')
+    .replace(/[_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { noLabel, namaAlat };
+}
+
+export interface CertificateReadResult {
+  info: CertificateInfo;
+  fileName: string;
+  /**
+   * 'pdf'      = dibaca dari teks PDF
+   * 'ocr'      = PDF scan, dibaca Gemini (perlu dicek ulang)
+   * 'filename' = PDF scan, Gemini gagal → nomor & nama alat dari nama file
+   */
+  source: 'pdf' | 'ocr' | 'filename';
+  /** Nomor di isi PDF berbeda dengan nomor di nama file */
+  nameMismatch?: string;
+  /** Alasan Gemini gagal (untuk ditampilkan bila jatuh ke nama file) */
+  ocrError?: string;
+}
+
+const EMPTY_INFO: CertificateInfo = {
+  nomorSertifikat: '', namaAlat: '', ruangan: '', namaPelanggan: '',
+  merek: '', tipe: '', nomorSeri: '', tanggalKalibrasi: '', kalibrasiUlang: ''
+};
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Baca PDF hasil scan dengan Gemini (lewat server). Server mengunduh PDF sendiri dari
+ * Google Drive, jadi browser tidak perlu mengunggah ulang file.
+ * Bila kuota Gemini per menit penuh (429), tunggu lalu coba lagi (maks 3x).
+ */
+export async function ocrCertificateFromDrive(fileId: string): Promise<CertificateInfo> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await apiFetch(`/api/drive-certificate/${encodeURIComponent(fileId)}/ocr`, {
+      timeoutMs: 65000,
+      retries: 1
+    });
+    if (res.status === 429 && attempt < 3) {
+      const wait = Math.min(Number(res.headers.get('Retry-After')) || 20, 60);
+      await sleep(wait * 1000 + Math.random() * 3000);
+      continue;
+    }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Gemini gagal membaca sertifikat (HTTP ${res.status}).`);
+    return { ...EMPTY_INFO, ...body };
   }
-  return parseCertificateItems(items);
+  throw new Error('Kuota Gemini penuh. Tunggu 1 menit lalu baca ulang.');
+}
+
+/**
+ * Versi untuk tautkan massal: PDF scan TIDAK dianggap gagal.
+ * Urutan: teks PDF → Gemini (PDF scan) → nama file (cadangan bila Gemini gagal).
+ */
+export async function readCertificateFromDriveDetailed(fileId: string, knownFileName = ''): Promise<CertificateReadResult> {
+  const { bytes, fileName: serverName } = await fetchDrivePdf(fileId);
+  const fileName = knownFileName || serverName;
+  const fromName = parseCertificateFileName(fileName);
+  const items = await extractPdfTextItems(bytes);
+  const textInfo = items.length > 0 ? parseCertificateItems(items) : null;
+
+  const withMismatch = (r: CertificateReadResult): CertificateReadResult => {
+    const a = r.info.nomorSertifikat.replace(/[^0-9A-Za-z]/g, '');
+    const b = fromName?.noLabel.replace(/[^0-9A-Za-z]/g, '');
+    return a && b && a !== b ? { ...r, nameMismatch: fromName!.noLabel } : r;
+  };
+
+  if (textInfo && textInfo.nomorSertifikat) return withMismatch({ info: textInfo, fileName, source: 'pdf' });
+
+  // PDF scan (atau teks tanpa nomor) → baca dengan Gemini
+  let ocrError = '';
+  try {
+    const ocr = await ocrCertificateFromDrive(fileId);
+    if (ocr.nomorSertifikat) return withMismatch({ info: ocr, fileName, source: 'ocr' });
+    if (fromName) {
+      // Gemini membaca isinya tapi nomor tidak terbaca → nomor dari nama file, sisanya dari Gemini
+      return {
+        info: { ...ocr, nomorSertifikat: fromName.noLabel, namaAlat: ocr.namaAlat || fromName.namaAlat },
+        fileName,
+        source: 'ocr'
+      };
+    }
+    ocrError = 'Gemini tidak menemukan Nomor Sertifikat di PDF.';
+  } catch (err: any) {
+    ocrError = err?.message || 'Gemini gagal membaca PDF.';
+  }
+
+  if (fromName) {
+    return {
+      info: { ...EMPTY_INFO, ...(textInfo || {}), nomorSertifikat: fromName.noLabel, namaAlat: textInfo?.namaAlat || fromName.namaAlat },
+      fileName,
+      source: 'filename',
+      ocrError
+    };
+  }
+  throw new Error(`${ocrError} ${fileName
+    ? `Nama file "${fileName}" juga tidak mengandung nomor label — ganti menjadi "087.0001 Nama Alat.pdf" lalu baca ulang.`
+    : 'Tempel link FOLDER agar nomor label bisa diambil dari nama file.'}`.trim());
+}
+
+/** Ambil PDF sertifikat dari Google Drive (lewat server) lalu baca isinya. PDF scan dibaca Gemini. */
+export async function readCertificateFromDrive(fileId: string): Promise<CertificateInfo> {
+  const { bytes } = await fetchDrivePdf(fileId);
+  const items = await extractPdfTextItems(bytes);
+  if (items.length > 0) return parseCertificateItems(items);
+  try {
+    return await ocrCertificateFromDrive(fileId);
+  } catch (err: any) {
+    throw new Error(`PDF hasil scan, dan pembacaan Gemini gagal: ${err?.message || 'tidak diketahui'} Isi data secara manual.`);
+  }
 }
