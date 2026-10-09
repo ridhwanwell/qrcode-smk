@@ -206,6 +206,13 @@ export function createApp() {
   // Trust reverse proxy (Vercel / Cloud Run / Nginx) for rate limiter and client IP resolution
   app.set("trust proxy", 1);
 
+  /** Seragamkan nama ruangan: rapikan spasi + huruf besar ("Perina " -> "PERINA"). */
+  const normalizeRuangan = (v: any): string | null => {
+    if (typeof v !== 'string') return null;
+    const t = v.replace(/\s+/g, ' ').trim().toUpperCase();
+    return t || null;
+  };
+
   // Global Middlewares
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -365,7 +372,7 @@ export function createApp() {
         noLabel: data.no_label,
         namaRs: data.nama_rs || null,
         namaAlat: data.nama_alat || data.namaAlat || data.pdf_name || null,
-        ruangan: data.ruangan || null,
+        ruangan: normalizeRuangan(data.ruangan),
         status: data.status || 'Menunggu Sertifikat',
         calibratedAt: data.calibrated_at || null,
         validUntil: data.valid_until || null,
@@ -672,7 +679,7 @@ export function createApp() {
         no_label: noLabel,
         nama_rs: namaRs !== undefined ? (namaRs || null) : (oldData?.nama_rs ?? null),
         nama_alat: namaAlat !== undefined ? (namaAlat || null) : (pdfName || oldData?.nama_alat || oldData?.pdf_name || null),
-        ruangan: ruangan !== undefined ? (ruangan || null) : (oldData?.ruangan ?? null),
+        ruangan: ruangan !== undefined ? normalizeRuangan(ruangan) : (oldData?.ruangan ?? null),
         status: status || (oldData?.status ?? 'Menunggu Sertifikat'),
         pdf_source: pdfSource || (oldData?.pdf_source ?? null),
         pdf_url: pdfUrl || (oldData?.pdf_url ?? null),
@@ -774,7 +781,7 @@ export function createApp() {
           no_label: it.noLabel || it.no_label || it.id,
           nama_rs: it.namaRs || it.nama_rs || null,
           nama_alat: it.namaAlat || it.nama_alat || it.pdfName || it.pdf_name || null,
-          ruangan: it.ruangan || null,
+          ruangan: normalizeRuangan(it.ruangan),
           status: it.status || 'Menunggu Sertifikat',
           pdf_source: it.pdf_source || null,
           pdf_url: it.pdfUrl || it.pdf_url || null,
@@ -1004,81 +1011,159 @@ export function createApp() {
   const CERT_OCR_PROMPT = `Dokumen ini adalah Sertifikat Kalibrasi alat kesehatan dari PT Sarana Multi Kalibrasi (PT SMK), hasil scan.
 Halaman 1 berisi isian: "Nomor Sertifikat", "Nama Alat", "Merek Pabrik", "Type", "Nomor Seri", "Nama Pelanggan",
 "Diterbitkan Tanggal", dan "Kalibrasi Ulang". Halaman 2 berisi "Ruangan" dan "Tanggal" (tanggal pelaksanaan kalibrasi).
+Bila "Ruangan" tidak ada di halaman 2, cari isian "Ruangan", "Ruang", atau "Lokasi" di halaman lain.
 Salin nilai setiap isian PERSIS seperti tertulis. Aturan:
 - nomorSertifikat: nomor di samping "Nomor Sertifikat" saja (contoh 087.0001), tanpa teks lain.
 - Semua tanggal dalam format YYYY-MM-DD (contoh "18 Agustus 2026" -> 2026-08-18).
-- tanggalPelaksanaan: tanggal pelaksanaan kalibrasi di halaman 2; diterbitkan: "Diterbitkan Tanggal" di halaman 1.
+- tanggalPelaksanaan: tanggal pelaksanaan kalibrasi di halaman 2; diterbitkan: "Diterbitkan Tanggal" di halaman 1;
+  tanggalPenerimaan: "Tanggal Penerimaan Kalibrasi" di halaman 1.
+- halamanHilang: setiap halaman bertuliskan "Halaman x dari N". Bandingkan dengan halaman yang benar-benar ada di
+  dokumen ini, lalu tulis nomor halaman yang TIDAK ada, dipisah koma (contoh "2"). Kosongkan bila lengkap.
 - Jika suatu isian tidak ada, tidak terbaca, atau berisi "-", isi dengan string kosong. JANGAN menebak.`;
 
-  const CERT_OCR_FIELDS = ['nomorSertifikat', 'namaAlat', 'ruangan', 'namaPelanggan', 'merek', 'tipe', 'nomorSeri', 'diterbitkan', 'tanggalPelaksanaan', 'kalibrasiUlang'];
+  const CERT_OCR_FIELDS = ['nomorSertifikat', 'namaAlat', 'ruangan', 'namaPelanggan', 'merek', 'tipe', 'nomorSeri', 'diterbitkan', 'tanggalPelaksanaan', 'tanggalPenerimaan', 'kalibrasiUlang', 'halamanHilang'];
+
+  /**
+   * Urutan model Gemini yang dicoba. Kuota gratis dihitung PER MODEL, jadi bila satu model
+   * penuh/sibuk, model berikutnya biasanya masih bisa. Bisa diatur lewat env:
+   *   GEMINI_MODEL            = model utama (default gemini-3.6-flash)
+   *   GEMINI_FALLBACK_MODELS  = daftar cadangan dipisah koma (default gemini-3.5-flash,gemini-3.5-flash-lite)
+   */
+  const geminiModels = (): string[] => {
+    const clean = (m: string) => m.trim().replace(/[^A-Za-z0-9.\-_]/g, '');
+    const primary = clean(process.env.GEMINI_MODEL || 'gemini-3.6-flash');
+    const fallbacks = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.5-flash,gemini-3.5-flash-lite')
+      .split(',').map(clean).filter(Boolean);
+    return Array.from(new Set([primary, ...fallbacks])).slice(0, 4);
+  };
+
+  // Model yang kuota HARIAN-nya habis dilewati sampai jam ini (per instance server)
+  const geminiDailyBlockedUntil = new Map<string, number>();
+
+  type GeminiAttempt =
+    | { kind: 'ok'; text: string }
+    | { kind: 'key'; message: string }
+    | { kind: 'daily' }
+    | { kind: 'busy'; retryAfter: number }
+    | { kind: 'skip' }; // model tidak ada / error lain -> coba model berikutnya
+
+  async function callGemini(model: string, apiKey: string, pdfBase64: string, timeoutMs: number): Promise<GeminiAttempt> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let gRes: Response;
+    try {
+      gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [
+              { inline_data: { mime_type: 'application/pdf', data: pdfBase64 } },
+              { text: CERT_OCR_PROMPT }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: Object.fromEntries(CERT_OCR_FIELDS.map(k => [k, { type: 'STRING' }])),
+              required: CERT_OCR_FIELDS
+            }
+          }
+        })
+      });
+    } catch (err: any) {
+      // Timeout / jaringan putus ke Google -> anggap sibuk, coba model lain
+      console.error(`[Gemini OCR] ${model} gagal terhubung:`, err?.name || err);
+      return { kind: 'busy', retryAfter: 10 };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const body: any = await gRes.json().catch(() => ({}));
+    if (gRes.ok) {
+      const text = (body?.candidates?.[0]?.content?.parts || [])
+        .map((p: any) => (typeof p?.text === 'string' && !p.thought ? p.text : ''))
+        .join('')
+        .trim();
+      return text ? { kind: 'ok', text } : { kind: 'skip' };
+    }
+
+    const gMsg = String(body?.error?.message || '').slice(0, 200);
+    console.error(`[Gemini OCR] ${model} error:`, gRes.status, gMsg);
+    const details: any[] = Array.isArray(body?.error?.details) ? body.error.details : [];
+
+    if ((gRes.status === 400 && /api key/i.test(gMsg)) || gRes.status === 401 || gRes.status === 403) {
+      return { kind: 'key', message: gMsg };
+    }
+    if (gRes.status === 429) {
+      // Bedakan kuota HARIAN (tidak ada gunanya ditunggu) vs kuota PER MENIT (cukup tunggu sebentar)
+      const quotaIds = details
+        .flatMap(d => (Array.isArray(d?.violations) ? d.violations : []))
+        .map((v: any) => String(v?.quotaId || v?.quotaMetric || ''))
+        .join(' ');
+      if (/PerDay/i.test(quotaIds)) return { kind: 'daily' };
+      const retryInfo = details.find(d => String(d?.['@type'] || '').includes('RetryInfo'));
+      const secs = parseInt(String(retryInfo?.retryDelay || '').replace(/[^0-9]/g, ''), 10);
+      return { kind: 'busy', retryAfter: Number.isFinite(secs) && secs > 0 ? Math.min(secs, 60) : 20 };
+    }
+    if (gRes.status === 500 || gRes.status === 503 || gRes.status === 504) {
+      return { kind: 'busy', retryAfter: 10 };
+    }
+    return { kind: 'skip' }; // 404 model tidak ada, 400 lain, dsb.
+  }
 
   app.get("/api/drive-certificate/:fileId/ocr", certificateReadLimiter, requireAuth, requireRole(['admin_utama', 'admin_teknik']), async (req: AuthRequest, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(501).json({ code: 'NO_GEMINI_KEY', error: "GEMINI_API_KEY belum diatur di server. PDF scan tidak bisa dibaca otomatis." });
     }
-    const model = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').replace(/[^A-Za-z0-9.\-_]/g, '');
+    const startedAt = Date.now();
+    const BUDGET_MS = 50000; // batas fungsi Vercel 60 dtk, sisakan cadangan
 
     try {
       const { buf } = await downloadDrivePdf(String(req.params.fileId || ''), 15000);
+      const pdfBase64 = buf.toString('base64');
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 40000);
-      let gRes: Response;
-      try {
-        gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [{
-              role: 'user',
-              parts: [
-                { inline_data: { mime_type: 'application/pdf', data: buf.toString('base64') } },
-                { text: CERT_OCR_PROMPT }
-              ]
-            }],
-            generationConfig: {
-              temperature: 0,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: 'OBJECT',
-                properties: Object.fromEntries(CERT_OCR_FIELDS.map(k => [k, { type: 'STRING' }])),
-                required: CERT_OCR_FIELDS
-              }
-            }
-          })
-        });
-      } catch (err: any) {
-        if (err?.name === 'AbortError') {
-          return res.status(504).json({ error: "Gemini terlalu lama membaca sertifikat. Coba lagi." });
-        }
-        throw err;
-      } finally {
-        clearTimeout(timer);
-      }
+      let text = '';
+      let maxRetryAfter = 0;
+      let dailyCount = 0;
+      const models = geminiModels();
 
-      const body: any = await gRes.json().catch(() => ({}));
-      if (!gRes.ok) {
-        const gMsg = String(body?.error?.message || '').slice(0, 200);
-        console.error("[Gemini OCR] error:", gRes.status, gMsg);
-        if (gRes.status === 429) {
-          res.setHeader('Retry-After', '20');
-          return res.status(429).json({ code: 'GEMINI_BUSY', error: "Kuota Gemini per menit sedang penuh. Pembacaan dilanjutkan otomatis." });
-        }
-        if ((gRes.status === 400 && /api key/i.test(gMsg)) || gRes.status === 401 || gRes.status === 403) {
+      for (const model of models) {
+        const blocked = geminiDailyBlockedUntil.get(model);
+        if (blocked && blocked > Date.now()) { dailyCount++; continue; }
+
+        const remaining = BUDGET_MS - (Date.now() - startedAt);
+        if (remaining < 8000) break;
+        const attempt = await callGemini(model, apiKey, pdfBase64, Math.min(35000, remaining - 3000));
+
+        if (attempt.kind === 'ok') { text = attempt.text; break; }
+        if (attempt.kind === 'key') {
           return res.status(502).json({ code: 'GEMINI_KEY', error: "GEMINI_API_KEY di Vercel tidak valid atau tidak punya akses. Periksa key di Google AI Studio lalu Redeploy." });
         }
-        if (gRes.status === 404) {
-          return res.status(502).json({ code: 'GEMINI_MODEL', error: `Model Gemini "${model}" tidak ditemukan. Atur env GEMINI_MODEL ke model yang tersedia.` });
+        if (attempt.kind === 'daily') {
+          dailyCount++;
+          geminiDailyBlockedUntil.set(model, Date.now() + 60 * 60 * 1000); // cek lagi 1 jam kemudian
+          continue;
         }
-        return res.status(502).json({ error: `Gemini gagal membaca sertifikat (HTTP ${gRes.status}).` });
+        if (attempt.kind === 'busy') maxRetryAfter = Math.max(maxRetryAfter, attempt.retryAfter);
       }
 
-      const text = (body?.candidates?.[0]?.content?.parts || [])
-        .map((p: any) => (typeof p?.text === 'string' && !p.thought ? p.text : ''))
-        .join('')
-        .trim();
+      if (!text) {
+        if (dailyCount >= models.length) {
+          return res.status(429).json({
+            code: 'GEMINI_QUOTA_DAY',
+            error: "Kuota harian Gemini (gratis) sudah habis untuk semua model. Aktifkan billing di Google Cloud project API key ini, atau coba lagi besok."
+          });
+        }
+        res.setHeader('Retry-After', String(maxRetryAfter || 15));
+        return res.status(429).json({ code: 'GEMINI_BUSY', error: "Gemini sedang sibuk / kuota per menit penuh. Pembacaan dilanjutkan otomatis." });
+      }
+
       let parsed: any = {};
       try { parsed = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { parsed = {}; }
 
@@ -1092,13 +1177,15 @@ Salin nilai setiap isian PERSIS seperti tertulis. Aturan:
       res.json({
         nomorSertifikat: /^[A-Za-z0-9.\-_/]{1,64}$/.test(nomor) ? nomor : '',
         namaAlat: dash(clean(parsed.namaAlat)),
-        ruangan: dash(clean(parsed.ruangan)),
+        ruangan: normalizeRuangan(dash(clean(parsed.ruangan))) || '',
         namaPelanggan: dash(clean(parsed.namaPelanggan, 200)),
         merek: dash(clean(parsed.merek)),
         tipe: dash(clean(parsed.tipe)),
         nomorSeri: dash(clean(parsed.nomorSeri)),
-        tanggalKalibrasi: cleanDate(parsed.tanggalPelaksanaan) || cleanDate(parsed.diterbitkan),
-        kalibrasiUlang: cleanDate(parsed.kalibrasiUlang)
+        // Urutan: tanggal pelaksanaan -> tanggal penerimaan -> tanggal terbit (paling akhir, karena bukan tanggal kalibrasi)
+        tanggalKalibrasi: cleanDate(parsed.tanggalPelaksanaan) || cleanDate(parsed.tanggalPenerimaan) || cleanDate(parsed.diterbitkan),
+        kalibrasiUlang: cleanDate(parsed.kalibrasiUlang),
+        halamanHilang: (clean(parsed.halamanHilang, 40).match(/\d+/g) || []).slice(0, 10).join(', ')
       });
     } catch (err: any) {
       if (err instanceof DriveFetchError) return res.status(err.status).json({ error: err.message });

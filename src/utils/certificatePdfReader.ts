@@ -23,6 +23,8 @@ export interface CertificateInfo {
   nomorSeri: string;
   tanggalKalibrasi: string; // YYYY-MM-DD (tanggal pelaksanaan, cadangan: tanggal terbit)
   kalibrasiUlang: string;   // YYYY-MM-DD
+  /** Nomor halaman yang tidak ada di PDF (mis. "2"), menurut tulisan "Halaman x dari N" */
+  halamanHilang?: string;
 }
 
 const ROW_TOLERANCE = 4;   // pt: label & isian dianggap 1 baris
@@ -138,6 +140,7 @@ export function parseCertificateItems(items: PdfTextItem[]): CertificateInfo {
   const merek = readField(items, p1, /^Merek Pabrik$/i, /^Rentang/i);
   const tipe = readField(items, p1, /^Type$/i, /^Resolusi/i);
   const diterbitkan = parseIndonesianDate(readField(items, p1, /^Diterbitkan Tanggal/i, /^Kalibrasi Ulang/i));
+  const penerimaan = parseIndonesianDate(readField(items, p1, /^Tanggal Penerimaan/i));
   const kalibrasiUlang = parseIndonesianDate(readField(items, p1, /^Kalibrasi Ulang/i));
 
   const ruangan = readField(items, p2, /^Ruangan\b/i, /^Teknisi\b/i);
@@ -151,7 +154,7 @@ export function parseCertificateItems(items: PdfTextItem[]): CertificateInfo {
     merek: merek === '-' ? '' : merek,
     tipe: tipe === '-' ? '' : tipe,
     nomorSeri: nomorSeri === '-' ? '' : nomorSeri,
-    tanggalKalibrasi: tanggalPelaksanaan || diterbitkan,
+    tanggalKalibrasi: tanggalPelaksanaan || penerimaan || diterbitkan,
     kalibrasiUlang
   };
 }
@@ -210,34 +213,95 @@ const EMPTY_INFO: CertificateInfo = {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+/** Error dari Gemini yang tidak ada gunanya diulang (kuota harian habis / key salah). */
+export class GeminiUnavailableError extends Error {
+  constructor(message: string) { super(message); this.name = 'GeminiUnavailableError'; }
+}
+
+// --- Antrean Gemini: maksimal 2 pembacaan bersamaan agar kuota per menit tidak cepat penuh ---
+const OCR_MAX_PARALLEL = 2;
+let ocrRunning = 0;
+const ocrWaiting: (() => void)[] = [];
+async function withOcrSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (ocrRunning >= OCR_MAX_PARALLEL) await new Promise<void>(r => ocrWaiting.push(r));
+  ocrRunning++;
+  try {
+    return await fn();
+  } finally {
+    ocrRunning--;
+    ocrWaiting.shift()?.();
+  }
+}
+
+// Bila Gemini dipastikan tidak bisa (kuota harian habis / key salah), file berikutnya tidak
+// perlu mencoba lagi selama 10 menit -> langsung pakai nama file, tidak membuang waktu.
+let geminiDownUntil = 0;
+let geminiDownReason = '';
+
+export interface OcrOptions {
+  /** Dipanggil saat menunggu Gemini (detik) agar layar bisa menampilkan "menunggu…" */
+  onWait?: (seconds: number) => void;
+  /** Dicek tiap detik saat menunggu; true = batalkan */
+  isCancelled?: () => boolean;
+}
+
 /**
  * Baca PDF hasil scan dengan Gemini (lewat server). Server mengunduh PDF sendiri dari
  * Google Drive, jadi browser tidak perlu mengunggah ulang file.
- * Bila kuota Gemini per menit penuh (429), tunggu lalu coba lagi (maks 3x).
+ * Bila Gemini sibuk / kuota per menit penuh, tunggu lalu coba lagi (maks 5x).
  */
-export async function ocrCertificateFromDrive(fileId: string): Promise<CertificateInfo> {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await apiFetch(`/api/drive-certificate/${encodeURIComponent(fileId)}/ocr`, {
-      timeoutMs: 65000,
-      retries: 1
-    });
-    if (res.status === 429 && attempt < 3) {
-      const wait = Math.min(Number(res.headers.get('Retry-After')) || 20, 60);
-      await sleep(wait * 1000 + Math.random() * 3000);
-      continue;
+export async function ocrCertificateFromDrive(fileId: string, opts: OcrOptions = {}): Promise<CertificateInfo> {
+  if (geminiDownUntil > Date.now()) throw new GeminiUnavailableError(geminiDownReason);
+
+  return withOcrSlot(async () => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (geminiDownUntil > Date.now()) throw new GeminiUnavailableError(geminiDownReason);
+      let res: Response;
+      try {
+        res = await apiFetch(`/api/drive-certificate/${encodeURIComponent(fileId)}/ocr`, {
+          timeoutMs: 65000,
+          retries: 0 // jeda ulang diatur di sini, bukan oleh apiFetch
+        });
+      } catch {
+        // Internet RS putus sebentar: tunggu lalu coba lagi
+        if (attempt >= 5) throw new Error('Koneksi terputus saat membaca dengan Gemini.');
+        await waitSeconds(10, opts);
+        continue;
+      }
+      const body = await res.json().catch(() => ({} as any));
+      if (res.ok) return { ...EMPTY_INFO, ...body };
+
+      if (body.code === 'GEMINI_QUOTA_DAY' || body.code === 'GEMINI_KEY' || body.code === 'NO_GEMINI_KEY') {
+        geminiDownUntil = Date.now() + 10 * 60 * 1000;
+        geminiDownReason = body.error || 'Gemini tidak tersedia.';
+        throw new GeminiUnavailableError(geminiDownReason);
+      }
+      const retryable = res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
+      if (!retryable || attempt >= 5) {
+        throw new Error(body.error || `Gemini gagal membaca sertifikat (HTTP ${res.status}).`);
+      }
+      const wait = Math.min(Number(res.headers.get('Retry-After')) || 15, 60) + Math.random() * 3;
+      await waitSeconds(wait, opts);
     }
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Gemini gagal membaca sertifikat (HTTP ${res.status}).`);
-    return { ...EMPTY_INFO, ...body };
+    throw new Error('Gemini terus sibuk. Coba baca ulang beberapa menit lagi.');
+  });
+}
+
+async function waitSeconds(seconds: number, opts: OcrOptions) {
+  const end = Date.now() + seconds * 1000;
+  while (Date.now() < end) {
+    if (opts.isCancelled?.()) throw new Error('Dibatalkan.');
+    opts.onWait?.(Math.ceil((end - Date.now()) / 1000));
+    await sleep(1000);
   }
-  throw new Error('Kuota Gemini penuh. Tunggu 1 menit lalu baca ulang.');
+  opts.onWait?.(0);
 }
 
 /**
  * Versi untuk tautkan massal: PDF scan TIDAK dianggap gagal.
  * Urutan: teks PDF → Gemini (PDF scan) → nama file (cadangan bila Gemini gagal).
  */
-export async function readCertificateFromDriveDetailed(fileId: string, knownFileName = ''): Promise<CertificateReadResult> {
+export async function readCertificateFromDriveDetailed(fileId: string, knownFileName = '', opts: OcrOptions = {}): Promise<CertificateReadResult> {
   const { bytes, fileName: serverName } = await fetchDrivePdf(fileId);
   const fileName = knownFileName || serverName;
   const fromName = parseCertificateFileName(fileName);
@@ -255,7 +319,7 @@ export async function readCertificateFromDriveDetailed(fileId: string, knownFile
   // PDF scan (atau teks tanpa nomor) → baca dengan Gemini
   let ocrError = '';
   try {
-    const ocr = await ocrCertificateFromDrive(fileId);
+    const ocr = await ocrCertificateFromDrive(fileId, opts);
     if (ocr.nomorSertifikat) return withMismatch({ info: ocr, fileName, source: 'ocr' });
     if (fromName) {
       // Gemini membaca isinya tapi nomor tidak terbaca → nomor dari nama file, sisanya dari Gemini

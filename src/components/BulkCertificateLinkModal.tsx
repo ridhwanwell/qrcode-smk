@@ -19,7 +19,16 @@ interface LabelLite {
   pdfUrl?: string | null;
   pdfDriveUrl?: string | null;
   pdfOriginalUrl?: string | null;
+  namaAlat?: string | null;
+  ruangan?: string | null;
+  calibratedAt?: string | null;
+  validUntil?: string | null;
 }
+
+/** Isian label yang masih kosong (untuk fitur lengkapi data). */
+const FILL_FIELDS = ['namaAlat', 'ruangan', 'calibratedAt', 'validUntil'] as const;
+const missingOf = (l?: LabelLite) => FILL_FIELDS.filter(k => !String(l?.[k] || '').trim());
+const upperRuangan = (v?: string | null) => (v || '').replace(/\s+/g, ' ').trim().toUpperCase();
 
 interface Props {
   labels: LabelLite[];
@@ -28,7 +37,7 @@ interface Props {
   onDone: () => void;      // muat ulang daftar label
 }
 
-type RowStatus = 'ready' | 'replace' | 'same' | 'notfound' | 'void' | 'duplicate' | 'error' | 'nonumber';
+type RowStatus = 'ready' | 'replace' | 'fill' | 'same' | 'notfound' | 'void' | 'duplicate' | 'error' | 'nonumber';
 
 interface Row {
   fileId: string;
@@ -45,6 +54,8 @@ interface Row {
   /** Nomor di isi PDF berbeda dengan nomor di nama file */
   nameMismatch?: string;
   ocrError?: string;
+  /** Data label sudah lengkap -> PDF tidak dibaca ulang (hemat kuota Gemini) */
+  skipped?: boolean;
 }
 
 /** "2026-10-09" -> "2027-10-09" (masa berlaku kalibrasi umumnya 1 tahun). */
@@ -60,6 +71,7 @@ function addOneYear(date: string): string {
 const STATUS_INFO: Record<RowStatus, { text: string; cls: string }> = {
   ready: { text: 'Siap ditautkan', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
   replace: { text: 'Sudah punya sertifikat lain', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  fill: { text: 'Tertaut, lengkapi data kosong', cls: 'bg-sky-50 text-sky-800 border-sky-200' },
   same: { text: 'Sudah tertaut (sama)', cls: 'bg-slate-50 text-slate-500 border-slate-200' },
   notfound: { text: 'Nomor label tidak ada', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   void: { text: 'Label Void', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
@@ -92,6 +104,8 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
   const [saveResult, setSaveResult] = useState<{ ok: number; failed: number } | null>(null);
   const [bulkCal, setBulkCal] = useState('');
   const [bulkValid, setBulkValid] = useState('');
+  const [waitSec, setWaitSec] = useState(0);
+  const [skippedCount, setSkippedCount] = useState(0);
   const cancelRef = useRef(false);
 
   const labelByNo = useMemo(() => {
@@ -110,7 +124,29 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
       if (!label) return { ...r, status: 'notfound' as RowStatus };
       if (label.status === 'Void / Rusak') return { ...r, label, status: 'void' as RowStatus };
       const existingId = extractGoogleDriveFileId(label.pdfOriginalUrl || label.pdfDriveUrl || label.pdfUrl || '');
-      const status: RowStatus = existingId === r.fileId ? 'same' : existingId ? 'replace' : 'ready';
+      let status: RowStatus = existingId === r.fileId ? 'same' : existingId ? 'replace' : 'ready';
+      if (status === 'same') {
+        // Sudah tertaut ke file yang sama: bisa dilengkapi bila label masih punya isian kosong
+        const missing = missingOf(label);
+        const infoHas: Record<string, string> = {
+          namaAlat: r.info?.namaAlat || '', ruangan: r.info?.ruangan || '',
+          calibratedAt: r.info?.tanggalKalibrasi || '', validUntil: r.info?.kalibrasiUlang || ''
+        };
+        if (missing.length > 0 && !r.skipped) {
+          status = 'fill';
+          // Tampilkan isian lama label; yang kosong diisi hasil bacaan PDF
+          r = {
+            ...r,
+            info: {
+              ...(r.info as CertificateInfo),
+              namaAlat: label.namaAlat || infoHas.namaAlat,
+              ruangan: label.ruangan || infoHas.ruangan,
+              tanggalKalibrasi: label.calibratedAt || infoHas.calibratedAt,
+              kalibrasiUlang: label.validUntil || infoHas.validUntil
+            }
+          };
+        }
+      }
       const otherFolder = !!defaultPrefix && !label.noLabel.startsWith(`${defaultPrefix}.`);
       const rsMismatch = !!r.info?.namaPelanggan && !!label.namaRs &&
         !normalize(r.info.namaPelanggan).includes(normalize(label.namaRs)) &&
@@ -131,7 +167,7 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
       sorted.slice(1).forEach(r => { r.status = 'duplicate'; });
     });
 
-    const order: RowStatus[] = ['ready', 'replace', 'same', 'duplicate', 'notfound', 'void', 'nonumber', 'error'];
+    const order: RowStatus[] = ['ready', 'replace', 'fill', 'same', 'duplicate', 'notfound', 'void', 'nonumber', 'error'];
     return withLabel.sort((a, b) =>
       order.indexOf(a.status) - order.indexOf(b.status) ||
       (a.label?.noLabel || a.fileName).localeCompare(b.label?.noLabel || b.fileName)
@@ -169,7 +205,31 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
       return;
     }
 
+    // File yang sudah tertaut ke label dengan data lengkap tidak perlu dibaca ulang
+    // (hemat waktu & kuota Gemini saat Tautkan Massal diulang untuk folder yang sama)
+    const completeByFileId = new Map<string, LabelLite>();
+    labels.forEach(l => {
+      const id = extractGoogleDriveFileId(l.pdfOriginalUrl || l.pdfDriveUrl || l.pdfUrl || '');
+      if (id && missingOf(l).length === 0) completeByFileId.set(id, l);
+    });
+    const skippedRows: Row[] = [];
+    files = files.filter(f => {
+      const l = completeByFileId.get(f.id);
+      if (!l) return true;
+      skippedRows.push({
+        fileId: f.id, fileName: f.name, modifiedTime: f.modifiedTime, status: 'same', skipped: true,
+        info: {
+          nomorSertifikat: l.noLabel, namaAlat: l.namaAlat || '', ruangan: l.ruangan || '',
+          namaPelanggan: '', merek: '', tipe: '', nomorSeri: '',
+          tanggalKalibrasi: l.calibratedAt || '', kalibrasiUlang: l.validUntil || ''
+        }
+      });
+      return false;
+    });
+    setSkippedCount(skippedRows.length);
+
     cancelRef.current = false;
+    setWaitSec(0);
     setPhase('reading');
     setProgress({ done: 0, total: files.length });
 
@@ -185,7 +245,10 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
         let row: Row = { fileId: f.id, fileName: f.name, modifiedTime: f.modifiedTime, status: 'error' };
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const result = await readCertificateFromDriveDetailed(f.id, f.name);
+            const result = await readCertificateFromDriveDetailed(f.id, f.name, {
+              onWait: setWaitSec,
+              isCancelled: () => cancelRef.current
+            });
             row = {
               ...row,
               info: result.info,
@@ -207,10 +270,11 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
     };
     await Promise.all([worker(), worker(), worker()]);
 
-    const built = buildRows(results.filter(Boolean));
+    setWaitSec(0);
+    const built = buildRows([...results.filter(Boolean), ...skippedRows]);
     setRows(built);
     // Baris yang nomor di PDF-nya beda dengan nama file tidak dicentang otomatis — periksa dulu
-    setSelected(new Set(built.filter(r => r.status === 'ready' && !r.nameMismatch).map(r => r.fileId)));
+    setSelected(new Set(built.filter(r => (r.status === 'ready' || r.status === 'fill') && !r.nameMismatch).map(r => r.fileId)));
     setPhase('review');
   };
 
@@ -222,7 +286,7 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
     });
   };
 
-  const selectable = (r: Row) => r.status === 'ready' || r.status === 'replace';
+  const selectable = (r: Row) => r.status === 'ready' || r.status === 'replace' || r.status === 'fill';
 
   /** Ubah isian satu baris (dipakai untuk PDF scan yang datanya diisi manual). */
   const updateRowInfo = (fileId: string, patch: Partial<CertificateInfo>) => {
@@ -250,6 +314,18 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
     setPhase('saving');
     const items = chosen.map(r => {
       const viewUrl = getGoogleDriveViewUrl(r.fileId);
+      if (r.status === 'fill') {
+        // Hanya isi yang kosong; isian lama label tidak ditimpa (null = server pakai data lama)
+        const missing = missingOf(r.label);
+        return {
+          noLabel: r.label!.noLabel,
+          status: 'Sertifikat Tertaut',
+          nama_alat: missing.includes('namaAlat') ? (r.info?.namaAlat || null) : null,
+          ruangan: missing.includes('ruangan') ? (upperRuangan(r.info?.ruangan) || null) : null,
+          calibrated_at: missing.includes('calibratedAt') ? (r.info?.tanggalKalibrasi || null) : null,
+          valid_until: missing.includes('validUntil') ? (r.info?.kalibrasiUlang || null) : null
+        };
+      }
       return {
         noLabel: r.label!.noLabel,
         status: 'Sertifikat Tertaut',
@@ -259,7 +335,7 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
         pdforiginal_url: viewUrl,
         pdf_name: r.info?.namaAlat || `Sertifikat Kalibrasi ${r.label!.noLabel}`,
         nama_alat: r.info?.namaAlat || null,
-        ruangan: r.info?.ruangan || null,
+        ruangan: upperRuangan(r.info?.ruangan) || null,
         calibrated_at: r.info?.tanggalKalibrasi || null,
         valid_until: r.info?.kalibrasiUlang || null
       };
@@ -287,6 +363,7 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
   const ocrCount = rows.filter(r => r.source === 'ocr' && selectable(r)).length;
   const scannedCount = rows.filter(r => r.source === 'filename' && selectable(r)).length;
   const ocrFailReason = rows.find(r => r.source === 'filename' && r.ocrError)?.ocrError;
+  const incompletePdfs = rows.filter(r => r.info?.halamanHilang && !r.skipped);
   const missingDates = chosen.filter(r => !r.info?.tanggalKalibrasi || !r.info?.kalibrasiUlang).length;
 
   const counts = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {} as Record<string, number>);
@@ -357,6 +434,12 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
                 <div className="h-full bg-blue-600 transition-all" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
               </div>
               <p className="text-xs text-slate-500">Jangan tutup halaman ini. Sekitar 2–3 detik per sertifikat; PDF hasil scan ±10–20 detik (dibaca Gemini).</p>
+              {waitSec > 0 && (
+                <p className="text-xs text-amber-700 font-semibold">Gemini sedang sibuk — melanjutkan otomatis dalam {waitSec} detik…</p>
+              )}
+              {skippedCount > 0 && (
+                <p className="text-[11px] text-slate-400">{skippedCount} sertifikat sudah tertaut dengan data lengkap — dilewati.</p>
+              )}
             </div>
           )}
 
@@ -375,6 +458,17 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
                   <span>
                     <strong>{ocrCount} PDF hasil scan dibaca oleh Gemini.</strong> Hasil bacaan AI bisa keliru — cek sekilas
                     Ruangan & tanggal di tabel (bisa langsung diubah) sebelum menautkan.
+                  </span>
+                </div>
+              )}
+              {incompletePdfs.length > 0 && phase === 'review' && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 flex items-start gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>
+                    <strong>{incompletePdfs.length} PDF tidak lengkap</strong> (ada halaman yang tidak ikut ter-scan):{' '}
+                    {incompletePdfs.map(r => r.label?.noLabel || r.info?.nomorSertifikat).filter(Boolean).join(', ')}.
+                    Data di halaman yang hilang (mis. Ruangan) tidak bisa dibaca. Sertifikat tetap bisa ditautkan,
+                    tapi sebaiknya scan ulang lengkap lalu ganti file di Google Drive.
                   </span>
                 </div>
               )}
@@ -455,7 +549,7 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
                           {r.info?.namaAlat || '-'}
                           {r.fileName && <div className="text-[10px] text-slate-400 truncate max-w-[220px]" title={r.fileName}>{r.fileName}</div>}
                         </td>
-                        {(r.source === 'filename' || r.source === 'ocr') && selectable(r) && r.info ? (
+                        {selectable(r) && r.info && (r.source !== 'pdf' || r.status === 'fill') ? (
                           <>
                             <td className="px-2 py-1.5">
                               <input
@@ -510,6 +604,11 @@ export const BulkCertificateLinkModal: React.FC<Props> = ({ labels, defaultPrefi
                           {r.source === 'filename' && (
                             <div className="text-[10px] text-sky-700 mt-0.5 flex items-center gap-1">
                               <ScanLine className="w-3 h-3" /> PDF scan — dicocokkan dari nama file
+                            </div>
+                          )}
+                          {r.info?.halamanHilang && (
+                            <div className="text-[10px] text-rose-700 font-semibold mt-0.5">
+                              PDF tidak lengkap: halaman {r.info.halamanHilang} tidak ada — scan ulang
                             </div>
                           )}
                           {r.nameMismatch && (
