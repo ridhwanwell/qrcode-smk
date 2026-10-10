@@ -1,5 +1,6 @@
 import express from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { createHash } from "crypto";
 import { supabaseAdmin } from "./supabaseAdmin.js";
 import { requireAuth, requireRole, OFFICIAL_ROLES } from "../middleware/auth.js";
 import type { AuthRequest, UserRole } from "../middleware/auth.js";
@@ -217,10 +218,27 @@ export function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-  // Global Rate Limiting: 200 requests per 15 minutes per IP
+  // Kunci pembatas: pengguna yang sudah login dihitung per-token (bukan per-IP), supaya banyak
+  // admin yang berbagi 1 IP internet rumah sakit (NAT) tidak saling menghabiskan jatah.
+  // Pengunjung tanpa login tetap dihitung per-IP.
+  const rateLimitKey = (req: express.Request): string => {
+    const auth = req.headers.authorization;
+    if (auth && auth.startsWith('Bearer ')) {
+      return 'u:' + createHash('sha256').update(auth.slice(7)).digest('hex').slice(0, 24);
+    }
+    return 'ip:' + ipKeyGenerator(req.ip || '');
+  };
+  const isLoggedIn = (req: express.Request): boolean => {
+    const auth = req.headers.authorization;
+    return !!auth && auth.startsWith('Bearer ');
+  };
+
+  // Pembatas umum: admin yang login jauh lebih longgar (2000/15 menit) karena mengelola
+  // ratusan label; tamu tanpa login tetap ketat (200/15 menit) untuk mencegah penyalahgunaan.
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 200,
+    max: (req) => (isLoggedIn(req) ? 2000 : 200),
+    keyGenerator: rateLimitKey,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "Terlalu banyak permintaan dari IP ini, coba lagi dalam beberapa menit." },
@@ -234,6 +252,7 @@ export function createApp() {
   const certificateReadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 1500,
+    keyGenerator: rateLimitKey,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "Terlalu banyak sertifikat dibaca dalam waktu singkat. Tunggu beberapa menit lalu lanjutkan." }
